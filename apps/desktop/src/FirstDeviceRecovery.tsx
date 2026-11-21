@@ -1,8 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useRef, useState } from "react";
 
-type Result = { kind: "challenge"; file: string; device: string; fingerprint: string }
-  | { kind: "archive_verified"; brain: string; kit: string; backup_sha256: string }
+type Archive = { brain: string; kit: string; backup_sha256: string };
+type Result = ({ kind: "challenge"; file: string; device: string; fingerprint: string } & Archive)
+  | ({ kind: "archive_verified" } & Archive)
   | { kind: "accepted" | "prepared" | "cancelled" };
 
 export function FirstDeviceRecovery() {
@@ -10,7 +11,7 @@ export function FirstDeviceRecovery() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [request, setRequest] = useState<Extract<Result, { kind: "challenge" }> | null>(null);
-  const [archive, setArchive] = useState<Extract<Result, { kind: "archive_verified" }> | null>(null);
+  const [archive, setArchive] = useState<Archive | null>(null);
   async function exchange(action: "inspect" | "prepare" | "export" | "import") {
     if (pending.current) return;
     pending.current = true;
@@ -26,6 +27,7 @@ export function FirstDeviceRecovery() {
         setStatus("Recovery Kit and backup verified.");
       } else if (result.kind === "challenge") {
         setRequest(result);
+        setArchive(result);
         setStatus("Public recovery request saved.");
       } else if (result.kind === "prepared") {
         setStatus("Replacement profile prepared. Save its public request to continue.");
@@ -43,7 +45,7 @@ export function FirstDeviceRecovery() {
   }
   return <details data-first-device-recovery>
     <summary>Recover the first device</summary>
-    <p>On a blank profile, select your backup, its checkpoint, your Recovery Kit and unlock file. Save the public request and compare the device ID and key fingerprint in the offline Kit before signing.</p>
+    <p>Prepare the blank profile using your backup, checkpoint, Recovery Kit and unlock file. After saving the public request, disconnect from the network and open the offline Kit on this computer. Compare the identifiers below before signing, then import the approval.</p>
     <button type="button" disabled={busy} onClick={() => void exchange("inspect")}>Check Kit and backup</button>
     <button type="button" disabled={busy} onClick={() => void exchange("prepare")}>Prepare replacement profile</button>
     <button type="button" disabled={busy} onClick={() => void exchange("export")}>Save public request</button>

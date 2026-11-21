@@ -14,6 +14,17 @@ pub enum Action {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct PublicChallenge {
+    pub(crate) file: String,
+    pub(crate) device: String,
+    pub(crate) fingerprint: String,
+    pub(crate) brain: String,
+    pub(crate) kit: String,
+    pub(crate) backup_sha256: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Outcome {
     Cancelled,
@@ -23,11 +34,7 @@ pub enum Outcome {
         kit: String,
         backup_sha256: String,
     },
-    Challenge {
-        file: String,
-        device: String,
-        fingerprint: String,
-    },
+    Challenge(PublicChallenge),
     Accepted,
 }
 
@@ -125,14 +132,10 @@ fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
         Action::Inspect { .. } | Action::Prepare { .. } => unreachable!(),
         Action::Export { folder } => {
             let _lease = ctx.admitted().map_err(|_| Error::Unavailable)?;
-            let (file, device, fingerprint) = bound()?
+            let challenge = bound()?
                 .export_challenge(&folder)
                 .map_err(|_| Error::InvalidSelection)?;
-            Ok(Outcome::Challenge {
-                file,
-                device,
-                fingerprint,
-            })
+            Ok(Outcome::Challenge(challenge))
         }
         Action::Import { approval } => {
             let permit = ctx

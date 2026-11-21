@@ -22,6 +22,10 @@ async function run() {
   const approval = await authorize(args, async (text, device) => {
     assert.equal(device, publicRequest.new_device);
     assert.ok(text.includes(device) && text.includes(publicRequest.brain_id));
+    assert.ok(text.includes("Recovery Kit ID " + publicRequest.kit_id));
+    assert.ok(text.includes("Backup SHA-256 " + Buffer.from(publicRequest.backup_sha256).toString("hex")));
+    const fingerprint = require("node:crypto").createHash("sha256").update(Buffer.from(publicRequest.new_key)).digest("hex");
+    assert.ok(text.includes("New key SHA-256 " + fingerprint));
     reviewed = true;
     return true;
   });

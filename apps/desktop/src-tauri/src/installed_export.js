@@ -22,7 +22,9 @@
               mode === "first-device-clean-prepare" ? status.startsWith("Replacement profile prepared.") :
               ["first-device-check-damaged", "first-device-clean-reject"].includes(mode) ? status.startsWith("Cryptex could not verify") :
               mode.endsWith("-export") ? status === "Public recovery request saved." &&
-              /[0-9a-f]{64}/.test(section.querySelector("dl")?.textContent ?? "") :
+              ["Recovery Kit ID", "Backup SHA-256", "New key fingerprint · SHA-256"].every(label =>
+                [...section.querySelectorAll("dt")].some(term => term.textContent === label &&
+                  /^[0-9a-f]{64}$/.test(term.nextElementSibling?.textContent ?? ""))) :
               mode === "first-device-wrong" ? status.startsWith("Cryptex could not verify") :
               status === "Signed approval verified for this device.";
             break;

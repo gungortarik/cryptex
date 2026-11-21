@@ -95,7 +95,7 @@ impl OfflineInputs<'_> {
             assert_eq!(files.len(), 1);
             files[0].path()
         } else {
-            folder.join(ceremony.export_challenge(&folder).unwrap().0)
+            folder.join(ceremony.export_challenge(&folder).unwrap().file)
         };
         assert_eq!(
             fs::read(&challenge).unwrap(),

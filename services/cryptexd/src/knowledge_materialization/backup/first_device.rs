@@ -82,7 +82,10 @@ impl Ceremony {
             .map_err(|_| Denial::Receipt)
     }
 
-    pub(crate) fn export_challenge(&self, dir: &Path) -> Result<(String, String, String), Error> {
+    pub(crate) fn export_challenge(
+        &self,
+        dir: &Path,
+    ) -> Result<crate::ipc::first_device::PublicChallenge, Error> {
         let output = Directory::open(dir).map_err(|_| Error::ExportDestination)?;
         let request =
             serde_json_canonicalizer::to_vec(&self.expected).map_err(|_| Error::Checkpoint)?;
@@ -92,11 +95,17 @@ impl Ceremony {
             "challenge.json",
             request.as_slice(),
         )?;
-        Ok((
+        Ok(crate::ipc::first_device::PublicChallenge {
             file,
-            self.expected.new_device.as_str().into(),
-            format!("{:x}", Sha256::digest(self.expected.new_key)),
-        ))
+            device: self.expected.new_device.as_str().into(),
+            fingerprint: format!("{:x}", Sha256::digest(self.expected.new_key)),
+            brain: self.expected.brain_id.clone(),
+            kit: self.expected.kit_id.clone(),
+            backup_sha256: format!(
+                "{:x}",
+                sha2::digest::Output::<Sha256>::from(self.expected.backup_sha256)
+            ),
+        })
     }
 
     pub(crate) fn accept_owner_file(&self, root: &Path, path: &Path) -> Result<(), Error> {

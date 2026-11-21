@@ -8,6 +8,8 @@ At `6f9e2d8`, the installed Windows and macOS applications exported a public cha
 
 The Windows x64 and macOS ARM64 workflow artifacts contain the offline program, runtime and libraries. The signing program is absent from the ordinary Desktop package. Personal profiles retain the existing write gate.
 
+At `6c6ca7e` the same blank-profile ceremony also required the M9 minimum-reader barrier and preserved an existing legacy profile on rejection. The daemon flushed reconstructed archive files and directories before activation. The installed temporary-profile checks and both directions of the cross-platform restore passed. [Installed applications](https://github.com/gungortarik/cryptex/actions/runs/44862515790) · [Cross-platform restore](https://github.com/gungortarik/cryptex/actions/runs/44862515730)
+
 ## Scheduled backup and retention in the installed application
 
 At `e5045b2`, the Windows and macOS applications prompted for writer designation, reopened the assignment after restart, and rejected a copied target marker. At `59ac22a`, an owner-enabled daily schedule survived a daemon restart and produced ciphertext that the rehearsal restored after removing the source credentials. [Writer designation](https://github.com/gungortarik/cryptex/actions/runs/44856662825) · [Scheduled backup](https://github.com/gungortarik/cryptex/actions/runs/44857555574)

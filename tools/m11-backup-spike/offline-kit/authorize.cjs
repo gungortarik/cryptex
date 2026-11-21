@@ -98,7 +98,8 @@ async function authorize({request, kit, unlock, backup}, confirm) {
     const review = [
       "Authorize the first device after loss of all trusted devices?",
       "Compare the replacement device ID and full fingerprint with its public request.",
-      "Brain " + candidate.brain_id, "Archived device " + candidate.archive_device,
+      "Brain " + candidate.brain_id, "Recovery Kit ID " + candidate.kit_id,
+      "Archived device " + candidate.archive_device,
       "Generation " + selected.generation, "Backup SHA-256 " + hex32(candidate.backup_sha256),
       "Archived history SHA-256 " + hex32(candidate.archive_history_sha256),
       "New device " + candidate.new_device, "New key SHA-256 " + fingerprint,
