@@ -72,14 +72,15 @@ profile with `cryptexd lifecycle prepare-first-device-m11 --runtime-root <absolu
 The parent directory must exist. The command refuses an existing destination
 and creates only the minimum-reader lock, without enrolling a device.
 
-In that blank profile, **Check Kit and backup** verifies the selected
+Disconnect the trusted replacement computer before opening the Kit. In the
+blank profile, **Check Kit and backup** verifies the selected
 encrypted backup, its independently held checkpoint, the sealed Kit and its
 separate unlock file. **Prepare replacement profile** repeats those checks and
 stages the verified archive and a fresh device identity. An occupied profile
 is preserved. The replacement uses the minimum-reader lock layout for M9
 attachment history.
 
-Choose **Save public request** and take the replacement computer offline.
+Choose **Save public request**.
 Open the separate Recovery Kit utility, compare the Brain, backup digest,
 device ID and key fingerprint, and enter the displayed device ID to approve.
 Choose **Import signed approval** in Cryptex to activate the pending identity.

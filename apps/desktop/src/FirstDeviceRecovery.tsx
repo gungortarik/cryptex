@@ -45,7 +45,7 @@ export function FirstDeviceRecovery() {
   }
   return <details data-first-device-recovery>
     <summary>Recover the first device</summary>
-    <p>Prepare the blank profile using your backup, checkpoint, Recovery Kit and unlock file. After saving the public request, disconnect from the network and open the offline Kit on this computer. Compare the identifiers below before signing, then import the approval.</p>
+    <p>Disconnect this computer before opening the Recovery Kit. Select your backup, checkpoint, Kit and unlock file to prepare the blank profile. Save the public request, compare the identifiers in the offline signing tool, then import its signed approval here.</p>
     <button type="button" disabled={busy} onClick={() => void exchange("inspect")}>Check Kit and backup</button>
     <button type="button" disabled={busy} onClick={() => void exchange("prepare")}>Prepare replacement profile</button>
     <button type="button" disabled={busy} onClick={() => void exchange("export")}>Save public request</button>
