@@ -68,6 +68,9 @@ try {
     await dialog.getByText(ticket, { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => document.activeElement.textContent), "Deny");
     assert.ok(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth));
+    const denyButton = await dialog.getByRole("button", { name: "Deny", exact: true }).boundingBox();
+    const allowButton = await dialog.getByRole("button", { name: "Allow one search", exact: true }).boundingBox();
+    assert.ok(denyButton && allowButton && denyButton.x + denyButton.width < allowButton.x);
     await page.keyboard.press("Tab");
     assert.equal(await page.evaluate(() => document.activeElement.textContent), "Allow one search");
     await page.keyboard.press("Shift+Tab");

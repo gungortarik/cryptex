@@ -33,12 +33,14 @@ export function PublicReadReview() {
     <button type="button" className="quiet-button" disabled={busy} onClick={() => void act("inspect")}>Review AI access</button>
     <dialog ref={dialog} className="capture-confirm-dialog" aria-labelledby="public-read-title" aria-describedby="public-read-scope"
       onCancel={event => { event.preventDefault(); void act("deny"); }}>
-      <h3 id="public-read-title">Allow one public-note search?</h3>
+      <h2 id="public-read-title">Allow one public-note search?</h2>
       <p id="public-read-scope">Compare this code with the one in your MCP client. Approval lets that connection read up to ten public note excerpts for one search.</p>
-      <p><code>{request?.ticket}</code></p>
+      <p><code className="public-read-ticket">{request?.ticket}</code></p>
       <p>Local bridge process {request?.peer_pid}</p>
-      <button ref={deny} type="button" disabled={busy} onClick={() => void act("deny")}>Deny</button>
-      <button type="button" disabled={busy} onClick={() => void act("allow")}>Allow one search</button>
+      <div className="capture-confirm-actions">
+        <button ref={deny} className="capture-secondary" type="button" disabled={busy} onClick={() => void act("deny")}>Deny</button>
+        <button className="capture-secondary" type="button" disabled={busy} onClick={() => void act("allow")}>Allow one search</button>
+      </div>
     </dialog>
     <p role="status">{message}</p>
   </div>;
