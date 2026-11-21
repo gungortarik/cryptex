@@ -59,7 +59,12 @@ class RestoreCodec(unittest.TestCase):
             inspect = b"\2" + hashlib.sha256(canonical).digest()
             result = verify(brain, 1, b"", scope=inspect)
             self.assertEqual((result.returncode, result.stdout), (0, pin))
-            for identity, extra, scope in [(os.urandom(32), b"", inspect),
+            retention = verify(brain, 1, b"", scope=b"\3")
+            self.assertEqual(retention.returncode, 0)
+            self.assertEqual(json.loads(retention.stdout), selection)
+            for identity, extra, scope in [(os.urandom(32), b"", b"\3"),
+                                           (brain, b"unexpected payload", b"\3"),
+                                           (os.urandom(32), b"", inspect),
                                            (brain, b"", b"\2" + os.urandom(32)),
                                            (brain, b"unexpected payload", inspect)]:
                 rejected = verify(identity, 1, extra, scope=scope)

@@ -416,7 +416,7 @@ fn scheduled_writer_relinquishes_before_a_peer_takes_the_same_target() {
             .resume(&a, &stop, || {}, |_| panic!("former writer published"))
             .is_err()
     );
-    assert!(catalog.prune(&a).is_err());
+    assert!(catalog.prune(&a, None).is_err());
     assert_eq!(fs::read(&prior).unwrap(), b"prior synthetic backup");
     let retry = old
         .release(
@@ -826,12 +826,15 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
             assert_eq!(hits.len(), 1);
             assert_eq!(hits[0].text, "synthetic original prefix");
             assert_ne!(hits[0].event_id, receipt.event_id);
-            Ok((hits, work.path().join("restore-first")))
+            Ok((hits, work.path().join("restore-first"), None))
         })
         .unwrap();
     assert!(
         catalog
-            .verify(&anchor, &next_publication, |_| Err::<((), PathBuf), _>(
+            .verify(&anchor, &next_publication, |_| Err::<
+                ((), PathBuf, Option<u64>),
+                _,
+            >(
                 std::io::Error::other("reconstruction failed")
             ))
             .is_err()
@@ -843,7 +846,7 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
                 assert!(hits.iter().any(|hit| hit.event_id == receipt.event_id
                     && hit.content_hash == receipt.content_hash));
                 assert!(hits.contains(&before[0]));
-                Ok((hits, work.path().join("restore-next")))
+                Ok((hits, work.path().join("restore-next"), None))
             })
             .unwrap();
     assert_eq!(after.len(), 2);
@@ -865,7 +868,7 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
             .kind(),
         std::io::ErrorKind::PermissionDenied
     );
-    assert_eq!(catalog.prune(&anchor).unwrap(), 0);
+    assert_eq!(catalog.prune(&anchor, None).unwrap(), 0);
     catalog.set_retention(&anchor, keep).unwrap();
     let reopened = FileBackedSecureStore::open(receipt_store.root()).unwrap();
     let catalog = crate::backup_scheduler::retention::VerifiedBackups {
@@ -873,25 +876,27 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
         ..catalog
     };
     assert_eq!(
-        catalog.prune(&peer_anchor).unwrap_err().kind(),
+        catalog.prune(&peer_anchor, None).unwrap_err().kind(),
         std::io::ErrorKind::PermissionDenied
     );
     let good = fs::read(&next).unwrap();
     fs::write(&next, b"corrupt fixture").unwrap();
     assert_eq!(
-        catalog.prune(&anchor).unwrap_err().kind(),
+        catalog.prune(&anchor, None).unwrap_err().kind(),
         std::io::ErrorKind::InvalidData
     );
     assert!(first.exists());
     fs::write(&next, good).unwrap();
+    assert_eq!(catalog.prune(&anchor, Some(1)).unwrap(), 0);
+    assert!(first.is_file() && next.is_file());
     catalog
         .verify(&anchor, &next_publication, |file| {
             assert_eq!(restore_hits(file, "recheck-after-restart"), after);
-            Ok(((), work.path().join("recheck-after-restart")))
+            Ok(((), work.path().join("recheck-after-restart"), None))
         })
         .unwrap();
     assert!(!first.try_exists().unwrap());
-    assert_eq!(catalog.prune(&anchor).unwrap(), 0);
+    assert_eq!(catalog.prune(&anchor, None).unwrap(), 0);
     catalog.set_retention(&anchor, None).unwrap();
     assert!(next.is_file());
     assert_eq!(fs::read(unknown).unwrap(), b"unverified fixture");
@@ -1056,6 +1061,52 @@ fn restored_note_and_attachment_pass_guarded_reads() {
     )
     .unwrap();
     run_archive("seal-kit", &[&kit, &password, &sealed_kit]);
+    if let Some(package) = std::env::var_os("CRYPTEX_M11_OFFLINE_KIT_PACKAGE") {
+        use crate::capture::{CaptureOutcome, CaptureRequest, capture_memory_note};
+        let outcome = capture_memory_note(
+            &profiles.store,
+            SecureStoreEnvironment::Dev,
+            source,
+            CaptureRequest {
+                capture_id: "a2c00688-83b9-4956-8560-f1d95afbd65a".into(),
+                classification: Classification::Public,
+                text: "A later recovery edition".into(),
+            },
+            &crate::canonical_writer::CanonicalWriterConfig::default(),
+        );
+        assert!(matches!(outcome, CaptureOutcome::Committed(_)));
+        let next =
+            super::super::backup::prepare(source, &profiles.store, SecureStoreEnvironment::Dev, 2)
+                .unwrap();
+        let independent = work.path().join("later-checkpoints");
+        fs::create_dir(&independent).unwrap();
+        let selected = independent.join("later.json");
+        fs::write(&selected, serde_json::to_vec(&next.selection).unwrap()).unwrap();
+        let newer = volume.join("daily-2.pgp");
+        run_archive(
+            "seal-inventory",
+            &[
+                &kit.join("recovery.pub"),
+                next.encryption_input().unwrap().path(),
+                &newer,
+            ],
+        );
+        let test = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tools/m11-backup-spike/test_kit_advance.py");
+        assert!(
+            Command::new("python")
+                .arg("-B")
+                .arg(test)
+                .arg(package)
+                .args([&sealed_kit, &password, &backup, &newer, &selected])
+                .status()
+                .unwrap()
+                .success()
+        );
+        println!(
+            "m11_offline_kit_advance=passed cancelled=kept older=restorable newer=restorable substituted=held"
+        );
+    }
     drop(offline);
     fs::remove_dir_all(&kit).unwrap();
     drop(instance);

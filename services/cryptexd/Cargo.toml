@@ -4,8 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
+default-run = "cryptexd"
 
 [features]
+m11-offline-verifier = []
 m11-installed-search-check = []
 m8-start-inspection = []
 # Isolated, headless real-binary startup experiment. Never enables owner routes.
@@ -16,6 +18,11 @@ m8-development-product = ["m8-local-startup-check"]
 [[bin]]
 name = "cryptexd"
 path = "src/main.rs"
+
+[[bin]]
+name = "cryptex-kit-check"
+path = "src/bin/kit_check.rs"
+required-features = ["m11-offline-verifier"]
 
 [build-dependencies]
 cc = "=1.5.1"

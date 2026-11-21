@@ -51,6 +51,7 @@ pub(crate) fn reconstruct_files(
     scratch: &Path,
 ) -> Result<Vec<tempfile::TempDir>, Error> {
     reconstruct_selected(codec, backup, checkpoint, kit, unlock, scratch, None)
+        .map(|(profiles, _)| profiles)
 }
 
 /// The scheduled verifier uses a private frozen copy of the numbered file.
@@ -64,19 +65,41 @@ pub(crate) fn reconstruct_selected(
     unlock: &Path,
     scratch: &Path,
     scheduled: Option<(&Path, Option<[u8; 32]>)>,
-) -> Result<Vec<tempfile::TempDir>, Error> {
+) -> Result<(Vec<tempfile::TempDir>, Option<u64>), Error> {
     independent_folders(
         backup.parent().ok_or(Error::Checkpoint)?,
         checkpoint.parent().ok_or(Error::Checkpoint)?,
     )?;
     let bytes = read_selected(checkpoint, 32768)?;
     let keys = KitFiles::load(codec, kit, unlock)?;
+    let protected = |selected: &RecoverySelection| -> Result<Option<u64>, Error> {
+        if scheduled.is_none() {
+            return Ok(None);
+        }
+        let writer = selected.writer()?;
+        let expected = selected.checkpoint(&writer)?;
+        let header = keys.header(&expected.brain_identity_sha256, 1, 3, None);
+        let Some(pin) = codec::selected_checkpoint(codec, &header)? else {
+            return Ok(None);
+        };
+        let pinned = pin.writer()?;
+        let checkpoint = pin.checkpoint(&pinned)?;
+        if expected.brain_identity_sha256 != checkpoint.brain_identity_sha256
+            || expected.brain_id != checkpoint.brain_id
+        {
+            return Err(Error::Checkpoint);
+        }
+        Ok((pinned == writer).then_some(checkpoint.generation))
+    };
     if let Ok(selected) = serde_json::from_slice::<RecoverySelection>(&bytes) {
         if scheduled.is_some_and(|(_, digest)| digest.is_some()) {
             return Err(Error::RecoveryHistory);
         }
         let (file, _) = open_recovery_source(backup).map_err(|_| Error::Archive)?;
-        return Ok(vec![open_file(&keys, file, &selected, None, scratch)?]);
+        return Ok((
+            vec![open_file(&keys, file, &selected, None, scratch)?],
+            protected(&selected)?,
+        ));
     }
     let pair: super::paired::Pair =
         serde_json::from_slice(&bytes).map_err(|_| Error::Checkpoint)?;
@@ -121,7 +144,7 @@ pub(crate) fn reconstruct_selected(
     if !super::recovered_search::disjoint_histories(&a, &b, new_key.device_id()) {
         return Err(Error::RecoveryHistory);
     }
-    Ok(vec![old, new])
+    Ok((vec![old, new], protected(&pair.replacement)?))
 }
 
 struct KitFiles<'a> {

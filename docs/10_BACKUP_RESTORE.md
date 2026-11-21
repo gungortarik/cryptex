@@ -1,4 +1,4 @@
-# 10 — Cryptex Backup and Restore
+# 10 â€” Cryptex Backup and Restore
 
 **Status:** ACCEPTED  
 **Baseline:** 2026-09-28
@@ -112,7 +112,7 @@ durably gives up its authority to publish and prune on that target. The recipien
 verifies the target, the current writer's signature and its own pending request.
 Restarting the former writer cannot reactivate its previous jobs.
 
-Under **Scheduled backup writer → Transfer the writer role**, the current
+Under **Scheduled backup writer â†’ Transfer the writer role**, the current
 device saves its public assignment in the target folder. The incoming device
 selects that assignment and signs its request with its enrolled device key.
 The current device verifies that signature against its trusted peer, then
@@ -160,6 +160,23 @@ Restore testing must avoid overwriting a live personal Brain merely to verify re
 The exact sandbox layout and automation mechanism are implementation details for M11.
 
 The result must provide real reconstruction evidence rather than configuration-only proof.
+
+### Keeping the first-device recovery backup
+
+The standalone Recovery Kit tool can keep the selected encrypted backup outside
+the daily target. On a trusted, disconnected computer, **Keep or advance recovery
+backup** reconstructs the selected archive before asking the owner to confirm its
+generation. Keep the unlock file on separate media.
+
+To advance, select the later ciphertext and the checkpoint from its independent
+folder. The tool verifies both archives, the writer, the Brain, the continuity
+of signed history and any purge bridges. It displays both generations and
+ciphertext hashes. Only explicit approval publishes the new Kit edition. Fresh
+output folders hold the two backup copies and their separate Kit editions.
+Either edition can be used with its matching archive and the existing unlock
+file. Cancellation preserves the previous selection. Routine retention excludes
+the generation pinned by the Kit used for verification when it matches the
+scheduled writer and Brain.
 
 ## 10. Retention
 
@@ -258,7 +275,7 @@ Adding a required cloud service, OAuth dependency or server-side canonical compo
 
 The backup encryption/container P1 spike must select an audited high-level format/library and verify the required failure/recovery scenarios.
 
-### M11 — Backup + Disaster Restore
+### M11 â€” Backup + Disaster Restore
 
 M11 includes:
 
@@ -271,11 +288,11 @@ M11 includes:
 - Recovery Kit first-device bootstrap
 - manual export bundle
 
-### M16 — Hardening
+### M16 â€” Hardening
 
 M16 includes broader backup/restore drills as part of product hardening.
 
-### M17 — Private Beta / Release Candidate
+### M17 â€” Private Beta / Release Candidate
 
 Real personal Brain onboarding occurs only after backup/recovery confidence.
 

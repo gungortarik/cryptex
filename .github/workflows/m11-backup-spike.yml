@@ -3,6 +3,7 @@ on:
   workflow_dispatch:
   push:
     paths:
+      - 'services/cryptexd/src/bin/kit_check.rs'
       - 'services/cryptexd/src/knowledge_materialization/backup.rs'
       - 'services/cryptexd/src/knowledge_materialization/backup/**'
       - 'services/cryptexd/backup-codec/**'
@@ -38,6 +39,7 @@ on:
       - '.node-version'
   pull_request:
     paths:
+      - 'services/cryptexd/src/bin/kit_check.rs'
       - 'services/cryptexd/src/knowledge_materialization/backup.rs'
       - 'services/cryptexd/src/knowledge_materialization/backup/**'
       - 'services/cryptexd/backup-codec/**'
@@ -130,7 +132,7 @@ jobs:
         run: python -B tools/m11-backup-spike/test_restore_publication.py
       - name: Package the owner-invoked offline approval utility
         run: python -B tools/m11-backup-spike/offline_kit.py "${{ runner.temp }}/Cryptex-Offline-Kit.zip"
-      - name: Check both offline owner launchers from the extracted package
+      - name: Check offline owner launchers from the extracted package
         run: python -B tools/m11-backup-spike/test_offline_launchers.py "${{ runner.temp }}/Cryptex-Offline-Kit.zip"
       - uses: actions/upload-artifact@v4
         with:
@@ -181,10 +183,11 @@ jobs:
           grep -Fx 'm11_scheduled_reconnect=passed designated=published peer=skipped offline_capture=restored' "$RUNNER_TEMP/m11-next-backup.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_backup_job_restart=passed offline_exit=recovered published_replay=idempotent' "$RUNNER_TEMP/m11-next-backup.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_retention=passed default=keep_all retained=1 manual=restored unverified=preserved damaged=blocked' "$RUNNER_TEMP/m11-next-backup.txt" >> "$GITHUB_STEP_SUMMARY"
-          cargo test --locked -p cryptexd --lib "${features[@]}" \
+          CRYPTEX_M11_OFFLINE_KIT_PACKAGE="$RUNNER_TEMP/Cryptex-Offline-Kit.zip" cargo test --locked -p cryptexd --lib "${features[@]}" \
             knowledge_materialization::pairing_recovery_tests::m11_backup_read::restored_note_and_attachment_pass_guarded_reads \
             -- --exact --ignored --nocapture | tee "$RUNNER_TEMP/m11-daemon-read.txt"
           grep '^m11_guarded_restore=passed ' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"
+          grep -Fx 'm11_offline_kit_advance=passed cancelled=kept older=restorable newer=restorable substituted=held' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"
           grep '^m11_first_device=passed ' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_portable_kit=passed source=lost wrong_unlock=denied decrypt=restored bootstrap=authorized' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_backup_inventory=passed daemon_signed=true public_only_encryption=true legacy=restored replay=matched' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"

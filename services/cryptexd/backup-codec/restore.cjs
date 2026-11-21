@@ -58,11 +58,19 @@ async function restore() {
   if (!Number.isSafeInteger(limit) || limit <= 0) throw new Error("Invalid backup length");
   const paired = header[104] === 1;
   const inspect = header[104] === 2;
-  if (!paired && !inspect && header[104] !== 0) throw new Error("Unknown recovery scope");
+  const retention = header[104] === 3;
+  if (!paired && !inspect && !retention && header[104] !== 0) throw new Error("Unknown recovery scope");
   const kit = await pgp.decrypt({message: await authenticatedMessage(header.subarray(paired || inspect ? 137 : 105)),
     passwords: [password], format: "binary", config: {maxDecompressedMessageSize: kitLimit}});
   const members = unpackKit(kit.data);
   if (!header.subarray(0, 32).equals(members["brain-identity.sha256"])) throw new Error("Wrong Brain");
+  if (retention) {
+    if (limit !== 1 || rest.length || !(await input.next()).done) throw new Error("Unexpected retention payload");
+    const bytes = members["selected-backup.json"];
+    if (bytes && bytes.length > 32768) throw new Error("Invalid checkpoint");
+    process.stdout.end(bytes ? Buffer.from(bytes) : "null");
+    return;
+  }
   if (paired || inspect) {
     const bootstrap = createPrivateKey({key: Buffer.from(members["bootstrap.pk8"]),format:"der",type:"pkcs8"});
     const pub = createPublicKey(bootstrap).export({format:"jwk"});

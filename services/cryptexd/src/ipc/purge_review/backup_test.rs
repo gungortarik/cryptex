@@ -211,14 +211,14 @@ fn verified_backup_preserves_purge_and_unaffected_notes() {
             .verify(&writer, publication, |file| {
                 let copy = restore(number, file)?;
                 let at = copy.path().to_owned();
-                Ok((copy, at))
+                Ok((copy, at, None))
             })
             .unwrap();
     }
     catalog
         .set_retention(&writer, std::num::NonZeroUsize::new(1))
         .unwrap();
-    assert_eq!(catalog.prune(&writer).unwrap(), 0);
+    assert_eq!(catalog.prune(&writer, None).unwrap(), 0);
     let review = || catalog.review_removal(&writer, 1, 2, restore);
     fs::rename(&kit, work.path().join("offline-kit")).unwrap();
     assert!(review().is_err());

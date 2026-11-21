@@ -78,7 +78,10 @@ def install_and_run():
                     raise RuntimeError(f"Installed backup {role} differs from the build input")
         env = dict(os.environ, CRYPTEX_M11_INSTALLED_DESKTOP=str(desktop),
                    CRYPTEX_M11_TEST_INSTALLED_CODEC=str(codec))
-        run(str(binary), "--exact", TEST, "--ignored", "--nocapture", env=env, timeout=420)
+        # This suite opens fresh native WebViews for two days of scheduled backups as
+        # well as the independent restore and first-device trials. Each WebView launch
+        # retains its own deadline; this is the aggregate timeout for the whole suite.
+        run(str(binary), "--exact", TEST, "--ignored", "--nocapture", env=env, timeout=720)
         run(str(binary), "--exact", "knowledge_materialization::pairing_recovery_tests::m11_backup_read::installed_writer_handoff",
             "--ignored", "--nocapture", env=env, timeout=180)
         run(str(binary), "--exact", "ipc::purge_review::backup_test::verified_backup_preserves_purge_and_unaffected_notes",

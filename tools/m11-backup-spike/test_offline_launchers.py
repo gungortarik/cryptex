@@ -7,22 +7,26 @@ import tempfile
 import zipfile
 
 
+def extract(archive, root):
+    if sys.platform == "darwin":
+        # Exercise the executable permissions preserved in the distributed archive.
+        subprocess.run(["ditto", "-x", "-k", archive, root], check=True)
+    elif sys.platform == "win32":
+        with zipfile.ZipFile(archive) as package:
+            package.extractall(root)
+    else:
+        raise RuntimeError("Run on the OS for which the Kit was built")
+    return root / "Cryptex-Offline-Kit"
+
+
 def check(archive):
     with tempfile.TemporaryDirectory(prefix="cryptex offline kit ") as directory:
-        root = Path(directory)
-        if sys.platform == "darwin":
-            # Exercise the executable permissions preserved in the distributed archive.
-            subprocess.run(["ditto", "-x", "-k", archive, root], check=True)
-        elif sys.platform == "win32":
-            with zipfile.ZipFile(archive) as package:
-                package.extractall(root)
-        else:
-            raise RuntimeError("Run on the OS for which the Kit was built")
-        kit = root / "Cryptex-Offline-Kit"
+        kit = extract(archive, Path(directory))
         environment = dict(os.environ, NODE_OPTIONS="--cryptex-unknown-option")
         for title, expected in (
             ("Authorize", "Use an interactive terminal:"),
             ("Export public recipient", "Could not verify the Kit or export to a new folder."),
+            ("Keep or advance recovery backup", "Could not verify or save the selected recovery backup."),
         ):
             if sys.platform == "win32":
                 command = f'"{os.environ["ComSpec"]}" /d /c call "{title}.cmd"'

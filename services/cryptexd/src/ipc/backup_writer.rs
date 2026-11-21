@@ -248,22 +248,23 @@ fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
                 .map_err(|_| Error::Unavailable)?;
             catalog
                 .verify(&anchor, &published, |cipher| {
-                    let profiles = crate::knowledge_materialization::backup::reconstruct_selected(
-                        &config.codec,
-                        cipher,
-                        &files.checkpoint,
-                        &files.kit,
-                        &files.unlock,
-                        scratch.path(),
-                        Some((target, published.archived_digest)),
-                    )
-                    .map_err(|_| io::Error::other("scheduled restore held"))?;
+                    let (profiles, protected) =
+                        crate::knowledge_materialization::backup::reconstruct_selected(
+                            &config.codec,
+                            cipher,
+                            &files.checkpoint,
+                            &files.kit,
+                            &files.unlock,
+                            scratch.path(),
+                            Some((target, published.archived_digest)),
+                        )
+                        .map_err(|_| io::Error::other("scheduled restore held"))?;
                     let path = profiles
                         .last()
                         .ok_or_else(|| io::Error::other("missing scheduled history"))?
                         .path()
                         .to_owned();
-                    Ok((profiles, path))
+                    Ok((profiles, path, protected))
                 })
                 .map_err(|_| Error::Verification)?
                 .into_iter()

@@ -103,6 +103,18 @@ pub(super) fn kit_public_pin(directory: &Path, header: &[u8]) -> Result<[u8; 32]
     Ok(pin)
 }
 
+pub(super) fn selected_checkpoint(
+    directory: &Path,
+    header: &[u8],
+) -> Result<Option<super::RecoverySelection>, Error> {
+    let output = run_codec(directory, header, None, Operation::Restore)?;
+    if output.as_file().metadata().map_err(|_| Error::Codec)?.len() > 32768 {
+        return Err(Error::Checkpoint);
+    }
+    serde_json::from_reader(output.reopen().map_err(|_| Error::Codec)?)
+        .map_err(|_| Error::Checkpoint)
+}
+
 #[derive(Clone, Copy)]
 enum Operation {
     Encrypt,

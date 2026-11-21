@@ -59,7 +59,7 @@ impl VerifiedBackups<'_> {
         &self,
         enrolled: &LocalTrustAnchor,
         publication: &super::journal::PublishedGeneration,
-        reconstruct: impl FnOnce(&Path) -> io::Result<(T, std::path::PathBuf)>,
+        reconstruct: impl FnOnce(&Path) -> io::Result<(T, std::path::PathBuf, Option<u64>)>,
     ) -> io::Result<T> {
         self.require_writer(enrolled)?;
         let number = publication.number;
@@ -88,7 +88,7 @@ impl VerifiedBackups<'_> {
                 "backup differs from publication",
             ));
         }
-        let (verified, restored) = reconstruct(&path)?;
+        let (verified, restored, protected) = reconstruct(&path)?;
         let (_, purges) =
             crate::knowledge_materialization::backup::retention_state(&restored, enrolled)
                 .map_err(|_| {
@@ -121,7 +121,7 @@ impl VerifiedBackups<'_> {
                 .map_err(io::Error::other)?,
             Err(error) => return Err(io::Error::other(error)),
         }
-        self.prune(enrolled)?;
+        self.prune(enrolled, protected)?;
         Ok(verified)
     }
 
@@ -151,7 +151,7 @@ impl VerifiedBackups<'_> {
             .map_err(io::Error::other)
     }
 
-    pub fn prune(&self, enrolled: &LocalTrustAnchor) -> io::Result<usize> {
+    pub fn prune(&self, enrolled: &LocalTrustAnchor, protected: Option<u64>) -> io::Result<usize> {
         self.require_writer(enrolled)?;
         let service = ServiceLabel::device_credentials(self.environment);
         let keep: Option<NonZeroUsize> = match self
@@ -222,7 +222,10 @@ impl VerifiedBackups<'_> {
             // Validate every survivor before removing a candidate.
             let file = checked_generation(&dir, number, digest)?;
             drop(file);
-            verified.push((number, digest));
+            // Keep the current Kit's first-device generation in addition to the configured count.
+            if Some(number) != protected {
+                verified.push((number, digest));
+            }
         }
         verified.sort_unstable_by_key(|(number, _)| *number);
         let count = verified.len().saturating_sub(keep.get());

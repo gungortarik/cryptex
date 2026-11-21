@@ -30,7 +30,7 @@ async function withKit(kit, unlock, use) {
     decrypted = (await pgp.decrypt({message, passwords: [credential.toString("latin1")], format: "binary",
       config: {maxDecompressedMessageSize: 128 * 1024}})).data;
     members = unpackKit(decrypted);
-    return await use(members);
+    return await use(members, credential);
   } finally {
     credential.fill(0);
     decrypted?.fill(0);

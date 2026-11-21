@@ -14,8 +14,12 @@ pub(crate) mod first_device;
 pub(crate) use codec::public_recipient;
 mod manual;
 pub(crate) use manual::independent_folders;
+#[cfg(feature = "m11-offline-verifier")]
+mod kit_review;
 mod paired;
 mod restore;
+#[cfg(feature = "m11-offline-verifier")]
+pub use kit_review::review_kit_backups;
 pub mod role;
 pub(crate) use paired::{
     ArchivedSource, Destination, PriorFiles, bind_original, export_recovered, scheduled_pair,
