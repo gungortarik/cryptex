@@ -2,6 +2,8 @@
 
 The owner reviewed candidate `f5a0bc6` and approved M12 closure conditional on the remaining checks. Its two native M12 jobs passed using disposable profiles. The Mac job also built, extracted and ran the owner handoff in a signed-out account. Authenticated Antigravity discovery on macOS remains open. Personal profiles receive no new write capability. [Candidate diff](https://github.com/gungortarik/cryptex/compare/22c5026...f5a0bc6), [candidate native jobs](https://github.com/gungortarik/cryptex/actions/runs/44922498629) and [general CI](https://github.com/gungortarik/cryptex/actions/runs/44922498223).
 
+Eleven jobs passed on this candidate. Two covered the native MCP flow, two the desktop attachment flow, four the backup and recovery regressions, and three general readiness and Windows cross-account IPC. [Attachment regression](https://github.com/gungortarik/cryptex/actions/runs/44922498771) and [backup and recovery regression](https://github.com/gungortarik/cryptex/actions/runs/44922498670).
+
 ## What the client tests exercise
 
 | Installed client | Evidence |
