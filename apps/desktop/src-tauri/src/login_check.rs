@@ -90,12 +90,12 @@ pub(super) fn observe(app: &AppHandle) -> Result<()> {
     let arm = std::env::args().nth(1).as_deref() == Some("--m14-arm");
     let disarm = std::env::args().nth(1).as_deref() == Some("--m14-disarm");
     if arm {
-        if p0_2_autostart_status(handle.clone())? {
+        if p0_2_autostart_status(handle.clone()).map_err(|e| format!("read startup status: {e}"))? {
             return Err("existing registration".into());
         }
         fs::write(root.join("armed-session"), session()?)?;
-        p0_2_autostart_enable(handle.clone())?;
-        p0_2_autostart_enable(handle.clone())?;
+        p0_2_autostart_enable(handle.clone()).map_err(|e| format!("enable startup: {e}"))?;
+        p0_2_autostart_enable(handle.clone()).map_err(|e| format!("enable startup: {e}"))?;
         if !p0_2_autostart_status(handle.clone())? {
             return Err("registration was not enabled".into());
         }

@@ -30,6 +30,7 @@ cryptexd = { path = "../../../services/cryptexd" }
 tauri-plugin-autostart = "=2.6.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
+winreg = "0.55"
 windows-sys = { version = "=0.61.2", features = ["Win32_Storage_FileSystem"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]

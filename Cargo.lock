@@ -852,6 +852,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tempfile",
  "windows-sys 0.61.2",
+ "winreg 0.55.0",
 ]
 
 [[package]]

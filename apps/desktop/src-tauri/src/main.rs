@@ -155,10 +155,21 @@ fn p0_2_default_cryptexd() -> Result<String, String> {
     .map(|path| path.display().to_string())
 }
 
+#[cfg(windows)]
+const WINDOWS_LOGIN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
+
 #[tauri::command]
 fn p0_2_autostart_status(app: AppHandle) -> Result<bool, String> {
     if pilot_runtime::root().is_some() {
         return Ok(false);
+    }
+    #[cfg(windows)]
+    match winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
+        .open_subkey_with_flags(WINDOWS_LOGIN_KEY, winreg::enums::KEY_QUERY_VALUE)
+    {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error.to_string()),
+        Ok(_) => {}
     }
     app.autolaunch()
         .is_enabled()
@@ -170,6 +181,12 @@ fn p0_2_autostart_enable(app: AppHandle) -> Result<(), String> {
     if pilot_runtime::root().is_some() {
         return Err("PILOT_AUTOSTART_FORBIDDEN".into());
     }
+    // A fresh Windows account can lack the per-user startup key. The
+    // autostart plugin opens the existing key when writing its named value.
+    #[cfg(windows)]
+    winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
+        .create_subkey_with_flags(WINDOWS_LOGIN_KEY, winreg::enums::KEY_SET_VALUE)
+        .map_err(|error| error.to_string())?;
     app.autolaunch().enable().map_err(|error| error.to_string())
 }
 
