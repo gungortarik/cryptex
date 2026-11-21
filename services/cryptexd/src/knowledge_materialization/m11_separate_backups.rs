@@ -156,6 +156,48 @@ pub(super) fn export(
     scheduled_action("writer-verify-wrong");
     fs::rename(&detached, &archive).unwrap();
     scheduled_action("writer-verify");
+    let replacement: crate::backup_inventory::RecoverySelection =
+        serde_json::from_value(selection["replacement"].clone()).unwrap();
+    let anchor = replacement.writer().unwrap();
+    let profile = work.join("replacement");
+    let env = SecureStoreEnvironment::Dev;
+    let jobs = crate::backup_scheduler::journal::DeviceJobs::new(&store, env, &anchor);
+    // Advance only the disposable job's clock to its next daily occurrence.
+    assert_eq!(jobs.due(u64::MAX).unwrap().unwrap().generation, 2);
+    let original_bytes = fs::read(&archive).unwrap();
+    fs::write(&archive, b"damaged original").unwrap();
+    let (_stop, receive) = std::sync::mpsc::channel();
+    assert!(
+        jobs.resume(
+            &anchor,
+            &receive,
+            || {},
+            |_| panic!("damaged original must stop staging")
+        )
+        .is_err()
+    );
+    assert!(!target.join("backup-00000000000000000002.pgp").exists());
+    fs::write(&archive, &original_bytes).unwrap();
+    let retention = crate::backup_scheduler::retention::VerifiedBackups {
+        target: &target,
+        store: &store,
+        environment: env,
+        designated: &anchor,
+        writer_profile: &profile,
+    };
+    retention
+        .set_retention(&anchor, std::num::NonZeroUsize::new(1))
+        .unwrap();
+    scheduled_action("writer-next");
+    assert!(scheduled.is_file());
+    scheduled_action("writer-verify-next");
+    assert!(!scheduled.exists());
+    assert_eq!(fs::read(&archive).unwrap(), original_bytes);
+    let scheduled = target.join("backup-00000000000000000002.pgp");
+    let scheduled_checkpoint = scheduled_checkpoints.join(format!(
+        "backup-00000000000000000002-{:x}.json",
+        Sha256::digest(fs::read(&scheduled).unwrap())
+    ));
     Trial {
         desktop: desktop.to_owned(),
         new,
@@ -269,7 +311,7 @@ impl Trial {
         }
         drop(restored);
         println!(
-            "m11_recovered_schedule=passed original=byte_identical missing=held replacement_alone=held both_histories=restored source=lost"
+            "m11_recovered_schedule=passed original=byte_identical missing=held damaged=held replacement_alone=held daily=2 retained=1 both_histories=restored source=lost"
         );
         // A sound newer file cannot make a mixed or incomplete pair verify.
         fs::copy(&new, &old).unwrap();

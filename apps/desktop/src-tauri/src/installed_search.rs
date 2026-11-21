@@ -90,14 +90,21 @@ pub(super) fn verification_file(title: &str) -> Option<PathBuf> {
             },
         )),
         "Select the scheduled generation to verify" => {
-            Some(writer_folder(false)?.join("backup-00000000000000000001.pgp"))
+            Some(writer_folder(false)?.join(format!("{}.pgp", rehearsal_generation())))
         }
         "Select its checkpoint from your separate trusted folder"
             if std::env::var("CRYPTEX_M11_INSTALLED_EXPORT")
                 .is_ok_and(|m| m.starts_with("writer-verify")) =>
         {
+            let prefix = format!("{}-", rehearsal_generation());
             let mut entries =
-                std::fs::read_dir(work.join(writer_fixture_folder("schedule-checkpoints"))).ok()?;
+                std::fs::read_dir(work.join(writer_fixture_folder("schedule-checkpoints")))
+                    .ok()?
+                    .filter(|e| {
+                        e.as_ref().is_ok_and(|file| {
+                            file.file_name().to_string_lossy().starts_with(&prefix)
+                        })
+                    });
             let selected = entries.next()?.ok()?.path();
             if entries.next().is_some() {
                 return None;
@@ -148,6 +155,13 @@ pub(super) fn challenge_folder() -> Option<PathBuf> {
 pub(super) fn confirm_recipient(digest: &str) -> bool {
     std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").as_deref() != Ok("decline")
         && std::env::var("CRYPTEX_M11_EXPECT_PUBLIC_DIGEST").as_deref() == Ok(digest)
+}
+
+fn rehearsal_generation() -> &'static str {
+    match std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").as_deref() {
+        Ok("writer-next" | "writer-verify-next") => "backup-00000000000000000002",
+        _ => "backup-00000000000000000001",
+    }
 }
 
 pub(super) fn selected_folder(checkpoint: bool) -> Option<PathBuf> {
@@ -287,7 +301,7 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
         )?;
     }
     let observed = Arc::new(AtomicBool::new(false));
-    let wait_for_schedule = mode.as_deref() == Some("writer-resume");
+    let wait_for_schedule = matches!(mode.as_deref(), Some("writer-resume" | "writer-next"));
     let app = tauri::Builder::default()
         .manage(observed.clone())
         .invoke_handler(tauri::generate_handler![
@@ -319,7 +333,10 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
     if wait_for_schedule {
         let target = writer_folder(false).ok_or("missing scheduled target")?;
         let end = std::time::Instant::now() + std::time::Duration::from_secs(45);
-        while !target.join("backup-00000000000000000001.pgp").is_file() {
+        while !target
+            .join(format!("{}.pgp", rehearsal_generation()))
+            .is_file()
+        {
             if std::time::Instant::now() >= end {
                 return Err("scheduled generation timed out".into());
             }

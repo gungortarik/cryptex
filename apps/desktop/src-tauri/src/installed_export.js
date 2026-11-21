@@ -1,6 +1,7 @@
 (async () => {
   const requestedMode = "EXPECTED_MODE";
-  const mode = requestedMode === "writer-reenable" ? "writer-enable" : requestedMode;
+  const mode = ({ "writer-reenable": "writer-enable", "writer-next": "writer-resume",
+    "writer-verify-next": "writer-verify" })[requestedMode] ?? requestedMode;
   const writer = mode.startsWith("writer-");
   if (mode.startsWith("first-device-")) {
     const deadline = Date.now() + 60000;
