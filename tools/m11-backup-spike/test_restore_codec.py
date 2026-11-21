@@ -14,7 +14,8 @@ from rehearse import HERE, NODE
 class RestoreCodec(unittest.TestCase):
     def test_only_authenticated_bounded_manual_payload_is_accepted(self):
         with tempfile.TemporaryDirectory() as temporary:
-            work = Path(temporary)
+            # Node checks the resolved module filename against its permission list.
+            work = Path(temporary).resolve()
             entry = work / "restore.cjs"
             shutil.copyfile(HERE.parents[1] / "services/cryptexd/backup-codec/restore.cjs", entry)
             library, archive = work / "openpgp.min.cjs", work / "fflate.cjs"
@@ -44,7 +45,7 @@ class RestoreCodec(unittest.TestCase):
                 return subprocess.run(command, input=framed, capture_output=True, timeout=30)
 
             result = verify(brain, len(cipher), cipher)
-            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
             self.assertEqual(result.stdout, payload)
             for expected_brain, size, content in [(brain, len(payload) - 1, cipher),
                                                   (brain, len(cipher), cipher[:-1]),
