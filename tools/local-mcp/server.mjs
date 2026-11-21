@@ -29,7 +29,7 @@ const requestRead = {
   annotations: { readOnlyHint: true, openWorldHint: false },
 };
 
-async function searchPublicNotes(takeReview, args) {
+async function searchPublicNotes(takeReview, args, signal) {
   if (Object.keys(args).length !== 1 || typeof args.phrase !== "string" ||
       !args.phrase.trim() || Buffer.byteLength(args.phrase) > 1024) {
     throw new McpError(ErrorCode.InvalidParams, "Provide only a nonempty phrase of up to 1024 UTF-8 bytes");
@@ -37,7 +37,14 @@ async function searchPublicNotes(takeReview, args) {
   const operation = "context.public.search";
   const review = takeReview();
   if (!review) return { isError: true, content: [{ type: "text", text: "public_read_denied" }] };
-  const reply = await review.search(args.phrase).catch(() => null);
+  if (signal.aborted) review.close();
+  signal.addEventListener("abort", review.close, { once: true });
+  let reply;
+  try {
+    reply = await review.search(args.phrase).catch(() => null);
+  } finally {
+    signal.removeEventListener("abort", review.close);
+  }
   const notes = reply?.result?.Ok;
   if (reply?.operation !== operation || !Array.isArray(notes) || Object.keys(reply.result).length !== 1 || notes.length > 10 ||
       !notes.every((n) => n && typeof n.event_id === "string" &&
@@ -56,14 +63,19 @@ export async function serve(endpoint, { publicNotes = false } = {}) {
   let review;
   let requesting = false;
   let active;
-  process.stdin.once("end", () => { review?.close(); active?.close(); });
+  let ended = false;
+  process.stdin.once("end", () => { ended = true; review?.close(); active?.close(); });
   let pending;
-  server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
+  server.setRequestHandler(CallToolRequestSchema, async ({ params }, { signal }) => {
     if (publicNotes && params.name === requestRead.name && Object.keys(params.arguments ?? {}).length === 0) {
       if (requesting || active) return { isError: true, content: [{ type: "text", text: "public_review_busy" }] };
       requesting = true;
       try {
         if (!review || review.closed) review = await beginReview(endpoint);
+        if (ended || signal.aborted) {
+          review.close();
+          throw new Error("Request ended");
+        }
         return { content: [{ type: "text", text: "In Cryptex, open Connection settings and select Review AI access. Compare this code before allowing one search: " + review.ticket }] };
       } catch {
         review = undefined;
@@ -78,7 +90,7 @@ export async function serve(endpoint, { publicNotes = false } = {}) {
           review = undefined;
           if (consumed) active = consumed;
           return consumed;
-        }, params.arguments ?? {});
+        }, params.arguments ?? {}, signal);
       } finally { if (consumed === active) active = undefined; }
     }
     if (params.name !== health.name || Object.keys(params.arguments ?? {}).length !== 0) {

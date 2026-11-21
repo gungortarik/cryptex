@@ -219,6 +219,16 @@ fn approved_bridge_reads_only_visible_public_notes() {
     };
     assert_eq!(bridge.search(), denied);
     let ticket = bridge.request(&listener, &fixture.context);
+    let claimed_owner = serde_json::to_vec(&json!({
+        "protocol_version": 1, "request_id": new_bootstrap_event_id().unwrap(),
+        "operation": "context.public.review", "client_role": "desktop",
+        "capabilities": ["context.public.owner"], "action": {"kind": "allow", "ticket": ticket}
+    }))
+    .unwrap();
+    assert!(matches!(
+        public_consent::review_frame(&claimed_owner, Some(&fixture.context), false).result,
+        Err(public_consent::Error::Unauthorized)
+    ));
     decide(ticket, false);
     assert_eq!(bridge.search(), denied);
     let ticket = bridge.request(&listener, &fixture.context);

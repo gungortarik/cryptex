@@ -25,7 +25,7 @@ async function* frames(socket) {
 
 export async function beginReview(endpoint) {
   const socket = await connectLocal(endpoint);
-  const timer = setTimeout(() => socket.destroy(), 125_000);
+  let timer = setTimeout(() => socket.destroy(), 3_000);
   const close = () => socket.destroy();
   socket.once("close", () => clearTimeout(timer));
   const replies = frames(socket);
@@ -42,12 +42,16 @@ export async function beginReview(endpoint) {
     return value;
   };
   try {
-    const pending = next(operation, id);
     send(operation, id);
-    const review = await pending;
+    const review = await next(operation, id);
     if (review.status !== "pending" || !uuid.test(review.ticket)) throw new Error("Review unavailable");
+    clearTimeout(timer);
+    timer = setTimeout(close, 125_000);
     const decision = next(operation, id).then(reply => reply.status === "allowed" && reply.ticket === review.ticket)
-      .catch(() => false);
+      .catch(() => false).then(allowed => {
+        if (!allowed) close();
+        return allowed;
+      });
     return {
       ticket: review.ticket, close, get closed() { return socket.destroyed; },
       async search(phrase) {
