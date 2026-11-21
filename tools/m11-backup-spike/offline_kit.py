@@ -36,10 +36,12 @@ if __name__ == "__main__":
         for title, entry in (("Authorize", "authorize.cjs"), ("Export public recipient", "export-recipient.cjs")):
             if sys.platform == "win32":
                 (owner / f"{title}.cmd").write_bytes(
-                    f'@echo off\r\n"%~dp0node.exe" "%~dp0{entry}"\r\npause\r\n'.encode("ascii"))
+                    ('@echo off\r\nsetlocal\r\nset "NODE_OPTIONS="\r\nset "NODE_PATH="\r\n'
+                     f'"%~dp0node.exe" --no-addons "%~dp0{entry}"\r\n'
+                     'set "kit_result=%errorlevel%"\r\npause\r\nexit /b %kit_result%\r\n').encode("ascii"))
             else:
                 launcher = owner / f"{title}.command"
-                launcher.write_text(f'#!/bin/sh\ncd "$(dirname "$0")" || exit 1\nexec ./node ./{entry}\n',
+                launcher.write_text(f'#!/bin/sh\nunset NODE_OPTIONS NODE_PATH\ncd "$(dirname "$0")" || exit 1\nexec ./node --no-addons ./{entry}\n',
                                     encoding="ascii", newline="\n")
                 launcher.chmod(0o755)
         with zipfile.ZipFile(archive, "x", compression=zipfile.ZIP_DEFLATED) as output:

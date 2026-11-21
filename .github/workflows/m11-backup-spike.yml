@@ -130,6 +130,8 @@ jobs:
         run: python -B tools/m11-backup-spike/test_restore_publication.py
       - name: Package the owner-invoked offline approval utility
         run: python -B tools/m11-backup-spike/offline_kit.py "${{ runner.temp }}/Cryptex-Offline-Kit.zip"
+      - name: Check both offline owner launchers from the extracted package
+        run: python -B tools/m11-backup-spike/test_offline_launchers.py "${{ runner.temp }}/Cryptex-Offline-Kit.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: cryptex-offline-kit-${{ runner.os }}-${{ runner.arch }}
