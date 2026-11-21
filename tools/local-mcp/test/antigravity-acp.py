@@ -1,4 +1,5 @@
 """Use Antigravity ACP for discovery only, with a fresh project and no model prompt."""
+from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
@@ -15,8 +16,26 @@ import uuid
 TOOLS = ["cryptex_health", "cryptex_request_public_read", "cryptex_search_public_notes"]
 
 
+@contextmanager
+def probe_directory():
+    directory = tempfile.TemporaryDirectory(prefix="cryptex-agy-")
+    try:
+        yield directory.name
+    finally:
+        # Windows helpers can release their workspace just after ACP exits.
+        deadline = time.monotonic() + 10
+        while True:
+            try:
+                directory.cleanup()
+                break
+            except PermissionError as error:
+                if getattr(error, "winerror", None) not in (5, 32) or time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.2)
+
+
 def probe(exe, entry, *, interactive=False):
-    with tempfile.TemporaryDirectory(prefix="cryptex-agy-") as temp:
+    with probe_directory() as temp:
         root = Path(temp)
         workspace, home = root / "workspace", root / "home"
         workspace.mkdir()
