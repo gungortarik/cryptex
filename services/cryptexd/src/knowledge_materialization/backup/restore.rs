@@ -70,10 +70,23 @@ pub(crate) fn reconstruct_files(
     let pair: super::paired::Pair =
         serde_json::from_slice(&bytes).map_err(|_| Error::Checkpoint)?;
     pair.validate()?;
-    let older = backup.with_extension("prior.pgp");
+    // The native picker can return either file from the pair. The checkpoint
+    // pins each file's digest independently of the selected filename.
+    let stem = backup.with_extension("");
+    let selected_prior = backup
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("pgp"))
+        && stem
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("prior"));
+    let (older, newer) = if selected_prior {
+        (backup.to_path_buf(), stem.with_extension("pgp"))
+    } else {
+        (backup.with_extension("prior.pgp"), backup.to_path_buf())
+    };
     let old =
         super::paired::copy_verified_cipher(&older, pair.parent.approval.request.backup_sha256)?;
-    let new = super::paired::copy_verified_cipher(backup, pair.replacement_sha256)?;
+    let new = super::paired::copy_verified_cipher(&newer, pair.replacement_sha256)?;
     let pin = Some(&pair.parent.signing_key);
     let old = open_file(&keys, old, &pair.archived, pin, scratch)?;
     let new = open_file(&keys, new, &pair.replacement, pin, scratch)?;

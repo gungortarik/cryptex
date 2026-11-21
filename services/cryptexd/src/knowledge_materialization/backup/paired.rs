@@ -87,8 +87,12 @@ impl Pair {
 
 pub(super) fn copy_verified_cipher(path: &Path, expected: [u8; 32]) -> Result<fs::File, Error> {
     let (mut source, before) = open_recovery_source(path).map_err(|_| Error::RecoveryHistory)?;
+    if before.length == 0 {
+        return Err(Error::RecoveryHistory);
+    }
     let mut frozen = tempfile::tempfile().map_err(|_| Error::Archive)?;
-    if io::copy(&mut source, &mut frozen).map_err(|_| Error::Archive)? != before.length
+    let mut measured = (&mut source).take(before.length);
+    if io::copy(&mut measured, &mut frozen).map_err(|_| Error::Archive)? != before.length
         || source_snapshot(&source).map_err(|_| Error::Archive)? != before
     {
         return Err(Error::RecoveryHistory);

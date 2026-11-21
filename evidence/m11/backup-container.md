@@ -1,5 +1,9 @@
 # M11 encrypted backup container rehearsal
 
+## Verifying a manual backup in the installed application
+
+At `49a74a0`, the Windows and macOS system WebViews selected **Verify manual backup** after the disposable source profile and its device credentials had been removed. The daemon used the selected encrypted backup, independently retained checkpoint, encrypted Recovery Kit and separate unlock file to reconstruct a temporary profile. Both systems rejected a wrong unlock file, a checkpoint from another generation and a damaged backup. Cancelling the picker returned to the application without a successful verification. [Installed Windows and macOS results](https://github.com/gungortarik/cryptex/actions/runs/44852885417)
+
 ## Desktop consent for removing an entire backup
 
 In device settings, **Review backup removal** asks the daemon for the selected old file and its verified replacement. The dialog shows both full paths and ciphertext SHA-256 values. **Keep backup** has initial focus. Escape cancels review. Only **Remove this backup** sends a removal decision. The daemon accepts a one-use ticket from the authenticated Desktop, rechecks the selected files, current writer and purge history, and consumes the ticket on cancellation or confirmation.

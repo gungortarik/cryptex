@@ -123,17 +123,19 @@ impl Trial {
         launched(&self.desktop, work, "verify-pair", password, "");
         let codec = std::env::var_os("CRYPTEX_M11_TEST_INSTALLED_CODEC").unwrap();
         let scratch = tempfile::tempdir().unwrap();
-        let open = || {
+        let open = |selected: &Path| {
             backup::reconstruct_files(
                 Path::new(&codec),
-                &new,
+                selected,
                 &checkpoint,
                 kit,
                 password,
                 scratch.path(),
             )
         };
-        let profiles = open().unwrap();
+        // The installed picker check chose the newer file. Choosing the prior
+        // file with the same pair checkpoint must recover both histories too.
+        let profiles = open(&old).unwrap();
         assert_eq!(profiles.len(), 2);
         let members: serde_json::Value =
             serde_json::from_slice(&fs::read(&checkpoint).unwrap()).unwrap();
@@ -171,7 +173,7 @@ impl Trial {
         drop(profiles);
         // A sound newer file cannot make a mixed or incomplete pair verify.
         fs::copy(&new, &old).unwrap();
-        assert!(open().is_err());
+        assert!(open(&new).is_err());
         assert_eq!(fs::read_dir(scratch.path()).unwrap().count(), 0);
         println!(
             "m11_separate_files=passed archived_bytes=identical replacement=independent both_notes=restored missing=held swapped=held source=lost"
