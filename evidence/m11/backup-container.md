@@ -1,5 +1,11 @@
 # M11 encrypted backup container rehearsal
 
+## Separate files after recovering onto a replacement device
+
+The installed application exported the original device's encrypted backup byte for byte and wrote a second encrypted file for the replacement device's history. The owner keeps their public checkpoint in a separate trusted folder. At `7c15103`, both native runners removed the disposable replacement profile and its credential store, then selected the saved files and Recovery Kit in a fresh session. Selecting either file with the pair checkpoint reconstructed both histories. The test checked the original and replacement note contents. A mismatched original stopped export before either output was written. Removing the original or substituting the new ciphertext for it prevented verification of the pair. [Windows and macOS installed application results](https://github.com/gungortarik/cryptex/actions/runs/44854833344)
+
+The separate exchange workflow restored the previous and current backup formats from Windows on macOS and from macOS on Windows. It exchanges single-history ciphertexts. The two-file scenario above ran independently on each operating system. [Bidirectional restore results](https://github.com/gungortarik/cryptex/actions/runs/44855237722)
+
 ## Verifying a manual backup in the installed application
 
 At `49a74a0`, the Windows and macOS system WebViews selected **Verify manual backup** after the disposable source profile and its device credentials had been removed. The daemon used the selected encrypted backup, independently retained checkpoint, encrypted Recovery Kit and separate unlock file to reconstruct a temporary profile. Both systems rejected a wrong unlock file, a checkpoint from another generation and a damaged backup. Cancelling the picker returned to the application without a successful verification. [Installed Windows and macOS results](https://github.com/gungortarik/cryptex/actions/runs/44852885417)
