@@ -11,7 +11,9 @@ async function run() {
   const cli = spawnSync(process.execPath, [tool, request, kit, unlock, backup, output], {input: publicRequest.new_device + "\n"});
   assert.equal(cli.status, 1);
   await assert.rejects(fs.stat(output), {code: "ENOENT"});
-  await assert.rejects(authorize(args, async () => false), /cancelled/);
+  for (const answer of ["", true, publicRequest.archive_device, publicRequest.new_device + " "]) {
+    await assert.rejects(authorize(args, async () => answer), /cancelled/);
+  }
   const neverAsk = () => assert.fail("Invalid inputs reached owner consent");
   await assert.rejects(authorize({...args, backup: request}, neverAsk), /Wrong backup/);
   const wrong = output + ".wrong-request";
@@ -19,15 +21,14 @@ async function run() {
   await fs.writeFile(wrong, JSON.stringify(publicRequest), {flag: "wx"});
   await assert.rejects(authorize({...args, request: wrong}, neverAsk), /checkpoint mismatch/);
   let reviewed = false;
-  const approval = await authorize(args, async (text, device) => {
-    assert.equal(device, publicRequest.new_device);
-    assert.ok(text.includes(device) && text.includes(publicRequest.brain_id));
+  const approval = await authorize(args, async text => {
+    assert.ok(text.includes("New device " + publicRequest.new_device) && text.includes(publicRequest.brain_id));
     assert.ok(text.includes("Recovery Kit ID " + publicRequest.kit_id));
     assert.ok(text.includes("Backup SHA-256 " + Buffer.from(publicRequest.backup_sha256).toString("hex")));
     const fingerprint = require("node:crypto").createHash("sha256").update(Buffer.from(publicRequest.new_key)).digest("hex");
     assert.ok(text.includes("New key SHA-256 " + fingerprint));
     reviewed = true;
-    return true;
+    return publicRequest.new_device;
   });
   assert.ok(reviewed);
   await fs.writeFile(output, JSON.stringify(approval), {flag: "wx"});

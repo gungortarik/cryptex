@@ -57,7 +57,7 @@ function parseRequest(bytes) {
   return value;
 }
 
-async function authorize({request, kit, unlock, backup}, confirm) {
+async function authorize({request, kit, unlock, backup}, readDeviceConfirmation) {
   const bytes = await readSmall(request, 16 * 1024);
   const candidate = parseRequest(bytes);
   const credential = await readSmall(unlock, 64);
@@ -104,7 +104,7 @@ async function authorize({request, kit, unlock, backup}, confirm) {
       "Archived history SHA-256 " + hex32(candidate.archive_history_sha256),
       "New device " + candidate.new_device, "New key SHA-256 " + fingerprint,
     ].join("\n");
-    if (!(await confirm(review, candidate.new_device))) throw Error("Approval cancelled");
+    if (await readDeviceConfirmation(review) !== candidate.new_device) throw Error("Approval cancelled");
     return {request: candidate, signature: Array.from(sign(null, bytes, key))};
   } finally {
     credential.fill(0);
@@ -130,10 +130,10 @@ async function main() {
     } finally { terminal.close(); }
   }
   const [request, kit, unlock, backup, output] = paths;
-  const approval = await authorize({request, kit, unlock, backup}, async (review, device) => {
+  const approval = await authorize({request, kit, unlock, backup}, async review => {
     const terminal = createInterface({input: process.stdin, output: process.stdout});
     try {
-      return (await terminal.question(review + "\nType the full new device ID to approve, or Enter to cancel:\n")) === device;
+      return await terminal.question(review + "\nType the full new device ID to approve, or Enter to cancel:\n");
     } finally { terminal.close(); }
   });
   const temp = await fs.promises.mkdtemp(path.join(path.dirname(output), ".cryptex-approval-"));
