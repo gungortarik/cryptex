@@ -498,6 +498,39 @@ fn confirm_backup_recipient(digest: &str) -> bool {
 }
 
 #[tauri::command]
+async fn m11_verify_manual_backup() -> Result<bool, cryptexd::ipc::backup_verify::Error> {
+    use cryptexd::ipc::backup_verify::{self, Error, Selection};
+    tauri::async_runtime::spawn_blocking(|| {
+        #[cfg(feature = "m11-installed-search-check")]
+        let select = installed_search::verification_file;
+        #[cfg(not(feature = "m11-installed-search-check"))]
+        let select = |title: &str| rfd::FileDialog::new().set_title(title).pick_file();
+        let Some(backup) = select("Select the encrypted manual backup") else {
+            return Ok(false);
+        };
+        let Some(checkpoint) = select("Select its checkpoint from your separate trusted folder")
+        else {
+            return Ok(false);
+        };
+        let Some(kit) = select("Select your encrypted offline Recovery Kit") else {
+            return Ok(false);
+        };
+        let Some(unlock) = select("Select the separately held Kit unlock file") else {
+            return Ok(false);
+        };
+        backup_verify::desktop(Selection {
+            backup,
+            checkpoint,
+            kit,
+            unlock,
+        })?;
+        Ok(true)
+    })
+    .await
+    .map_err(|_| Error::Unavailable)?
+}
+
+#[tauri::command]
 async fn m11_export_backup()
 -> Result<cryptexd::ipc::backup_export::Outcome, cryptexd::ipc::backup_export::Error> {
     use cryptexd::ipc::backup_export::{Action, Error, Outcome, desktop};
@@ -2746,6 +2779,7 @@ fn main() {
             m9_attach_file,
             m11_backup_removal,
             m11_export_backup,
+            m11_verify_manual_backup,
             m10_purge_review,
             m10_note_lifecycle,
             p0_6_materialize_and_open_vault,

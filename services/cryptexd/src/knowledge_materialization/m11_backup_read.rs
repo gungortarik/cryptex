@@ -896,7 +896,7 @@ fn restored_note_and_attachment_pass_guarded_reads() {
             "kit-public-recipient",
             &[&sealed_kit, &password, &work.path().join("kit-public")],
         );
-        installed_export::check(work.path(), Path::new(&desktop), &kit);
+        installed_export::check(work.path(), Path::new(&desktop), &kit, &password);
     }
 
     let selection: crate::backup_inventory::RecoverySelection =

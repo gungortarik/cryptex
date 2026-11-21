@@ -2,7 +2,7 @@
 use super::*;
 use crate::secure_store::FileBackedSecureStore;
 
-pub(super) fn check(work: &Path, desktop: &Path, kit: &Path) {
+pub(super) fn check(work: &Path, desktop: &Path, kit: &Path, password: &Path) {
     let root = work.join("export-source");
     let volume = work.join("export-volume");
     let selections = work.join("export-checkpoints");
@@ -77,6 +77,59 @@ pub(super) fn check(work: &Path, desktop: &Path, kit: &Path) {
     assert_eq!(selection_file.extension().unwrap(), "json");
     fs::remove_dir_all(&root).unwrap();
     fs::remove_dir_all(work.join("export-credentials")).unwrap();
+    // The installed verifier opens on a new disposable session after source loss.
+    let session = work.join("verify-session");
+    fs::create_dir(&session).unwrap();
+    let selected = selections.join("restore-selection.json");
+    let cipher = volume.join("restore-input.pgp");
+    let original = fs::read(&backup).unwrap();
+    let checkpoint_bytes = fs::read(&selection_file).unwrap();
+    for mode in [
+        "verify-cancel",
+        "verify-wrong-key",
+        "verify-wrong-checkpoint",
+        "verify-damaged",
+        "verify",
+    ] {
+        let mut bytes = original.clone();
+        if mode == "verify-damaged" {
+            *bytes.last_mut().unwrap() ^= 1;
+        }
+        fs::write(&cipher, bytes).unwrap();
+        if mode == "verify-wrong-checkpoint" {
+            let mut other: serde_json::Value = serde_json::from_slice(&checkpoint_bytes).unwrap();
+            other["generation"] = 2.into();
+            fs::write(&selected, serde_json::to_vec(&other).unwrap()).unwrap();
+        } else {
+            fs::write(&selected, &checkpoint_bytes).unwrap();
+        }
+        let mut launch = Command::new("python");
+        launch
+            .arg("-B")
+            .arg(&script)
+            .arg("export")
+            .arg(desktop)
+            .arg(work)
+            .env("CRYPTEX_M11_INSTALLED_EXPORT", mode)
+            .env_remove("CRYPTEX_M11_VERIFY_UNLOCK");
+        if mode == "verify-wrong-key" {
+            launch.env(
+                "CRYPTEX_M11_VERIFY_UNLOCK",
+                password.with_file_name("wrong"),
+            );
+        } else if mode != "verify-cancel" {
+            launch.env("CRYPTEX_M11_VERIFY_UNLOCK", password);
+        }
+        assert!(
+            launch.status().unwrap().success(),
+            "installed verification: {mode}"
+        );
+        assert!(!root.exists());
+        assert!(!session.join("canonical").exists());
+    }
+    println!(
+        "m11_installed_verify=passed source_absent=true wrong_unlock=held wrong_checkpoint=held damaged=held cancelled=true"
+    );
     let opened = work.join("opened-manual-export");
     run_archive("open-payload", &[kit, &backup, &opened]);
     let selection: crate::backup_inventory::RecoverySelection =

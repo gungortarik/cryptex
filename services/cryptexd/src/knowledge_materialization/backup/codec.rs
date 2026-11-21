@@ -15,6 +15,8 @@ use tempfile::NamedTempFile;
 struct CodecPins {
     runtime: String,
     entry: String,
+    restore: String,
+    zip: String,
     openpgp: String,
 }
 
@@ -60,6 +62,7 @@ impl Prepared {
             directory,
             recipient,
             Some(assembly.reopen().map_err(|_| Error::Archive)?),
+            Operation::Encrypt,
         )
     }
 }
@@ -67,7 +70,7 @@ impl Prepared {
 /// Parse and reserialize a single encryption-capable public certificate before
 /// its bytes may be retained by the daemon or displayed to the owner.
 pub(crate) fn public_recipient(directory: &Path, recipient: &[u8]) -> Result<Vec<u8>, Error> {
-    let file = run_codec(directory, recipient, None)?;
+    let file = run_codec(directory, recipient, None, Operation::Recipient)?;
     let mut bytes = Vec::new();
     file.reopen()
         .map_err(|_| Error::Codec)?
@@ -80,13 +83,33 @@ pub(crate) fn public_recipient(directory: &Path, recipient: &[u8]) -> Result<Vec
     Ok(bytes)
 }
 
+pub(super) fn decrypt_manual(
+    directory: &Path,
+    header: &[u8],
+    cipher: File,
+) -> Result<NamedTempFile, Error> {
+    run_codec(directory, header, Some(cipher), Operation::Restore)
+}
+
+#[derive(Clone, Copy)]
+enum Operation {
+    Encrypt,
+    Recipient,
+    Restore,
+}
+
 fn run_codec(
     directory: &Path,
-    recipient: &[u8],
+    header: &[u8],
     mut payload: Option<File>,
+    operation: Operation,
 ) -> Result<NamedTempFile, Error> {
     let pins = CodecPins::packaged()?;
-    if !directory.is_absolute() || recipient.is_empty() || recipient.len() > 64 * 1024 {
+    let (entry, entry_pin, limit) = match operation {
+        Operation::Restore => ("restore.cjs", &pins.restore, 256 * 1024 + 96),
+        _ => ("encrypt.cjs", &pins.entry, 64 * 1024),
+    };
+    if !directory.is_absolute() || header.is_empty() || header.len() > limit {
         return Err(Error::Codec);
     }
     let mut staging = tempfile::Builder::new();
@@ -106,7 +129,7 @@ fn run_codec(
     let runtime = if cfg!(windows) { "node.exe" } else { "node" };
     for (name, pin) in [
         (runtime, &pins.runtime),
-        ("encrypt.cjs", &pins.entry),
+        (entry, entry_pin),
         ("openpgp.min.cjs", &pins.openpgp),
     ] {
         copy_pinned(&directory.join(name), &path.join(name), pin)?;
@@ -118,7 +141,7 @@ fn run_codec(
         std::fs::set_permissions(&node, std::fs::Permissions::from_mode(0o700))
             .map_err(|_| Error::Codec)?;
     }
-    let script = path.join("encrypt.cjs");
+    let script = path.join(entry);
     let library = path.join("openpgp.min.cjs");
     let output = NamedTempFile::new().map_err(|_| Error::Archive)?;
     let mut read_library = std::ffi::OsString::from("--allow-fs-read=");
@@ -128,12 +151,20 @@ fn run_codec(
         .env_clear()
         .current_dir(path)
         .args(["--permission", "--no-addons"])
-        .arg(read_library)
+        .arg(read_library);
+    if matches!(operation, Operation::Restore) {
+        let zip = path.join("fflate.cjs");
+        copy_pinned(&directory.join("fflate.cjs"), &zip, &pins.zip)?;
+        let mut allow = std::ffi::OsString::from("--allow-fs-read=");
+        allow.push(zip);
+        command.arg(allow);
+    }
+    command
         .arg(script)
         .stdin(Stdio::piped())
         .stderr(Stdio::null())
         .stdout(output.as_file().try_clone().map_err(|_| Error::Archive)?);
-    if payload.is_none() {
+    if matches!(operation, Operation::Recipient) {
         command.arg("public-recipient");
     }
     #[cfg(windows)]
@@ -148,8 +179,8 @@ fn run_codec(
     let mut pipe = child.stdin.take().expect("piped child input");
     let status = std::thread::scope(|scope| {
         let feeder = scope.spawn(move || -> io::Result<()> {
-            pipe.write_all(&(recipient.len() as u32).to_be_bytes())?;
-            pipe.write_all(recipient)?;
+            pipe.write_all(&(header.len() as u32).to_be_bytes())?;
+            pipe.write_all(header)?;
             if let Some(input) = payload.as_mut() {
                 io::copy(input, &mut pipe)?;
             }

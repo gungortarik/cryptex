@@ -7,6 +7,24 @@ export function ManualBackup() {
   const pending = useRef(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
+  const [verifying, setVerifying] = useState(false);
+
+  async function verifyBackup() {
+    if (pending.current) return;
+    pending.current = true;
+    setVerifying(true);
+    setStatus("");
+    try {
+      const verified = await invoke<boolean>("m11_verify_manual_backup");
+      setStatus(verified ? "Backup verified by restoring it in temporary storage." : "Verification cancelled.");
+    } catch (error) {
+      setStatus(String(error) === "unavailable" ? "Backup verification is unavailable for this profile." :
+        "Verification failed. Check the backup, its independent checkpoint, and the Recovery Kit and unlock file.");
+    } finally {
+      pending.current = false;
+      setVerifying(false);
+    }
+  }
 
   async function exportBackup() {
     if (pending.current) return;
@@ -39,8 +57,11 @@ export function ManualBackup() {
       <h2 id="manual-backup-heading">Encrypted backup</h2>
       <p className="capture-help">Choose a backup folder and a separate trusted folder for the recovery checkpoint.</p>
     </div>
-    <button className="search-button" type="button" disabled={busy} onClick={() => void exportBackup()}>
+    <button className="search-button" type="button" disabled={busy || verifying} onClick={() => void exportBackup()}>
       {busy ? "Exporting…" : "Export encrypted backup"}
+    </button>
+    <button type="button" disabled={busy || verifying} onClick={() => void verifyBackup()}>
+      {verifying ? "Verifying…" : "Verify manual backup"}
     </button>
     {status && <p className="capture-status" role="status">{status}</p>}
   </section>;

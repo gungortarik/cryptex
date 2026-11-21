@@ -29,6 +29,21 @@ pub(super) fn recipient_folder() -> Option<PathBuf> {
     Some(work.join("kit-public"))
 }
 
+pub(super) fn verification_file(title: &str) -> Option<PathBuf> {
+    let work = PathBuf::from(std::env::var_os("CRYPTEX_M11_REOPEN_FIXTURE")?);
+    match title {
+        "Select the encrypted manual backup" => Some(work.join("export-volume/restore-input.pgp")),
+        "Select its checkpoint from your separate trusted folder" => {
+            Some(work.join("export-checkpoints/restore-selection.json"))
+        }
+        "Select your encrypted offline Recovery Kit" => Some(work.join("offline-kit.pgp")),
+        "Select the separately held Kit unlock file" => {
+            std::env::var_os("CRYPTEX_M11_VERIFY_UNLOCK").map(PathBuf::from)
+        }
+        _ => None,
+    }
+}
+
 pub(super) fn confirm_recipient(digest: &str) -> bool {
     std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").as_deref() != Ok("decline")
         && std::env::var("CRYPTEX_M11_EXPECT_PUBLIC_DIGEST").as_deref() == Ok(digest)
@@ -55,6 +70,13 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
     let mode = std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").ok();
     let expected = match mode.as_deref() {
         None => "replacement/recovery/first-device.json",
+        Some(
+            "verify"
+            | "verify-cancel"
+            | "verify-damaged"
+            | "verify-wrong-key"
+            | "verify-wrong-checkpoint",
+        ) => "offline-kit.pgp",
         Some("wrong-brain" | "decline" | "cancel" | "write" | "overlap" | "damaged") => {
             "export-source/identity/brain_identity.json"
         }
@@ -91,6 +113,7 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
         }
     }
     let requests = match mode.as_deref() {
+        Some("verify-cancel") => 0,
         Some("decline" | "wrong-brain" | "write" | "overlap") => 2,
         Some("cancel") => 3, // First confirmation, then cancellation at folder selection.
         _ => 1,
@@ -107,6 +130,7 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
         .invoke_handler(tauri::generate_handler![
             super::p0_4_guarded_search,
             super::m11_export_backup,
+            super::m11_verify_manual_backup,
             m11_search_observed
         ])
         .on_page_load(move |view, payload| {

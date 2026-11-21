@@ -62,7 +62,8 @@ def install_and_run():
             raise RuntimeError("installed Desktop or bundled recovery reader missing")
         codec = (desktop.parent if windows else installed / "Contents/Resources") / "m11-codec"
         for role, name in {"runtime": "node.exe" if windows else "node",
-                           "entry": "encrypt.cjs", "openpgp": "openpgp.min.cjs"}.items():
+                           "entry": "encrypt.cjs", "restore": "restore.cjs",
+                           "zip": "fflate.cjs", "openpgp": "openpgp.min.cjs"}.items():
             with (codec / name).open("rb") as installed_file:
                 if hashlib.file_digest(installed_file, "sha256").hexdigest() != pins[role]:
                     raise RuntimeError(f"Installed backup {role} differs from the build input")

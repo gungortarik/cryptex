@@ -13,7 +13,9 @@ mod codec;
 pub(crate) use codec::public_recipient;
 mod manual;
 pub(crate) use manual::independent_folders;
+mod restore;
 pub mod role;
+pub(crate) use restore::verify_manual;
 
 pub(super) fn snapshot(
     root: &Path,

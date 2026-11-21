@@ -44,7 +44,11 @@ pub fn installed() -> io::Result<()> {
             .ok_or_else(|| invalid_data("missing fixture name"))?,
     );
     let exporting = std::env::var_os("CRYPTEX_M11_INSTALLED_EXPORT").is_some();
-    let (profile, credentials) = if exporting {
+    let verifying =
+        std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").is_ok_and(|mode| mode.starts_with("verify"));
+    let (profile, credentials) = if verifying {
+        ("verify-session", "verify-credentials")
+    } else if exporting {
         ("export-source", "export-credentials")
     } else {
         ("replacement", "test-credentials")

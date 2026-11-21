@@ -138,6 +138,7 @@ jobs:
           cargo test --locked -p cryptexd --lib "${features[@]}" knowledge_materialization::pairing_recovery_tests::m11_backup_read::public_kit_allows_ordinary_backup_but_partial_recovery_holds -- --exact | tee "$RUNNER_TEMP/m11-public-kit.txt"
           grep -F '1 passed; 0 failed' "$RUNNER_TEMP/m11-public-kit.txt" >> "$GITHUB_STEP_SUMMARY"
           cargo test --locked -p cryptexd --lib "${features[@]}" ipc::backup_export::tests
+          cargo test --locked -p cryptexd --lib "${features[@]}" ipc::backup_verify::tests
           cargo test --locked -p cryptexd --lib "${features[@]}" ipc::backup_removal::tests
           cargo test --locked -p cryptexd --lib "${features[@]}" backup_scheduler::journal::tests
           cargo test --locked -p cryptexd --lib "${features[@]}" knowledge_materialization::pairing_recovery_tests::m11_backup_read::a_forgotten_notes_attachment_survives_backup_reconstruction -- --exact | tee "$RUNNER_TEMP/m11-forgotten-attachment.txt"
@@ -173,6 +174,7 @@ jobs:
           python -B tools/m11-backup-spike/installed_desktop.py install | tee "$RUNNER_TEMP/m11-installed.txt"
           grep -Fx 'm11_recipient_enrollment=passed wrong_brain=held decline=kept offline_restart=restored modified_certificate=held' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_installed_export=passed cancelled=true overlap=held written=true restored=true' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
+          grep -Fx 'm11_installed_verify=passed source_absent=true wrong_unlock=held wrong_checkpoint=held damaged=held cancelled=true' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_installed_codec=passed public_recipient=true restored_with_daemon_signature=true' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep '^m11_installed_search=passed launches=2 archive=true replacement=true reader=cryptexd canonical=unchanged$' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_offline_backup_target=passed capture=committed search=reopened backup=unchanged' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
