@@ -17,6 +17,13 @@ pub enum Action {
         target: PathBuf,
         checkpoints: PathBuf,
     },
+    Retain {
+        target: PathBuf,
+        keep: Option<std::num::NonZeroUsize>,
+    },
+    Verify {
+        files: super::backup_verify::Selection,
+    },
     Pause,
 }
 
@@ -28,6 +35,8 @@ pub enum Outcome {
     LocalWriter,
     Scheduled,
     Paused,
+    RetentionSaved,
+    Verified,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -40,6 +49,7 @@ pub enum Error {
     UnsafeTarget,
     Recipient,
     OriginalRequired,
+    Verification,
     Authority,
     History,
     Uncertain,
@@ -47,7 +57,12 @@ pub enum Error {
 
 pub fn desktop(action: Action) -> Result<Outcome, Error> {
     let uncertain = !matches!(action, Action::Inspect { .. });
-    backup_request::exchange(OPERATION, CAPABILITY, action, Duration::from_secs(90)).map_err(
+    let timeout = if matches!(action, Action::Verify { .. }) {
+        360
+    } else {
+        90
+    };
+    backup_request::exchange(OPERATION, CAPABILITY, action, Duration::from_secs(timeout)).map_err(
         |_| {
             if uncertain {
                 Error::Uncertain
@@ -90,7 +105,10 @@ fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
     let jobs = DeviceJobs::new(ctx.store.as_ref(), ctx.environment, &anchor);
     let path = match &action {
         Action::Create { parent } => parent,
-        Action::Inspect { target } | Action::Schedule { target, .. } => target,
+        Action::Inspect { target }
+        | Action::Schedule { target, .. }
+        | Action::Retain { target, .. } => target.as_path(),
+        Action::Verify { files } => files.backup.parent().ok_or(Error::UnsafeTarget)?,
         Action::Pause => {
             jobs.pause().map_err(|_| Error::Uncertain)?;
             return Ok(Outcome::Paused);
@@ -127,6 +145,70 @@ fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
             })
         }
         Action::Pause => unreachable!(),
+        Action::Retain { target, keep } => {
+            writer
+                .verify_local_writer(&ctx.runtime_root, &target)
+                .map_err(map)?;
+            let catalog = crate::backup_scheduler::retention::VerifiedBackups {
+                target: &target,
+                store: ctx.store.as_ref(),
+                environment: ctx.environment,
+                designated: &anchor,
+                writer_profile: &ctx.runtime_root,
+            };
+            catalog
+                .set_retention(&anchor, keep)
+                .map_err(|_| Error::Uncertain)?;
+            Ok(Outcome::RetentionSaved)
+        }
+        Action::Verify { files } => {
+            let target = files.backup.parent().ok_or(Error::UnsafeTarget)?;
+            writer
+                .verify_local_writer(&ctx.runtime_root, target)
+                .map_err(map)?;
+            for path in [&files.checkpoint, &files.kit, &files.unlock] {
+                if !path.is_absolute() {
+                    return Err(Error::UnsafeTarget);
+                }
+                crate::paths::assert_outside_repository(path).map_err(|_| Error::UnsafeTarget)?;
+            }
+            let check_dir = files.checkpoint.parent().ok_or(Error::UnsafeTarget)?;
+            independent_folders(target, check_dir).map_err(|_| Error::UnsafeTarget)?;
+            independent_folders(&ctx.runtime_root, check_dir).map_err(|_| Error::UnsafeTarget)?;
+            let published = jobs
+                .publication(&files.backup)
+                .map_err(|_| Error::Verification)?;
+            let catalog = crate::backup_scheduler::retention::VerifiedBackups {
+                target,
+                store: ctx.store.as_ref(),
+                environment: ctx.environment,
+                designated: &anchor,
+                writer_profile: &ctx.runtime_root,
+            };
+            let scratch = tempfile::tempdir().map_err(|_| Error::Unavailable)?;
+            catalog
+                .verify(&anchor, &published, |cipher| {
+                    let mut profiles = crate::knowledge_materialization::backup::reconstruct_files(
+                        &config.codec,
+                        cipher,
+                        &files.checkpoint,
+                        &files.kit,
+                        &files.unlock,
+                        scratch.path(),
+                    )
+                    .map_err(|_| io::Error::other("scheduled restore held"))?;
+                    if profiles.len() != 1 {
+                        return Err(io::Error::other("unexpected scheduled history count"));
+                    }
+                    let profile = profiles.pop().unwrap();
+                    let path = profile.path().to_owned();
+                    Ok((profile, path))
+                })
+                .map_err(|_| Error::Verification)?
+                .close()
+                .map_err(|_| Error::Uncertain)?;
+            Ok(Outcome::Verified)
+        }
         Action::Schedule {
             target,
             checkpoints,

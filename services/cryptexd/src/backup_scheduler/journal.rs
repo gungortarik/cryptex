@@ -49,7 +49,6 @@ pub(crate) struct Due {
 }
 
 /// Only the local scheduler's journal can identify an automatic publication.
-#[cfg(test)]
 pub(crate) struct PublishedGeneration {
     pub(super) writer: LocalTrustAnchor,
     pub(super) path: PathBuf,
@@ -249,6 +248,69 @@ impl<'a> DeviceJobs<'a> {
         }))
     }
 
+    fn publication_account(&self, path: &Path, head: [u8; 32]) -> io::Result<AccountLabel> {
+        use sha2::{Digest, Sha256};
+        let binding =
+            serde_json::to_vec(&(self.owner.device_id(), self.owner.public_key(), path, head))?;
+        Ok(AccountLabel::backup_publication(&format!(
+            "{:x}",
+            Sha256::digest(binding)
+        )))
+    }
+
+    fn finish_publication(
+        &self,
+        job: &mut Job,
+        digest: [u8; 32],
+        head: [u8; 32],
+    ) -> io::Result<()> {
+        // Only a completed journal-owned generation can receive an automatic-retention receipt.
+        let account = self.publication_account(&job.output(), head)?;
+        match self.store.get(self.service.as_str(), account.as_str()) {
+            Ok(prior) if prior == digest => (),
+            Ok(_) => {
+                return Err(io::Error::other(
+                    "conflicting scheduled publication receipt",
+                ));
+            }
+            Err(SecureStoreError::Missing) => self
+                .store
+                .put(self.service.as_str(), account.as_str(), &digest)
+                .map_err(io::Error::other)?,
+            Err(error) => return Err(io::Error::other(error)),
+        }
+        job.record_publication(digest)?;
+        self.save(job)
+    }
+
+    pub fn publication(&self, path: &Path) -> io::Result<PublishedGeneration> {
+        let number = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(super::retention::generation_number)
+            .ok_or_else(|| io::Error::other("select a numbered automatic generation"))?;
+        let target = path
+            .parent()
+            .ok_or_else(|| io::Error::other("missing backup target"))?;
+        let head = self
+            .role()
+            .assigned_head(target)
+            .map_err(super::role_error)?;
+        let account = self.publication_account(path, head)?;
+        let digest = self
+            .store
+            .get(self.service.as_str(), account.as_str())
+            .map_err(io::Error::other)?
+            .try_into()
+            .map_err(|_| io::Error::other("invalid publication receipt"))?;
+        Ok(PublishedGeneration {
+            writer: self.owner.clone(),
+            path: path.to_owned(),
+            number,
+            digest,
+        })
+    }
+
     fn role(&self) -> crate::knowledge_materialization::backup::role::DeviceRole<'_> {
         crate::knowledge_materialization::backup::role::DeviceRole {
             store: self.store,
@@ -355,8 +417,7 @@ impl<'a> DeviceJobs<'a> {
                     Ok(actual) if job.phase == Phase::Prepared(actual) => {
                         cryptex_storage::durability::sync_parent_directory(&output)
                             .map_err(io::Error::other)?;
-                        job.record_publication(actual)?;
-                        return self.save(&job);
+                        return self.finish_publication(&mut job, actual, assigned);
                     }
                     Ok(_) => {
                         return Err(io::Error::new(
@@ -386,8 +447,7 @@ impl<'a> DeviceJobs<'a> {
                     .map_err(|e| e.error)?;
                 cryptex_storage::durability::sync_parent_directory(&output)
                     .map_err(io::Error::other)?;
-                job.record_publication(digest)?;
-                self.save(&job)
+                self.finish_publication(&mut job, digest, assigned)
             })
             .map(Some)
     }
@@ -500,6 +560,17 @@ mod tests {
                 .unwrap(),
             Some(Outcome::Published)
         );
+        let published = reopen()
+            .publication(&target.join("backup-00000000000000000001.pgp"))
+            .unwrap();
+        assert_eq!(published.number, 1);
+        assert_eq!(
+            published.digest,
+            generation_digest(&published.path).unwrap()
+        );
+        let foreign = target.join("backup-00000000000000000002.pgp");
+        fs::copy(&published.path, &foreign).unwrap();
+        assert!(reopen().publication(&foreign).is_err());
         let scheduled = reopen().load().unwrap().unwrap().schedule.unwrap();
         assert!(scheduled.next_due > 86400);
         assert!(reopen().due(scheduled.next_due - 1).unwrap().is_none());

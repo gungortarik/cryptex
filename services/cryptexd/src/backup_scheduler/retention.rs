@@ -9,9 +9,10 @@ use cryptex_events::LocalTrustAnchor;
 use sha2::{Digest, Sha256};
 use std::{fs, io, num::NonZeroUsize, path::Path};
 
+#[cfg(test)]
 pub(crate) mod removal;
 
-fn generation_number(name: &str) -> Option<u64> {
+pub(crate) fn generation_number(name: &str) -> Option<u64> {
     let number = name
         .strip_prefix("backup-")?
         .strip_suffix(".pgp")?

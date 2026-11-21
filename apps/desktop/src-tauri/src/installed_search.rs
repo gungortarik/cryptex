@@ -49,6 +49,20 @@ pub(super) fn writer_folder(create: bool) -> Option<PathBuf> {
 pub(super) fn verification_file(title: &str) -> Option<PathBuf> {
     let work = PathBuf::from(std::env::var_os("CRYPTEX_M11_REOPEN_FIXTURE")?);
     match title {
+        "Select the scheduled generation to verify" => {
+            Some(writer_folder(false)?.join("backup-00000000000000000001.pgp"))
+        }
+        "Select its checkpoint from your separate trusted folder"
+            if std::env::var("CRYPTEX_M11_INSTALLED_EXPORT")
+                .is_ok_and(|m| m.starts_with("writer-verify")) =>
+        {
+            let mut entries = std::fs::read_dir(work.join("schedule-checkpoints")).ok()?;
+            let selected = entries.next()?.ok()?.path();
+            if entries.next().is_some() {
+                return None;
+            }
+            Some(selected)
+        }
         "Select the original encrypted backup used to recover this device" => {
             Some(work.join("pair-input/original.pgp"))
         }
@@ -125,9 +139,22 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
             | "verify-wrong-checkpoint",
         ) => "offline-kit.pgp",
         Some(
-            "wrong-brain" | "decline" | "cancel" | "write" | "overlap" | "damaged"
-            | "writer-enable" | "writer-resume" | "writer-pause" | "writer-decline"
-            | "writer-create" | "writer-inspect" | "writer-copy",
+            "wrong-brain"
+            | "decline"
+            | "cancel"
+            | "write"
+            | "overlap"
+            | "damaged"
+            | "writer-retain"
+            | "writer-verify"
+            | "writer-verify-wrong"
+            | "writer-enable"
+            | "writer-resume"
+            | "writer-pause"
+            | "writer-decline"
+            | "writer-create"
+            | "writer-inspect"
+            | "writer-copy",
         ) => "export-source/identity/brain_identity.json",
         _ => return Err("invalid rehearsal mode".into()),
     };

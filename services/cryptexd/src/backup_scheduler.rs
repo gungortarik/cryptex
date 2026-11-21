@@ -1,6 +1,5 @@
 //! Daemon scheduler exercised on disposable M11 profiles.
 pub(crate) mod journal;
-#[cfg(test)]
 pub(crate) mod retention;
 use crate::import_staging::export_fs::Error as DirectoryError;
 use cryptex_events::LocalTrustAnchor;

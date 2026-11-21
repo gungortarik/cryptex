@@ -2,7 +2,7 @@
   const mode = "EXPECTED_MODE";
   const writer = mode.startsWith("writer-");
   const panel = () => document.querySelector(writer ? '[aria-labelledby="backup-writer-heading"]' : '[aria-labelledby="manual-backup-heading"]');
-  const action = mode === "writer-enable" ? "Enable daily backup" : mode === "writer-pause" ? "Pause scheduled backups" : writer ? (["writer-create", "writer-decline"].includes(mode) ? "Create backup target" : "Check writer") :
+  const action = mode.startsWith("writer-verify") ? "Verify scheduled backup" : mode === "writer-retain" ? "Save retention" : mode === "writer-enable" ? "Enable daily backup" : mode === "writer-pause" ? "Pause scheduled backups" : writer ? (["writer-create", "writer-decline"].includes(mode) ? "Create backup target" : "Check writer") :
     (mode.startsWith("verify") ? "Verify manual backup" : "Export encrypted backup");
   let clicked = false;
   let visible = false;
@@ -18,6 +18,9 @@
       const status = panel()?.querySelector('[role="status"]')?.textContent;
       visible = mode === "writer-create" ? /^Assigned this device as writer for cryptex-backup-[0-9a-f]{64}\.$/.test(status ?? "") :
         mode === "writer-decline" ? status === "Selection cancelled." :
+        mode === "writer-verify" ? status === "Scheduled backup verified by restoring it in temporary storage." :
+        mode === "writer-verify-wrong" ? status?.startsWith("Cryptex could not complete scheduled backup verification") === true :
+        mode === "writer-retain" ? status === "All scheduled backups will be kept." :
         mode === "writer-enable" ? status?.startsWith("Daily backup enabled.") === true :
         mode === "writer-pause" ? status === "Scheduled backups paused." :
         ["writer-inspect","writer-resume"].includes(mode) ? status === "This device is the designated writer for the selected target." :

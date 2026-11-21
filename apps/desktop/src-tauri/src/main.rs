@@ -503,16 +503,23 @@ enum WriterCommand {
     Create,
     Inspect,
     Schedule,
+    Retain,
+    Verify,
     Pause,
 }
 
 #[tauri::command]
 async fn m11_backup_writer(
     mode: WriterCommand,
+    keep: Option<std::num::NonZeroUsize>,
 ) -> Result<cryptexd::ipc::backup_writer::Outcome, cryptexd::ipc::backup_writer::Error> {
     use cryptexd::ipc::backup_writer::{self, Action, Error, Outcome};
     tauri::async_runtime::spawn_blocking(move || {
         if mode == WriterCommand::Pause {return backup_writer::desktop(Action::Pause);}
+        if mode == WriterCommand::Verify {
+            let Some(files) = backup_verification_files("Select the scheduled generation to verify") else {return Ok(Outcome::Cancelled)};
+            return backup_writer::desktop(Action::Verify {files});
+        }
         let create = mode == WriterCommand::Create;
         #[cfg(feature = "m11-installed-search-check")]
         let selected = installed_search::writer_folder(create);
@@ -533,6 +540,15 @@ async fn m11_backup_writer(
                 .show() == rfd::MessageDialogResult::Custom("Create target".into());
             if !approved { return Ok(Outcome::Cancelled); }
             backup_writer::desktop(Action::Create { parent: path })
+        } else if mode == WriterCommand::Retain {
+            #[cfg(not(feature = "m11-installed-search-check"))]
+            if let Some(count) = keep {
+                let confirmed = rfd::MessageDialog::new().set_title("Set scheduled backup retention?")
+                    .set_description(format!("Keep the newest {count} verified scheduled backups in {}. After verification, Cryptex can remove older verified generations with the same purge history.", path.display()))
+                    .set_buttons(rfd::MessageButtons::OkCancelCustom("Save retention".into(), "Cancel".into())).show();
+                if confirmed != rfd::MessageDialogResult::Custom("Save retention".into()) {return Ok(Outcome::Cancelled);}
+            }
+            backup_writer::desktop(Action::Retain {target: path, keep})
         } else if mode == WriterCommand::Schedule {
             if !ensure_backup_recipient().map_err(|_| Error::Recipient)? {return Ok(Outcome::Cancelled);}
             let Some(checkpoints) = backup_folder(true) else {return Ok(Outcome::Cancelled)};
@@ -545,31 +561,24 @@ async fn m11_backup_writer(
 
 #[tauri::command]
 async fn m11_verify_manual_backup() -> Result<usize, cryptexd::ipc::backup_verify::Error> {
-    use cryptexd::ipc::backup_verify::{self, Error, Selection};
+    use cryptexd::ipc::backup_verify::{self, Error};
     tauri::async_runtime::spawn_blocking(|| {
-        let select = backup_input_file;
-        let Some(backup) = select("Select the encrypted manual backup") else {
+        let Some(files) = backup_verification_files("Select the encrypted manual backup") else {
             return Ok(0);
         };
-        let Some(checkpoint) = select("Select its checkpoint from your separate trusted folder")
-        else {
-            return Ok(0);
-        };
-        let Some(kit) = select("Select your encrypted offline Recovery Kit") else {
-            return Ok(0);
-        };
-        let Some(unlock) = select("Select the separately held Kit unlock file") else {
-            return Ok(0);
-        };
-        backup_verify::desktop(Selection {
-            backup,
-            checkpoint,
-            kit,
-            unlock,
-        })
+        backup_verify::desktop(files)
     })
     .await
     .map_err(|_| Error::Unavailable)?
+}
+
+fn backup_verification_files(title: &str) -> Option<cryptexd::ipc::backup_verify::Selection> {
+    Some(cryptexd::ipc::backup_verify::Selection {
+        backup: backup_input_file(title)?,
+        checkpoint: backup_input_file("Select its checkpoint from your separate trusted folder")?,
+        kit: backup_input_file("Select your encrypted offline Recovery Kit")?,
+        unlock: backup_input_file("Select the separately held Kit unlock file")?,
+    })
 }
 
 fn backup_input_file(title: &str) -> Option<std::path::PathBuf> {

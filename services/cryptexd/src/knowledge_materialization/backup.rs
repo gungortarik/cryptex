@@ -17,7 +17,6 @@ mod paired;
 mod restore;
 pub mod role;
 pub(crate) use paired::{Destination, PriorFiles, export_recovered};
-#[cfg(test)]
 pub(crate) use restore::reconstruct_files;
 pub(crate) use restore::verify_manual;
 
@@ -31,7 +30,6 @@ pub(super) fn snapshot(
 
 /// Compare the authenticated purge decisions on both sides of automatic pruning.
 /// Keep the snapshot locks until the caller has finished its filesystem operation.
-#[cfg(test)]
 pub(crate) fn retention_state(
     root: &Path,
     anchor: &LocalTrustAnchor,

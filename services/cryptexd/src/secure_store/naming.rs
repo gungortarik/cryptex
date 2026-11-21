@@ -54,6 +54,9 @@ impl AccountLabel {
     pub fn verified_backup(binding: &str) -> Self {
         Self(format!("verified-backup:{binding}"))
     }
+    pub fn backup_publication(binding: &str) -> Self {
+        Self(format!("backup-publication:{binding}"))
+    }
     pub fn backup_job(device_id: &str) -> Self {
         Self(format!("backup-job:{device_id}"))
     }

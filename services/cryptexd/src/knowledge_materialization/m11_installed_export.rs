@@ -82,7 +82,14 @@ pub(super) fn check(work: &Path, desktop: &Path, kit: &Path, password: &Path) {
         if mode == "damaged" {
             let scheduled = work.join("schedule-checkpoints");
             fs::create_dir(&scheduled).unwrap();
-            for action in ["writer-enable", "writer-resume", "writer-pause"] {
+            for action in [
+                "writer-enable",
+                "writer-resume",
+                "writer-pause",
+                "writer-retain",
+                "writer-verify-wrong",
+                "writer-verify",
+            ] {
                 let status = Command::new("python")
                     .arg("-B")
                     .arg(&script)
@@ -90,10 +97,21 @@ pub(super) fn check(work: &Path, desktop: &Path, kit: &Path, password: &Path) {
                     .arg(desktop)
                     .arg(work)
                     .env("CRYPTEX_M11_INSTALLED_EXPORT", action)
+                    .env(
+                        "CRYPTEX_M11_VERIFY_UNLOCK",
+                        if action == "writer-verify-wrong" {
+                            password.with_file_name("wrong")
+                        } else {
+                            password.to_owned()
+                        },
+                    )
                     .status()
                     .unwrap();
                 assert!(status.success(), "installed scheduler: {action}");
             }
+            println!(
+                "m11_installed_retention=passed default=keep_all wrong_unlock=held scheduled_cipher=restored"
+            );
             fs::write(
                 root.join("backup-certificates")
                     .join(format!("{digest}.asc")),

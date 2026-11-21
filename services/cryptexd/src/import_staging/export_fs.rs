@@ -353,10 +353,7 @@ impl Directory {
         self.unlink_opened("daemon.lock", file)
     }
 
-    #[cfg(all(
-        test,
-        any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
-    ))]
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
     pub(crate) fn remove_backup_generation(&self, number: u64, file: File) -> Result<(), Error> {
         self.unlink_opened(&format!("backup-{number:020}.pgp"), file)
     }
