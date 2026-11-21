@@ -80,7 +80,7 @@ async function keepBackup(args, confirm) {
     const current = files("pinned");
     const candidate = newer ? files("approved") : null;
     await fs.writeFile(current.kit, await readSmall(kit, 256 * 1024), options);
-    const [oldSelection, nextSelection] = await withKit(current.kit, unlock, async (members, credential) => {
+    const [oldSelection, nextSelection] = await withKit(current.kit, unlock, async members => {
       const pinned = members["selected-backup.json"];
       if (!pinned) throw Error("Kit has no independent archive checkpoint");
       await fs.writeFile(current.checkpoint, pinned, options);
@@ -92,12 +92,6 @@ async function keepBackup(args, confirm) {
           next.brain_id !== old.brain_id || next.writer_device !== old.writer_device ||
           JSON.stringify(next.writer_key) !== JSON.stringify(old.writer_key)) throw Error("Unexpected successor");
       await fs.writeFile(candidate.checkpoint, bytes, options);
-      const plain = zipSync({...members, "selected-backup.json": bytes}, {level: 0});
-      try {
-        const cipher = await pgp.encrypt({message: await pgp.createMessage({binary: plain}),
-          passwords: [credential.toString("ascii")], format: "binary", config: {aeadProtect: true, v6Keys: true}});
-        await fs.writeFile(candidate.kit, cipher, options);
-      } finally { plain.fill(0); }
       return [old, next];
     });
     await fs.copyFile(backup, current.backup, constants.COPYFILE_EXCL);
@@ -110,6 +104,19 @@ async function keepBackup(args, confirm) {
     if (candidate) review.push("Proposed generation " + nextSelection.generation, "Proposed backup SHA-256 " + hashes[1]);
     const expected = candidate ? "APPROVE " + nextSelection.generation : "KEEP " + oldSelection.generation;
     if (await confirm(review.join("\n"), expected) !== expected) return false;
+    if (candidate) {
+      await withKit(current.kit, unlock, async (members, credential) => {
+        const bytes = await readSmall(candidate.checkpoint, 32768);
+        const plain = zipSync({...members, "selected-backup.json": bytes}, {level: 0});
+        try {
+          const cipher = await pgp.encrypt({message: await pgp.createMessage({binary: plain}),
+            passwords: [credential.toString("ascii")], format: "binary", config: {aeadProtect: true, v6Keys: true}});
+          await fs.writeFile(candidate.kit, cipher, options);
+        } finally { plain.fill(0); }
+      });
+      const [verified] = await reconstruct(candidate, null);
+      if (verified !== hashes[1]) throw Error("Approved archive changed");
+    }
     // A new sealed Kit is published last, after checking the ciphertext copies on the chosen volume.
     await fs.mkdir(archiveDir, {mode: 0o700});
     await fs.mkdir(kitDir, {mode: 0o700});

@@ -1,5 +1,6 @@
 """Verify the native Kit package against two daemon-created, signed generations."""
 from pathlib import Path
+import os
 import subprocess
 import sys
 import tempfile
@@ -10,5 +11,8 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory(prefix="cryptex-offline-edition-") as temp:
         kit = extract(Path(sys.argv[1]), Path(temp))
         runtime = kit / ("node.exe" if sys.platform == "win32" else "node")
+        scratch = Path(temp) / "scratch"
+        scratch.mkdir()
+        env = dict(os.environ, TMPDIR=str(scratch), TMP=str(scratch), TEMP=str(scratch))
         subprocess.run([runtime, "--no-addons", Path(__file__).with_name("test_kit_advance.cjs"),
-                        kit, temp, *sys.argv[2:]], check=True, timeout=120)
+                        kit, temp, *sys.argv[2:]], env=env, check=True, timeout=120)

@@ -279,6 +279,24 @@ pub(super) fn first_archive(
     })
 }
 
+#[cfg(feature = "m11-offline-verifier")]
+pub(super) fn open_proposed_daily(
+    codec: &Path,
+    current: &crate::ipc::backup_verify::Selection,
+    candidate: &crate::ipc::backup_verify::Selection,
+    selection: &RecoverySelection,
+    scratch: &Path,
+) -> Result<(tempfile::TempDir, [u8; 32]), Error> {
+    independent_folders(
+        candidate.backup.parent().ok_or(Error::Checkpoint)?,
+        candidate.checkpoint.parent().ok_or(Error::Checkpoint)?,
+    )?;
+    let keys = KitFiles::load(codec, &current.kit, &current.unlock)?;
+    let (file, digest) = super::paired::freeze_cipher(&candidate.backup)?;
+    let profile = open_file(&keys, file, selection, None, scratch)?;
+    Ok((profile, digest))
+}
+
 fn open_file(
     keys: &KitFiles<'_>,
     file: File,

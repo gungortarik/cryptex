@@ -16,7 +16,13 @@ async function run() {
   const untrusted = path.join(path.dirname(newer), "candidate.json");
   await fs.copyFile(selection, untrusted);
   await assert.rejects(keepBackup({...args, selection: untrusted}, denied), /independent checkpoint/);
-  assert.equal(await keepBackup(args, () => ""), false);
+  assert.equal(await keepBackup(args, async () => {
+    const scratch = require("node:os").tmpdir();
+    const stages = (await fs.readdir(scratch)).filter(entry => entry.startsWith("cryptex-offline-backup-"));
+    assert.equal(stages.length, 1);
+    await absent(path.join(scratch, stages[0], "editions", "approved-kit.pgp"));
+    return "";
+  }), false);
   await absent(args.archiveDir);
   await absent(args.kitDir);
   assert.equal(await keepBackup(args, (review, expected) => {
