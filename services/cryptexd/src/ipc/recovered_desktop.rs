@@ -3,7 +3,13 @@ use std::io::{BufRead, Write};
 
 #[cfg(test)]
 pub(crate) fn run_fixture(root: &Path, store: Arc<dyn SecureStore>) {
-    serve(root, store, test_desktop_process_identity().unwrap()).unwrap();
+    serve(
+        root,
+        store,
+        test_desktop_process_identity().unwrap(),
+        |_| Ok(()),
+    )
+    .unwrap();
 }
 
 /// Isolated startup adapter for the installed CI package. Profile selection and
@@ -30,19 +36,50 @@ pub fn installed() -> io::Result<()> {
     {
         return Err(invalid_data("invalid fixture"));
     }
-    let store = crate::secure_store::FileBackedSecureStore::open(work.join("test-credentials"))
+    let exporting = std::env::var_os("CRYPTEX_M11_INSTALLED_EXPORT").is_some();
+    let (profile, credentials) = if exporting {
+        ("export-source", "export-credentials")
+    } else {
+        ("replacement", "test-credentials")
+    };
+    let store = crate::secure_store::FileBackedSecureStore::open(work.join(credentials))
         .map_err(|_| invalid_data("credentials unavailable"))?;
-    serve(&work.join("replacement"), Arc::new(store), desktop)
+    serve(&work.join(profile), Arc::new(store), desktop, |ctx| {
+        #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+        if exporting {
+            let exe = std::env::current_exe()?;
+            let parent = exe
+                .parent()
+                .ok_or_else(|| invalid_data("installed directory"))?;
+            let resources = if cfg!(windows) {
+                parent.to_owned()
+            } else {
+                parent.join("../Resources")
+            };
+            let recipient = ctx
+                .store
+                .get("m11-fixture", "export-public-recipient")
+                .map_err(|_| invalid_data("missing recipient"))?;
+            ctx.backup_export = Some(Arc::new(backup_export::Config {
+                codec: resources.join("m11-codec"),
+                recipient,
+                busy: Mutex::new(()),
+            }));
+        }
+        let _ = ctx;
+        Ok(())
+    })
 }
 
 fn serve(
     root: &Path,
     store: Arc<dyn SecureStore>,
     desktop: DesktopProcessIdentity,
+    configure: impl FnOnce(&mut SearchContext) -> io::Result<()>,
 ) -> io::Result<()> {
     let instance = crate::instance::try_acquire_instance(root)
         .map_err(|_| invalid_data("instance unavailable"))?;
-    let context = SearchContext {
+    let mut context = SearchContext {
         runtime_root: root.into(),
         admission: instance.admission(),
         operation: None,
@@ -58,12 +95,15 @@ fn serve(
         transport_identity: None,
         #[cfg(test)]
         isolated_attachment_writer: false,
+        #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+        backup_export: None,
         backup_removal: Default::default(),
         #[cfg(test)]
         purge_reviews: None,
         #[cfg(test)]
         transport_device_id_override: None,
     };
+    configure(&mut context)?;
     let token = std::env::var("CRYPTEX_FILE_FIXTURE_SOCKET")
         .map_err(|_| invalid_data("missing socket ID"))?;
     let listener = ListenerOptions::new()

@@ -8,6 +8,8 @@ use std::process::Command;
 
 #[path = "m11_first_device.rs"]
 mod first_device;
+#[path = "m11_installed_export.rs"]
+mod installed_export;
 
 #[test]
 fn public_kit_allows_ordinary_backup_but_partial_recovery_holds() {
@@ -850,6 +852,9 @@ fn restored_note_and_attachment_pass_guarded_reads() {
             let inner = prepared.encryption_input().unwrap();
             run_archive("seal-inventory", &[&recipient, inner.path(), &backup]);
         }
+    }
+    if let Some(desktop) = std::env::var_os("CRYPTEX_M11_INSTALLED_DESKTOP") {
+        installed_export::check(work.path(), Path::new(&desktop), &kit);
     }
     let sealed_kit = work.path().join("offline-kit.pgp");
     let unlock = tempfile::tempdir().unwrap();

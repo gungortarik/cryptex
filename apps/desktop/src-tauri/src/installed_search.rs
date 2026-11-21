@@ -24,19 +24,36 @@ impl Drop for Reader {
     }
 }
 
+pub(super) fn selected_folder(checkpoint: bool) -> Option<PathBuf> {
+    let work = PathBuf::from(std::env::var_os("CRYPTEX_M11_REOPEN_FIXTURE")?);
+    let mode = std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").ok()?;
+    if checkpoint && mode == "cancel" {
+        return None;
+    }
+    Some(work.join(if checkpoint && mode != "overlap" {
+        "export-checkpoints"
+    } else {
+        "export-volume"
+    }))
+}
+
 fn check() -> Result<bool, Box<dyn std::error::Error>> {
     let work = PathBuf::from(
         std::env::var_os("CRYPTEX_M11_REOPEN_FIXTURE").ok_or("missing disposable profile")?,
     )
     .canonicalize()?;
+    let mode = std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").ok();
+    let expected = match mode.as_deref() {
+        None => "replacement/recovery/first-device.json",
+        Some("cancel" | "write" | "overlap") => "export-source/identity/brain_identity.json",
+        _ => return Err("invalid rehearsal mode".into()),
+    };
     if work.parent() != Some(std::env::temp_dir().canonicalize()?.as_path())
         || !work
             .file_name()
             .and_then(|s| s.to_str())
             .is_some_and(|s| s.starts_with("cryptex-m11-recovery-"))
-        || !work
-            .join("replacement/recovery/first-device.json")
-            .is_file()
+        || !work.join(expected).is_file()
     {
         return Err("invalid disposable profile".into());
     }
@@ -65,16 +82,27 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
         reader.0.stdin.as_mut().ok_or("missing reader input")?,
         "serve"
     )?;
+    if matches!(mode.as_deref(), Some("write" | "overlap")) {
+        writeln!(
+            reader.0.stdin.as_mut().ok_or("missing reader input")?,
+            "serve"
+        )?;
+    }
     let observed = Arc::new(AtomicBool::new(false));
     let app = tauri::Builder::default()
         .manage(observed.clone())
         .invoke_handler(tauri::generate_handler![
             super::p0_4_guarded_search,
+            super::m11_export_backup,
             m11_search_observed
         ])
-        .on_page_load(|view, payload| {
+        .on_page_load(move |view, payload| {
+            let script = match mode.as_deref() {
+                Some(mode) => include_str!("installed_export.js").replace("EXPECTED_MODE", mode),
+                None => include_str!("installed_search.js").to_owned(),
+            };
             if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished)
-                && view.eval(include_str!("installed_search.js")).is_err()
+                && view.eval(&script).is_err()
             {
                 use tauri::Manager;
                 view.app_handle().exit(2);

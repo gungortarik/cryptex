@@ -42,24 +42,6 @@ pub enum Error {
     VerificationFailed,
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Frame {
-    protocol_version: u32,
-    request_id: String,
-    client_role: String,
-    capabilities: Vec<String>,
-    operation: String,
-    action: Action,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct Reply {
-    request_id: Option<String>,
-    result: Result<Outcome, Error>,
-}
-
 pub(super) type Session = Arc<Mutex<Option<Pending>>>;
 
 pub(super) struct Pending {
@@ -139,55 +121,25 @@ pub(super) fn decide(ctx: &SearchContext, action: Action) -> Result<Outcome, Err
     }
 }
 
-pub(super) fn handle(bytes: &[u8], ctx: Option<&SearchContext>, desktop: bool) -> Reply {
-    let Ok(frame) = serde_json::from_slice::<Frame>(bytes) else {
-        return Reply {
-            request_id: None,
-            result: Err(Error::InvalidRequest),
-        };
-    };
-    let result = if !desktop || frame.client_role != "desktop" || frame.capabilities != [CAPABILITY]
-    {
-        Err(Error::Unauthorized)
-    } else if frame.protocol_version != PROTOCOL_VERSION
-        || frame.operation != OPERATION
-        || cryptex_core::validate::parse_uuid_str(&frame.request_id).is_err()
-    {
-        Err(Error::InvalidRequest)
-    } else {
-        ctx.ok_or(Error::Unavailable)
-            .and_then(|ctx| decide(ctx, frame.action))
-    };
-    Reply {
-        request_id: Some(frame.request_id),
-        result,
-    }
+pub(super) fn handle(
+    bytes: &[u8],
+    ctx: Option<&SearchContext>,
+    desktop: bool,
+) -> super::backup_request::Reply<Outcome, Error> {
+    super::backup_request::handle(
+        bytes,
+        desktop,
+        OPERATION,
+        CAPABILITY,
+        Error::InvalidRequest,
+        Error::Unauthorized,
+        |action| decide(ctx.ok_or(Error::Unavailable)?, action),
+    )
 }
 
 pub fn desktop(action: Action) -> Result<Outcome, Error> {
-    let exchange = || -> io::Result<Reply> {
-        let request = Frame {
-            protocol_version: PROTOCOL_VERSION,
-            request_id: new_bootstrap_event_id().map_err(|_| invalid_data("request_id"))?,
-            client_role: "desktop".into(),
-            capabilities: vec![CAPABILITY.into()],
-            operation: OPERATION.into(),
-            action,
-        };
-        let mut stream = Stream::connect(socket_name()?)?;
-        arm_ipc_stream(&stream)?;
-        let deadline = Instant::now() + IPC_RESPONSE_DEADLINE;
-        let mut frame = serde_json::to_vec(&request)?;
-        frame.push(b'\n');
-        write_ipc_all(&mut stream, &frame, deadline)?;
-        let reply: Reply =
-            serde_json::from_slice(&read_ipc_frame(&mut stream, MAX_RESPONSE_BYTES, deadline)?)?;
-        if reply.request_id.as_deref() != Some(&request.request_id) {
-            return Err(invalid_data("review_reply"));
-        }
-        Ok(reply)
-    };
-    exchange().map_err(|_| Error::Unavailable)?.result
+    super::backup_request::exchange(OPERATION, CAPABILITY, action, IPC_RESPONSE_DEADLINE)
+        .map_err(|_| Error::Unavailable)?
 }
 
 #[cfg(test)]

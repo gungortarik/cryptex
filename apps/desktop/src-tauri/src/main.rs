@@ -454,6 +454,42 @@ async fn m10_note_lifecycle(
         .map_err(|_| cryptexd::ipc::lifecycle::Error::Uncertain)?
 }
 
+fn backup_folder(checkpoint: bool) -> Option<std::path::PathBuf> {
+    #[cfg(feature = "m11-installed-search-check")]
+    {
+        installed_search::selected_folder(checkpoint)
+    }
+    #[cfg(not(feature = "m11-installed-search-check"))]
+    {
+        let title = if checkpoint {
+            "Choose a separate trusted folder for the recovery checkpoint"
+        } else {
+            "Choose a folder for the encrypted backup"
+        };
+        rfd::FileDialog::new().set_title(title).pick_folder()
+    }
+}
+
+#[tauri::command]
+async fn m11_export_backup()
+-> Result<cryptexd::ipc::backup_export::Outcome, cryptexd::ipc::backup_export::Error> {
+    use cryptexd::ipc::backup_export::{Action, Error, Outcome, desktop};
+    tauri::async_runtime::spawn_blocking(|| {
+        if desktop(Action::Inspect)? != Outcome::Ready {
+            return Err(Error::Unavailable);
+        }
+        let Some(target) = backup_folder(false) else {
+            return Ok(Outcome::Cancelled);
+        };
+        let Some(checkpoint) = backup_folder(true) else {
+            return Ok(Outcome::Cancelled);
+        };
+        desktop(Action::Export { target, checkpoint })
+    })
+    .await
+    .map_err(|_| Error::Uncertain)?
+}
+
 #[tauri::command]
 async fn m11_backup_removal(
     action: cryptexd::ipc::backup_removal::Action,
@@ -2664,6 +2700,7 @@ fn main() {
             p0_5_guarded_event_detail,
             m9_attach_file,
             m11_backup_removal,
+            m11_export_backup,
             m10_purge_review,
             m10_note_lifecycle,
             p0_6_materialize_and_open_vault,

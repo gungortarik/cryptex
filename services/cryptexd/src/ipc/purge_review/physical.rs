@@ -111,6 +111,8 @@ pub(crate) fn confirm_fixture(
         #[cfg(target_os = "macos")]
         transport_identity: None,
         isolated_attachment_writer: false,
+        #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+        backup_export: None,
         backup_removal: Default::default(),
         purge_reviews: Some(Arc::default()),
         transport_device_id_override: None,

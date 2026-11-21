@@ -11,6 +11,7 @@ use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
 mod codec;
 mod manual;
+pub(crate) use manual::independent_folders;
 pub mod role;
 
 pub(super) fn snapshot(

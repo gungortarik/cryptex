@@ -21,6 +21,7 @@ path = "src/main.rs"
 cc = "=1.5.1"
 
 [dependencies]
+same-file = "1"
 cryptex-core = { path = "../../crates/core" }
 cryptex-events = { path = "../../crates/events" }
 cryptex-storage = { path = "../../crates/storage" }

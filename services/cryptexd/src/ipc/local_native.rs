@@ -88,6 +88,8 @@ pub(crate) fn serve(
         transport_identity: None,
         #[cfg(test)]
         isolated_attachment_writer: false,
+        #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+        backup_export: None,
         backup_removal: Default::default(),
         #[cfg(test)]
         purge_reviews: None,

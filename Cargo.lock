@@ -933,6 +933,7 @@ dependencies = [
  "libc",
  "quick-xml",
  "reqwest",
+ "same-file",
  "security-framework",
  "serde",
  "serde_json",

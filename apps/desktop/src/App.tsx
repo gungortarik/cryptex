@@ -1,3 +1,4 @@
+import { ManualBackup } from "./ManualBackup";
 import { PurgeReview } from "./PurgeReview";
 import { NoteLifecycle } from "./NoteLifecycle";
 import { NoteAttachment } from "./NoteAttachment";
@@ -1153,6 +1154,7 @@ export function App() {
             {vaultStatus ? <p className="capture-status" role="status">{vaultStatus}</p> : null}
           </section>
 
+          <ManualBackup />
           <ConnectionSettings active={connection === "active"} onApply={() => { setApprovalPrepared(null); setOwnerOperationPrepared(null); }} />
 
           <section className="bootstrap-panel" aria-labelledby="bootstrap-heading">

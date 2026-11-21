@@ -68,7 +68,7 @@ def install_and_run():
                     raise RuntimeError(f"Installed backup {role} differs from the build input")
         env = dict(os.environ, CRYPTEX_M11_INSTALLED_DESKTOP=str(desktop),
                    CRYPTEX_M11_TEST_INSTALLED_CODEC=str(codec))
-        run(str(binary), "--exact", TEST, "--ignored", "--nocapture", env=env, timeout=240)
+        run(str(binary), "--exact", TEST, "--ignored", "--nocapture", env=env, timeout=420)
         print("m11_installed_codec=passed public_recipient=true restored_with_daemon_signature=true", flush=True)
 
 
@@ -82,6 +82,9 @@ def check(desktop, work):
 if __name__ == "__main__":
     if sys.argv[1:] == ["install"]:
         install_and_run()
+    elif len(sys.argv) == 4 and sys.argv[1] == "export":
+        run(sys.argv[2], env=dict(os.environ, CRYPTEX_FILE_FIXTURE_SOCKET=str(uuid.uuid4()),
+                                  CRYPTEX_M11_REOPEN_FIXTURE=sys.argv[3]), timeout=85)
     elif len(sys.argv) == 4 and sys.argv[1] == "check":
         check(*sys.argv[2:])
     else:
