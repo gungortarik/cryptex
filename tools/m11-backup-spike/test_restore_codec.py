@@ -1,6 +1,7 @@
 """Exercise the installed read-only helper with an encrypted, disposable Kit."""
 import io
 import base64
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -32,6 +33,7 @@ class RestoreCodec(unittest.TestCase):
             der, pin = json.loads(subprocess.check_output(["node", "-e", keygen]))
             pin = base64.urlsafe_b64decode(pin + "=")
             brain = os.urandom(32)
+            selection = {"history_sha256": list(os.urandom(32)), "generation": 1, "version": 1}
             kit = io.BytesIO()
             with zipfile.ZipFile(kit, "w") as members:
                 members.writestr("recovery.sec", secret.read_bytes())
@@ -39,17 +41,30 @@ class RestoreCodec(unittest.TestCase):
                 members.writestr("writer.pub", public.read_bytes())
                 members.writestr("brain-identity.sha256", brain)
                 members.writestr("bootstrap.pk8", base64.b64decode(der))
+                members.writestr("selected-backup.json", json.dumps(selection, indent=2))
             locked = subprocess.check_output(NODE + ["lock-kit", unlock], input=kit.getvalue())
             payload = os.urandom(300_001)
             cipher = subprocess.check_output(NODE + ["encrypt", public], input=payload)
             command = ["node", "--permission", "--no-addons", f"--allow-fs-read={library}",
                        f"--allow-fs-read={archive}", entry]
 
-            def verify(expected_brain, measured_size, content, authority=None):
-                scope = b"\0" if authority is None else b"\1" + authority
+            def verify(expected_brain, measured_size, content, authority=None, scope=None):
+                if scope is None:
+                    scope = b"\0" if authority is None else b"\1" + authority
                 header = expected_brain + unlock.read_bytes() + measured_size.to_bytes(8, "big") + scope + locked
                 framed = len(header).to_bytes(4, "big") + header + content
                 return subprocess.run(command, input=framed, capture_output=True, timeout=30)
+
+            canonical = json.dumps(selection, sort_keys=True, separators=(",", ":")).encode()
+            inspect = b"\2" + hashlib.sha256(canonical).digest()
+            result = verify(brain, 1, b"", scope=inspect)
+            self.assertEqual((result.returncode, result.stdout), (0, pin))
+            for identity, extra, scope in [(os.urandom(32), b"", inspect),
+                                           (brain, b"", b"\2" + os.urandom(32)),
+                                           (brain, b"unexpected payload", inspect)]:
+                rejected = verify(identity, 1, extra, scope=scope)
+                self.assertNotEqual(rejected.returncode, 0)
+                self.assertEqual(rejected.stdout, b"")
 
             result = verify(brain, len(cipher), cipher)
             self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))

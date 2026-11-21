@@ -914,6 +914,24 @@ fn restored_note_and_attachment_pass_guarded_reads() {
             &[&sealed_kit, &password, &work.path().join("kit-public")],
         );
         installed_export::check(work.path(), Path::new(&desktop), &kit, &password);
+        let check_volume = work.path().join("first-check");
+        fs::create_dir(&check_volume).unwrap();
+        let selected = check_volume.join("backup.pgp");
+        fs::copy(&backup, &selected).unwrap();
+        for mode in ["first-device-check", "first-device-check-damaged"] {
+            if mode.ends_with("-damaged") {
+                fs::write(&selected, b"truncated").unwrap();
+            }
+            separate_backups::launched(Path::new(&desktop), work.path(), mode, &password, "");
+            let blank = work.path().join("clean-replacement");
+            assert!(blank.is_dir());
+            for leaf in ["identity", "canonical", "recovery"] {
+                assert!(!blank.join(leaf).try_exists().unwrap());
+            }
+        }
+        println!(
+            "m11_blank_recovery_check=passed authenticated_kit=true damaged=denied profile_writes=none"
+        );
     }
 
     let selection: crate::backup_inventory::RecoverySelection =

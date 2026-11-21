@@ -62,7 +62,7 @@ pub(crate) fn reconstruct_files(
         checkpoint.parent().ok_or(Error::Checkpoint)?,
     )?;
     let bytes = read_selected(checkpoint, 32768)?;
-    let keys = KitFiles { codec, kit, unlock };
+    let keys = KitFiles::load(codec, kit, unlock)?;
     if let Ok(selected) = serde_json::from_slice::<RecoverySelection>(&bytes) {
         let (file, _) = open_recovery_source(backup).map_err(|_| Error::Archive)?;
         return Ok(vec![open_file(&keys, file, &selected, None, scratch)?]);
@@ -102,8 +102,91 @@ pub(crate) fn reconstruct_files(
 
 struct KitFiles<'a> {
     codec: &'a Path,
-    kit: &'a Path,
-    unlock: &'a Path,
+    kit: Vec<u8>,
+    unlock: Vec<u8>,
+}
+
+impl<'a> KitFiles<'a> {
+    fn load(codec: &'a Path, kit: &Path, unlock: &Path) -> Result<Self, Error> {
+        let credential = read_selected(unlock, 128)?;
+        let password = credential.trim_ascii();
+        if password.len() != 64
+            || !password
+                .iter()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        {
+            return Err(Error::Credentials);
+        }
+        Ok(Self {
+            codec,
+            kit: read_selected(kit, 256 * 1024)?,
+            unlock: credential,
+        })
+    }
+
+    fn header(
+        &self,
+        identity: &[u8; 32],
+        limit: u64,
+        mode: u8,
+        proof: Option<&[u8; 32]>,
+    ) -> Vec<u8> {
+        let mut header = identity.to_vec();
+        header.extend_from_slice(self.unlock.trim_ascii());
+        header.extend_from_slice(&limit.to_be_bytes());
+        header.push(mode);
+        if let Some(bytes) = proof {
+            header.extend_from_slice(bytes);
+        }
+        header.extend_from_slice(&self.kit);
+        header
+    }
+}
+
+/// Inspect the Kit-selected first-device generation without an enrolled profile.
+/// Reconstruct and verify the same frozen ciphertext whose hash is returned.
+pub(crate) fn inspect_first_archive(
+    codec: &Path,
+    files: &crate::ipc::backup_verify::Selection,
+) -> Result<(String, String, String), Error> {
+    use sha2::{Digest, Sha256};
+    independent_folders(
+        files.backup.parent().ok_or(Error::Checkpoint)?,
+        files.checkpoint.parent().ok_or(Error::Checkpoint)?,
+    )?;
+    let selected: RecoverySelection =
+        serde_json::from_slice(&read_selected(&files.checkpoint, 32768)?)
+            .map_err(|_| Error::Checkpoint)?;
+    let writer = selected.writer()?;
+    let expected = selected.checkpoint(&writer)?;
+    if expected.generation > (1u64 << 53) - 1 {
+        return Err(Error::Checkpoint);
+    }
+    let selection_hash =
+        Sha256::digest(serde_json_canonicalizer::to_vec(&selected).map_err(|_| Error::Checkpoint)?)
+            .into();
+    let keys = KitFiles::load(codec, &files.kit, &files.unlock)?;
+    let header = keys.header(&expected.brain_identity_sha256, 1, 2, Some(&selection_hash));
+    let pin = codec::kit_public_pin(codec, &header)?;
+    let (frozen, hash) = super::paired::freeze_cipher(&files.backup)?;
+    let mut private = tempfile::Builder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        private.permissions(std::fs::Permissions::from_mode(0o700));
+    }
+    let scratch = private
+        .prefix("cryptex-recovery-check-")
+        .tempdir()
+        .map_err(|_| Error::Archive)?;
+    let profile = open_file(&keys, frozen, &selected, Some(&pin), scratch.path())?;
+    profile.close().map_err(|_| Error::Archive)?;
+    scratch.close().map_err(|_| Error::Archive)?;
+    Ok((
+        expected.brain_id.to_owned(),
+        format!("{:x}", Sha256::digest(pin)),
+        format!("{:x}", sha2::digest::Output::<Sha256>::from(hash)),
+    ))
 }
 
 fn open_file(
@@ -116,25 +199,14 @@ fn open_file(
     let writer = selected.writer()?;
     let expected = selected.checkpoint(&writer)?;
     let before = source_snapshot(&file).map_err(|_| Error::Archive)?;
-    let mut header = expected.brain_identity_sha256.to_vec();
-    let credential = read_selected(keys.unlock, 128)?;
-    let password = credential.trim_ascii();
-    if password.len() != 64
-        || !password
-            .iter()
-            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-    {
-        return Err(Error::Credentials);
-    }
-    header.extend_from_slice(password);
     // Manual exports use a stored ZIP and uncompressed OpenPGP payload. Its
     // plaintext cannot exceed this particular ciphertext's measured length.
-    header.extend_from_slice(&before.length.to_be_bytes());
-    header.push(u8::from(signing_key.is_some()));
-    if let Some(key) = signing_key {
-        header.extend_from_slice(key);
-    }
-    header.extend(read_selected(keys.kit, 256 * 1024)?);
+    let header = keys.header(
+        &expected.brain_identity_sha256,
+        before.length,
+        u8::from(signing_key.is_some()),
+        signing_key,
+    );
     let plain = codec::decrypt_manual(
         keys.codec,
         &header,

@@ -49,6 +49,13 @@ pub(super) fn writer_folder(create: bool) -> Option<PathBuf> {
 pub(super) fn verification_file(title: &str) -> Option<PathBuf> {
     let work = PathBuf::from(std::env::var_os("CRYPTEX_M11_REOPEN_FIXTURE")?);
     match title {
+        "Select the first-device recovery backup" => Some(work.join("first-check/backup.pgp")),
+        "Select its checkpoint from your separate trusted folder"
+            if std::env::var("CRYPTEX_M11_INSTALLED_EXPORT")
+                .is_ok_and(|m| m.starts_with("first-device-check")) =>
+        {
+            Some(work.join("kit/selected-backup.json"))
+        }
         "Select the signed first-device approval" => Some(work.join("public-challenges").join(
             if std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").as_deref() == Ok("first-device-wrong")
             {
@@ -145,7 +152,12 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
         Some("first-device-export" | "first-device-wrong" | "first-device-import") => {
             "replacement/identity/brain_identity.json"
         }
-        Some("verify-pair" | "verify-pair-missing") => "offline-kit.pgp",
+        Some(
+            "verify-pair"
+            | "verify-pair-missing"
+            | "first-device-check"
+            | "first-device-check-damaged",
+        ) => "offline-kit.pgp",
         Some(
             "verify"
             | "verify-cancel"

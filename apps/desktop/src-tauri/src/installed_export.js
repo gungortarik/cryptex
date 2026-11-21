@@ -10,12 +10,16 @@
         const section = document.querySelector("[data-first-device-recovery]");
         if (section) {
           section.open = true;
-          const label = mode === "first-device-export" ? "Save public request" : "Import signed approval";
+          const label = mode.startsWith("first-device-check") ? "Check Kit and backup" :
+            mode === "first-device-export" ? "Save public request" : "Import signed approval";
           const button = [...section.querySelectorAll("button")].find(el => el.textContent === label);
           if (!clicked && button && !button.disabled) { clicked = true; button.click(); }
           const status = section.querySelector('[role="status"]')?.textContent;
           if (status) {
-            visible = mode === "first-device-export" ? status === "Public recovery request saved." &&
+            visible = mode === "first-device-check" ? status === "Recovery Kit and backup verified." &&
+              section.querySelectorAll("dd").length === 3 :
+              mode === "first-device-check-damaged" ? status.startsWith("Cryptex could not verify") :
+              mode === "first-device-export" ? status === "Public recovery request saved." &&
               /[0-9a-f]{64}/.test(section.querySelector("dl")?.textContent ?? "") :
               mode === "first-device-wrong" ? status.startsWith("Cryptex could not verify") :
               status === "Signed approval verified for this device.";

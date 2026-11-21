@@ -1,11 +1,11 @@
 // Offline, owner-invoked sandbox verification. The sealed Kit and credential
-// arrive on stdin. Only the decrypted backup envelope can leave this process.
+// arrive on stdin. A Kit inspection returns only its public bootstrap key.
 "use strict";
 const pgp = require("./openpgp.min.cjs");
 const { unzipSync } = require("./fflate.cjs");
 const { Readable, Transform } = require("node:stream");
 const { pipeline } = require("node:stream/promises");
-const {createPrivateKey, createPublicKey} = require("node:crypto");
+const {createHash, createPrivateKey, createPublicKey} = require("node:crypto");
 
 const kitLimit = 128 * 1024;
 const required = ["brain-identity.sha256", "recovery.sec", "recovery.pub", "writer.pub", "bootstrap.pk8"];
@@ -57,18 +57,33 @@ async function restore() {
   const limit = Number(header.readBigUInt64BE(96));
   if (!Number.isSafeInteger(limit) || limit <= 0) throw new Error("Invalid backup length");
   const paired = header[104] === 1;
-  if (!paired && header[104] !== 0) throw new Error("Unknown recovery scope");
-  const kit = await pgp.decrypt({message: await authenticatedMessage(header.subarray(paired ? 137 : 105)),
+  const inspect = header[104] === 2;
+  if (!paired && !inspect && header[104] !== 0) throw new Error("Unknown recovery scope");
+  const kit = await pgp.decrypt({message: await authenticatedMessage(header.subarray(paired || inspect ? 137 : 105)),
     passwords: [password], format: "binary", config: {maxDecompressedMessageSize: kitLimit}});
   const members = unpackKit(kit.data);
-  if (paired) {
+  if (!header.subarray(0, 32).equals(members["brain-identity.sha256"])) throw new Error("Wrong Brain");
+  if (paired || inspect) {
     const bootstrap = createPrivateKey({key: Buffer.from(members["bootstrap.pk8"]),format:"der",type:"pkcs8"});
     const pub = createPublicKey(bootstrap).export({format:"jwk"});
-    if (pub.crv !== "Ed25519" || !header.subarray(105,137).equals(Buffer.from(pub.x, "base64url"))) {
+    if (pub.crv !== "Ed25519") throw new Error("Invalid bootstrap key");
+    const pin = Buffer.from(pub.x, "base64url");
+    if (inspect) {
+      // Rust hashes the canonical, typed selection. Its fields are ASCII
+      // identifiers, unsigned integers and byte arrays, with no nested objects.
+      const selection = JSON.parse(Buffer.from(members["selected-backup.json"]).toString("utf8"));
+      if (!Number.isSafeInteger(selection.generation) || selection.generation < 1 ||
+          limit !== 1 || rest.length || !(await input.next()).done) throw new Error("Invalid checkpoint");
+      const canonical = JSON.stringify(selection, Object.keys(selection).sort());
+      const digest = createHash("sha256").update(canonical).digest();
+      if (!header.subarray(105,137).equals(digest)) throw new Error("Wrong checkpoint");
+      process.stdout.end(pin);
+      return;
+    }
+    if (!header.subarray(105,137).equals(pin)) {
       throw new Error("Wrong first-device authority");
     }
   }
-  if (!header.subarray(0, 32).equals(members["brain-identity.sha256"])) throw new Error("Wrong Brain");
   const key = await pgp.readPrivateKey({armoredKey: Buffer.from(members["recovery.sec"]).toString("utf8")});
   const recipients = await pgp.readKeys({armoredKeys: Buffer.from(members["recovery.pub"]).toString("utf8")});
   if (recipients.length !== 1 || recipients[0].isPrivate() || !Buffer.from(key.toPublic().write()).equals(recipients[0].write())) {

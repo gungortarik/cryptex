@@ -562,10 +562,20 @@ async fn m11_backup_writer(
 #[tauri::command]
 async fn m11_first_device(
     import: bool,
+    inspect: Option<bool>,
 ) -> Result<cryptexd::ipc::first_device::Outcome, cryptexd::ipc::first_device::Error> {
     use cryptexd::ipc::first_device::{self, Action, Error, Outcome};
     tauri::async_runtime::spawn_blocking(move || {
-        let action = if import {
+        let action = if inspect == Some(true) {
+            if import {
+                return Err(Error::InvalidSelection);
+            }
+            let Some(files) = backup_verification_files("Select the first-device recovery backup")
+            else {
+                return Ok(Outcome::Cancelled);
+            };
+            Action::Inspect { files }
+        } else if import {
             let Some(approval) = backup_input_file("Select the signed first-device approval")
             else {
                 return Ok(Outcome::Cancelled);

@@ -91,6 +91,18 @@ pub(super) fn decrypt_manual(
     run_codec(directory, header, Some(cipher), Operation::Restore)
 }
 
+pub(super) fn kit_public_pin(directory: &Path, header: &[u8]) -> Result<[u8; 32], Error> {
+    let output = run_codec(directory, header, None, Operation::Restore)?;
+    let mut file = output.reopen().map_err(|_| Error::Codec)?;
+    if file.metadata().map_err(|_| Error::Codec)?.len() != 32 {
+        return Err(Error::Credentials);
+    }
+    let mut pin = [0; 32];
+    file.read_exact(&mut pin).map_err(|_| Error::Codec)?;
+    ed25519_dalek::VerifyingKey::from_bytes(&pin).map_err(|_| Error::Credentials)?;
+    Ok(pin)
+}
+
 #[derive(Clone, Copy)]
 enum Operation {
     Encrypt,

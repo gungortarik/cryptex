@@ -86,6 +86,14 @@ impl Pair {
 }
 
 pub(super) fn copy_verified_cipher(path: &Path, expected: [u8; 32]) -> Result<fs::File, Error> {
+    let (frozen, hash) = freeze_cipher(path)?;
+    if hash != expected {
+        return Err(Error::RecoveryHistory);
+    }
+    Ok(frozen)
+}
+
+pub(super) fn freeze_cipher(path: &Path) -> Result<(fs::File, [u8; 32]), Error> {
     let (mut source, before) = open_recovery_source(path).map_err(|_| Error::RecoveryHistory)?;
     if before.length == 0 {
         return Err(Error::RecoveryHistory);
@@ -100,11 +108,8 @@ pub(super) fn copy_verified_cipher(path: &Path, expected: [u8; 32]) -> Result<fs
     frozen.rewind().map_err(|_| Error::Archive)?;
     let mut hash = Sha256::new();
     io::copy(&mut frozen, &mut hash).map_err(|_| Error::Archive)?;
-    if <[u8; 32]>::from(hash.finalize()) != expected {
-        return Err(Error::RecoveryHistory);
-    }
     frozen.rewind().map_err(|_| Error::Archive)?;
-    Ok(frozen)
+    Ok((frozen, hash.finalize().into()))
 }
 
 pub(crate) struct Destination<'a> {

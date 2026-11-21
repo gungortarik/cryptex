@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useRef, useState } from "react";
 
 type Result = { kind: "challenge"; file: string; device: string; fingerprint: string }
+  | { kind: "archive_verified"; brain: string; kit: string; backup_sha256: string }
   | { kind: "accepted" | "cancelled" };
 
 export function FirstDeviceRecovery() {
@@ -9,15 +10,20 @@ export function FirstDeviceRecovery() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [request, setRequest] = useState<Extract<Result, { kind: "challenge" }> | null>(null);
-  async function exchange(importApproval: boolean) {
+  const [archive, setArchive] = useState<Extract<Result, { kind: "archive_verified" }> | null>(null);
+  async function exchange(action: "inspect" | "export" | "import") {
     if (pending.current) return;
     pending.current = true;
     setBusy(true);
     setRequest(null);
+    setArchive(null);
     setStatus("");
     try {
-      const result = await invoke<Result>("m11_first_device", { import: importApproval });
-      if (result.kind === "challenge") {
+      const result = await invoke<Result>("m11_first_device", { import: action === "import", inspect: action === "inspect" });
+      if (result.kind === "archive_verified") {
+        setArchive(result);
+        setStatus("Recovery Kit and backup verified.");
+      } else if (result.kind === "challenge") {
         setRequest(result);
         setStatus("Public recovery request saved.");
       } else {
@@ -35,9 +41,15 @@ export function FirstDeviceRecovery() {
   return <details data-first-device-recovery>
     <summary>Recover the first device</summary>
     <p>Save the request for your prepared replacement profile. In the offline Recovery Kit, compare the device ID and key fingerprint before signing.</p>
-    <button type="button" disabled={busy} onClick={() => void exchange(false)}>Save public request</button>
-    <button type="button" disabled={busy} onClick={() => void exchange(true)}>Import signed approval</button>
+    <button type="button" disabled={busy} onClick={() => void exchange("inspect")}>Check Kit and backup</button>
+    <button type="button" disabled={busy} onClick={() => void exchange("export")}>Save public request</button>
+    <button type="button" disabled={busy} onClick={() => void exchange("import")}>Import signed approval</button>
     {status && <p role="status">{status}</p>}
+    {archive && <dl>
+      <dt>Brain ID</dt><dd>{archive.brain}</dd>
+      <dt>Recovery Kit ID</dt><dd>{archive.kit}</dd>
+      <dt>Backup SHA-256</dt><dd>{archive.backup_sha256}</dd>
+    </dl>}
     {request && <dl>
       <dt>Request file</dt><dd>{request.file}</dd>
       <dt>New device ID</dt><dd>{request.device}</dd>
