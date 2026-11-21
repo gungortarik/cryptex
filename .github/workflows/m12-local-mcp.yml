@@ -85,6 +85,9 @@ jobs:
           $claude = Join-Path $tools "node_modules/$pkg/$exe"
           $config = Join-Path (Split-Path $env:M12_INSTALLED_STDIO) 'client-config.mjs'
           python tools/local-mcp/test/vendor-clients.py $tools $config $claude
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $agy = if ($IsWindows) { 'agy.exe' } else { 'agy' }
+          python tools/local-mcp/test/antigravity-acp.py (Join-Path $tools $agy) $env:M12_INSTALLED_STDIO
           exit $LASTEXITCODE
       - run: cargo fmt --all -- --check
       - name: Exercise stdio and the native daemon dispatcher in a disposable profile
