@@ -6,6 +6,7 @@ license.workspace = true
 publish = false
 
 [features]
+m14-login-check = ["tauri/custom-protocol"]
 m13-shell-check = ["tauri/custom-protocol", "cryptexd/disposable-ipc"]
 m11-installed-search-check = ["tauri/custom-protocol", "cryptexd/m11-installed-search-check"]
 m8-device-recovery-check = ["tauri/custom-protocol", "cryptexd/m8-start-inspection"]

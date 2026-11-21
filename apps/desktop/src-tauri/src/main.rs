@@ -33,6 +33,8 @@ mod development_launch;
 #[cfg(feature = "m8-device-recovery-check")]
 mod device_recovery;
 mod frontend_build_mode;
+#[cfg(feature = "m14-login-check")]
+mod login_check;
 mod pilot_runtime;
 #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
 mod protected_assets;
@@ -2965,6 +2967,11 @@ fn local_signed_startup_check() -> Option<Result<(), String>> {
 mod installed_search;
 
 fn main() {
+    #[cfg(feature = "m14-login-check")]
+    if let Err(error) = login_check::record_attempt() {
+        eprintln!("Login test refused: {error}");
+        std::process::exit(2);
+    }
     #[cfg(feature = "m11-installed-search-check")]
     if cfg!(feature = "m11-installed-search-check") {
         std::process::exit(installed_search::run());
@@ -3192,6 +3199,8 @@ fn main() {
             {
                 window.hide()?;
             }
+            #[cfg(feature = "m14-login-check")]
+            login_check::observe(app.handle())?;
             spawn_control_file_watcher(app.handle().clone(), probe_state.clone());
             Ok(())
         })
