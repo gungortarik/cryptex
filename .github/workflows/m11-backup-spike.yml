@@ -129,6 +129,8 @@ jobs:
           cargo test --locked -p cryptexd --lib "${features[@]}" ipc::purge_review::backup_test::verified_backup_preserves_purge_and_unaffected_notes -- --exact --ignored --nocapture | tee "$RUNNER_TEMP/m11-purge-backup.txt"
           grep -F '1 passed; 0 failed' "$RUNNER_TEMP/m11-purge-backup.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_backup_removal_ui=passed cancelled=kept confirmed=removed replay=denied replacement=restored' "$RUNNER_TEMP/m11-purge-backup.txt" >> "$GITHUB_STEP_SUMMARY"
+          cargo test --locked -p cryptexd --lib "${features[@]}" knowledge_materialization::pairing_recovery_tests::m11_backup_read::public_kit_allows_ordinary_backup_but_partial_recovery_holds -- --exact | tee "$RUNNER_TEMP/m11-public-kit.txt"
+          grep -F '1 passed; 0 failed' "$RUNNER_TEMP/m11-public-kit.txt" >> "$GITHUB_STEP_SUMMARY"
           cargo test --locked -p cryptexd --lib "${features[@]}" ipc::backup_removal::tests
           cargo test --locked -p cryptexd --lib "${features[@]}" backup_scheduler::journal::tests
           cargo test --locked -p cryptexd --lib "${features[@]}" knowledge_materialization::pairing_recovery_tests::m11_backup_read::a_forgotten_notes_attachment_survives_backup_reconstruction -- --exact | tee "$RUNNER_TEMP/m11-forgotten-attachment.txt"

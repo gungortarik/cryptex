@@ -10,6 +10,57 @@ use std::process::Command;
 mod first_device;
 
 #[test]
+fn public_kit_allows_ordinary_backup_but_partial_recovery_holds() {
+    use super::super::{backup, recovered_search};
+    use crate::recovery_store::{
+        recovery_dir, recovery_public_metadata_path, write_recovery_public_metadata,
+    };
+    use cryptex_core::{RecoveryKitPublicMetadata, RecoveryPurpose};
+    let profiles = PairProfiles::new();
+    let root = &profiles.profiles[0];
+    let device = &profiles.devices[0];
+    let env = SecureStoreEnvironment::Dev;
+    let mode = || recovered_search::for_profile(root, BRAIN, device, &profiles.store, env);
+    let prepare = || backup::prepare(root, &profiles.store, env, 1);
+    let public =
+        RecoveryKitPublicMetadata::new("offline-kit", BRAIN, vec![RecoveryPurpose::BackupDecrypt])
+            .unwrap();
+    write_recovery_public_metadata(root, &public).unwrap();
+    assert!(matches!(mode(), Ok(None)));
+    assert!(prepare().is_ok());
+    let folder = recovery_dir(root);
+    for name in ["first-device.json", "archive", "unknown"] {
+        let extra = folder.join(name);
+        fs::create_dir(&extra).unwrap();
+        assert!(matches!(
+            mode(),
+            Err(recovered_search::SearchHold::Approval)
+        ));
+        assert!(matches!(
+            prepare(),
+            Err(crate::backup_inventory::Error::RecoveryHistory)
+        ));
+        fs::remove_dir(extra).unwrap();
+    }
+    let metadata_path = recovery_public_metadata_path(root);
+    let original = fs::read(&metadata_path).unwrap();
+    let mut other = public.clone();
+    other.brain_id = "ba890321-c7ff-4679-bf0c-78288db36218".into();
+    write_recovery_public_metadata(root, &other).unwrap();
+    assert!(matches!(
+        mode(),
+        Err(recovered_search::SearchHold::Approval)
+    ));
+    fs::write(&metadata_path, b"broken").unwrap();
+    assert!(matches!(
+        mode(),
+        Err(recovered_search::SearchHold::Approval)
+    ));
+    fs::write(&metadata_path, original).unwrap();
+    assert!(matches!(mode(), Ok(None)));
+}
+
+#[test]
 fn a_forgotten_notes_attachment_survives_backup_reconstruction() {
     use super::super::backup;
     let profiles = PairProfiles::new();

@@ -160,6 +160,36 @@ fn read_metadata(path: &Path, limit: u64) -> Result<Vec<u8>, Denial> {
     Ok(data)
 }
 
+// Ordinary enrolled devices can have M1 public Kit metadata in this same
+// directory. It identifies the Brain but supplies no recovery authority.
+fn check_unbound_directory(root: &Path, brain: &str) -> Result<(), SearchHold> {
+    use crate::recovery_store::{recovery_dir, recovery_public_metadata_path};
+    let directory = recovery_dir(root);
+    match fs::symlink_metadata(&directory) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Ok(meta) if meta.is_dir() && !is_link_or_reparse(&meta) => {}
+        _ => return Err(SearchHold::Approval),
+    }
+    let path = recovery_public_metadata_path(root);
+    let bytes = read_metadata(&path, 16 * 1024).map_err(|_| SearchHold::Approval)?;
+    let text = std::str::from_utf8(&bytes).map_err(|_| SearchHold::Approval)?;
+    let public = RecoveryKitPublicMetadata::from_json(text).map_err(|_| SearchHold::Approval)?;
+    let lock = path.with_extension("json.lock");
+    let mut found = false;
+    for entry in fs::read_dir(&directory).map_err(|_| SearchHold::Approval)? {
+        let entry = entry.map_err(|_| SearchHold::Approval)?.path();
+        if entry == path {
+            found = true;
+        } else if entry != lock || read_metadata(&entry, 0).is_err() {
+            return Err(SearchHold::Approval);
+        }
+    }
+    if !found || public.brain_id != brain || !plain_directory(&directory) {
+        return Err(SearchHold::Approval);
+    }
+    Ok(())
+}
+
 // Only an authenticated restore may provision this independent device credential.
 // Missing or damaged recovery state must never silently downgrade to local-only hits.
 pub(crate) fn for_profile(
@@ -175,10 +205,8 @@ pub(crate) fn for_profile(
     let bytes = match store.get(service.as_str(), account.as_str()) {
         Ok(bytes) => bytes,
         Err(SecureStoreError::Missing) => {
-            return match fs::symlink_metadata(folder) {
-                Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
-                _ => Err(SearchHold::Approval),
-            };
+            check_unbound_directory(root, brain)?;
+            return Ok(None);
         }
         Err(_) => return Err(SearchHold::Approval),
     };
