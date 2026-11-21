@@ -33,10 +33,15 @@ function check(result, ok) {
   assert.deepEqual(result.content, [{ type: "text", text: ok ? "daemon_responding" : "daemon_unavailable" }]);
 }
 
-test("normal stdio entry negotiates and advertises only health without contacting a profile", async (t) => {
+test("normal stdio entry advertises the read-only tools without contacting a profile", async (t) => {
   const client = await connect(t, [stdio]);
   assert.deepEqual(Object.keys(client.getServerCapabilities()), ["tools"]);
-  assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name), [health.name]);
+  assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name), [health.name, "cryptex_search_public_notes"]);
+  for (const args of [{}, { phrase: "  " }, { phrase: "é".repeat(513) },
+    { phrase: "x", classification: "private" }, { phrase: "x", role: "desktop" }]) {
+    await assert.rejects(client.callTool({ name: "cryptex_search_public_notes", arguments: args }),
+      { code: ErrorCode.InvalidParams });
+  }
   for (const name of ["purge", "recovery", "search", "capture", "owner.security"]) {
     await assert.rejects(client.callTool({ name }), { code: ErrorCode.InvalidParams });
   }

@@ -6,12 +6,16 @@ on:
       - 'tools/local-mcp/**'
       - 'services/cryptexd/src/ipc.rs'
       - 'services/cryptexd/src/ipc/m12_health_tests.rs'
+      - 'services/cryptexd/src/ipc/public_context.rs'
+      - 'services/cryptexd/src/knowledge_materialization/ai_context.rs'
       - '.github/workflows/m12-local-mcp.yml'
   pull_request:
     paths:
       - 'tools/local-mcp/**'
       - 'services/cryptexd/src/ipc.rs'
       - 'services/cryptexd/src/ipc/m12_health_tests.rs'
+      - 'services/cryptexd/src/ipc/public_context.rs'
+      - 'services/cryptexd/src/knowledge_materialization/ai_context.rs'
       - '.github/workflows/m12-local-mcp.yml'
 
 permissions:
@@ -36,5 +40,5 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cargo test --locked -p cryptexd --lib ipc::m12_health_tests::native_stdio_bridge -- --exact --ignored --nocapture | tee "$RUNNER_TEMP/m12-stdio.txt"
-          grep -F '1 passed; 0 failed' "$RUNNER_TEMP/m12-stdio.txt"
+          cargo test --locked -p cryptexd --lib ipc::m12_health_tests:: -- --ignored --nocapture | tee "$RUNNER_TEMP/m12-stdio.txt"
+          grep -F '2 passed; 0 failed' "$RUNNER_TEMP/m12-stdio.txt"

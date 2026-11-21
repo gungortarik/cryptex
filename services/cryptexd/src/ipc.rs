@@ -19,6 +19,7 @@ pub mod backup_verify;
 pub mod backup_writer;
 pub mod first_device;
 pub mod lifecycle;
+mod public_context;
 pub mod purge_review;
 
 use std::collections::HashMap;
@@ -614,6 +615,7 @@ pub fn spawn_retrieval_server(
         operation: None,
         store,
         environment,
+        public_reader: None,
         expected_desktop: Arc::new(expected_desktop),
         projection_sync: None,
         #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
@@ -727,6 +729,7 @@ fn spawn_daemon_ipc_server_inner(
         operation: None,
         store,
         environment,
+        public_reader: None,
         expected_desktop: Arc::new(expected_desktop),
         projection_sync: None,
         #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
@@ -761,6 +764,7 @@ struct SearchContext {
     operation: Option<crate::runtime_admission::OperationPermit>,
     store: Arc<dyn SecureStore>,
     environment: SecureStoreEnvironment,
+    public_reader: Option<Arc<Mutex<process::Child>>>,
     expected_desktop: Arc<DesktopProcessIdentity>,
     projection_sync: Option<SyncSender<()>>,
     #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
@@ -2282,6 +2286,9 @@ fn handle_connection_via(
     let operation = serde_json::from_slice::<Operation>(&frame)
         .ok()
         .map(|header| header.operation);
+    if operation.as_deref() == Some(public_context::OPERATION) {
+        return public_context::respond(stream, search, &frame);
+    }
     if operation.as_deref() == Some(backup_writer::OPERATION) {
         let reply = backup_writer::handle(&frame, search, peer_is_desktop);
         return write_response(
@@ -6187,6 +6194,7 @@ pub(crate) mod tests {
             operation: None,
             store,
             environment: SecureStoreEnvironment::Dev,
+            public_reader: None,
             expected_desktop: Arc::new(test_connected_process_identity()),
             projection_sync: None,
             #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
@@ -6509,6 +6517,7 @@ pub(crate) mod tests {
             runtime_root: missing_root,
             store: Arc::new(FakeSecureStore::new()),
             environment: SecureStoreEnvironment::Dev,
+            public_reader: None,
             expected_desktop: Arc::new(
                 test_desktop_process_identity().expect("capture test Desktop identity"),
             ),
@@ -7567,6 +7576,7 @@ pub(crate) mod tests {
             runtime_root: root.clone(),
             store: store.clone(),
             environment: SecureStoreEnvironment::Dev,
+            public_reader: None,
             expected_desktop: Arc::new(
                 test_desktop_process_identity().expect("capture test Desktop identity"),
             ),
@@ -7813,6 +7823,7 @@ pub(crate) mod tests {
             operation: None,
             store: store.clone(),
             environment: SecureStoreEnvironment::Dev,
+            public_reader: None,
             expected_desktop: Arc::new(test_connected_process_identity()),
             projection_sync: None,
             #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
@@ -8519,6 +8530,7 @@ pub(crate) mod tests {
             runtime_root: root.clone(),
             store,
             environment: SecureStoreEnvironment::Dev,
+            public_reader: None,
             expected_desktop: Arc::new(
                 test_desktop_process_identity().expect("desktop parent identity"),
             ),
@@ -8566,6 +8578,7 @@ pub(crate) mod tests {
             runtime_root: root.clone(),
             store,
             environment: SecureStoreEnvironment::Dev,
+            public_reader: None,
             expected_desktop: Arc::new(
                 test_desktop_process_identity().expect("desktop parent identity"),
             ),
@@ -8806,6 +8819,7 @@ pub(crate) mod tests {
             runtime_root: root.clone(),
             store,
             environment: SecureStoreEnvironment::Dev,
+            public_reader: None,
             expected_desktop: Arc::new(
                 test_desktop_process_identity().expect("desktop parent identity"),
             ),

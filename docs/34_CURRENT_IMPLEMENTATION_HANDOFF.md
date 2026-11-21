@@ -2,10 +2,11 @@
 
 ## M12 local MCP
 
-The owner authorized M12 after M11 closed. The first slice exposes a local
-stdio health tool with only the daemon's `mcp` role and `status.read`
-capability. Native CI exercises the bridge with disposable profiles. The next
-step is a daemon-authorized, classification-filtered read. [Bridge and test scope](../tools/local-mcp/README.md)
+The local stdio bridge provides health and a public-note search. The daemon
+requires an approved live bridge process for the current profile and a fresh
+verified public-note read. Only disposable profiles provision a read grant.
+Owner-controlled grant provisioning for installed clients is still open.
+[Bridge and native tests](../tools/local-mcp/README.md)
 
 ## M11 closure
 

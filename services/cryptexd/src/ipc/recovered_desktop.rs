@@ -112,6 +112,7 @@ fn serve(
         operation: None,
         store,
         environment: SecureStoreEnvironment::Dev,
+        public_reader: None,
         expected_desktop: Arc::new(desktop),
         projection_sync: None,
         #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]

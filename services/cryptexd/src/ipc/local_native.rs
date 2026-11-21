@@ -79,6 +79,7 @@ pub(crate) fn serve(
         environment: SecureStoreEnvironment::Dev,
         // The native connection, not this legacy PID holder, authenticates
         // every exact request. This field only freezes existing domain context.
+        public_reader: None,
         expected_desktop: Arc::new(DesktopProcessIdentity {
             pid: unsafe { libc::getppid() } as u32,
         }),

@@ -10,44 +10,48 @@ export function localEndpoint() {
   throw new Error("Unsupported platform");
 }
 
-export async function probeHealth(endpoint) {
+export async function exchange(endpoint, fields, maxBytes, timeout) {
   if (process.platform === "darwin") {
     const parent = await lstat(dirname(endpoint));
     if (!parent.isDirectory() || parent.uid !== process.getuid() || (parent.mode & 0o077) !== 0) {
-      return false;
+      return null;
     }
-    if (!(await lstat(endpoint)).isSocket()) return false;
+    if (!(await lstat(endpoint)).isSocket()) return null;
   }
   const requestId = randomUUID();
   const request = {
     protocol_version: 1, request_id: requestId, client_role: "mcp",
-    capabilities: ["status.read"], operation: "health.ping",
+    ...fields,
   };
   return new Promise((resolve) => {
     const socket = createConnection({ path: endpoint });
-    const timer = setTimeout(() => finish(false), 2000);
+    const timer = setTimeout(() => finish(null), timeout);
     let frame = Buffer.alloc(0);
     function finish(ok) {
       clearTimeout(timer);
       socket.destroy();
       resolve(ok);
     }
-    socket.once("error", () => finish(false));
-    socket.once("close", () => finish(false));
+    socket.once("error", () => finish(null));
+    socket.once("close", () => finish(null));
     socket.once("connect", () => socket.write(JSON.stringify(request) + "\n"));
     socket.on("data", (chunk) => {
-      if (frame.length + chunk.length > 4096) return finish(false);
+      if (frame.length + chunk.length > maxBytes) return finish(null);
       frame = Buffer.concat([frame, chunk]);
       const end = frame.indexOf(10);
       if (end < 0) return;
       try {
-        const pong = JSON.parse(frame.subarray(0, end).toString("utf8"));
-        finish(pong.protocol_version === 1 && pong.request_id === requestId &&
-          pong.operation === "health.pong" && pong.accepted === true && pong.error === null &&
-          Number.isSafeInteger(pong.daemon_pid) && pong.daemon_pid > 0);
+        const reply = JSON.parse(frame.subarray(0, end).toString("utf8"));
+        finish(reply?.protocol_version === 1 && reply.request_id === requestId ? reply : null);
       } catch {
-        finish(false);
+        finish(null);
       }
     });
   });
+}
+
+export async function probeHealth(endpoint) {
+  const pong = await exchange(endpoint, { capabilities: ["status.read"], operation: "health.ping" }, 4096, 2000);
+  return pong?.operation === "health.pong" && pong.accepted === true && pong.error === null &&
+    Number.isSafeInteger(pong.daemon_pid) && pong.daemon_pid > 0;
 }
