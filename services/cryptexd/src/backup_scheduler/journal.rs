@@ -175,7 +175,12 @@ impl<'a> DeviceJobs<'a> {
             Some(job) if job.role_head == Some(head) && job.prior.parent() == Some(target) => job,
             _ => {
                 let marker = target.join("backup-target.id");
-                self.enqueue(&marker, generation_digest(&marker)?, 1)?;
+                let assignment = self.role().reopen(target).map_err(super::role_error)?;
+                let number = assignment
+                    .reserved_through()
+                    .checked_add(1)
+                    .ok_or_else(|| io::Error::other("generation overflow"))?;
+                self.enqueue(&marker, generation_digest(&marker)?, number)?;
                 self.load()?
                     .ok_or_else(|| io::Error::other("missing scheduled job"))?
             }
@@ -413,6 +418,8 @@ impl<'a> DeviceJobs<'a> {
                         "prior backup changed",
                     ));
                 }
+                role.reserve_generation(&target, job.generation)
+                    .map_err(super::role_error)?;
                 match generation_digest(&output) {
                     Ok(actual) if job.phase == Phase::Prepared(actual) => {
                         cryptex_storage::durability::sync_parent_directory(&output)

@@ -497,6 +497,8 @@ fn confirm_backup_recipient(digest: &str) -> bool {
     }
 }
 
+mod writer_handoff;
+
 #[derive(serde::Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 enum WriterCommand {
@@ -506,6 +508,10 @@ enum WriterCommand {
     Retain,
     Verify,
     PrepareRemoval,
+    ShareWriter,
+    RequestWriter,
+    ReleaseWriter,
+    AcceptWriter,
     Pause,
 }
 
@@ -543,6 +549,9 @@ async fn m11_backup_writer(
             "Choose the designated backup target"
         }).pick_folder();
         let Some(path) = selected else { return Ok(Outcome::Cancelled) };
+        if matches!(mode, WriterCommand::ShareWriter | WriterCommand::RequestWriter | WriterCommand::ReleaseWriter | WriterCommand::AcceptWriter) {
+            return writer_handoff::exchange(mode, path);
+        }
         if create {
             #[cfg(feature = "m11-installed-search-check")]
             let approved = std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").as_deref() == Ok("writer-create");

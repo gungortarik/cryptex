@@ -14,6 +14,79 @@ mod installed_export;
 mod separate_backups;
 
 #[test]
+#[ignore = "runs the installed desktop on two disposable paired profiles"]
+fn installed_writer_handoff() {
+    use crate::secure_store::{AccountLabel, FileBackedSecureStore, ServiceLabel};
+    let desktop = std::env::var_os("CRYPTEX_M11_INSTALLED_DESKTOP").unwrap();
+    let pair = PairProfiles::new();
+    pair.pair(0, [true, true], false);
+    let work = tempfile::Builder::new()
+        .prefix("cryptex-m11-recovery-")
+        .tempdir()
+        .unwrap();
+    for (i, (profile, credentials)) in [
+        ("export-source", "export-credentials"),
+        ("writer-peer", "writer-peer-credentials"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        fs::rename(&pair.profiles[i], work.path().join(profile)).unwrap();
+        let store = FileBackedSecureStore::open(work.path().join(credentials)).unwrap();
+        store
+            .put(
+                ServiceLabel::device_credentials(SecureStoreEnvironment::Dev).as_str(),
+                AccountLabel::device_event_signing_seed(pair.devices[i].as_str()).as_str(),
+                pair.keys[i].as_bytes(),
+            )
+            .unwrap();
+    }
+    let targets = work.path().join("writer-targets");
+    fs::create_dir(&targets).unwrap();
+    let fingerprint = format!(
+        "{:x}",
+        Sha256::digest(pair.keys[1].verifying_key().as_bytes())
+    );
+    for mode in [
+        "writer-create",
+        "writer-transfer-share",
+        "writer-transfer-request",
+        "writer-transfer-cancel",
+        "writer-inspect",
+        "writer-transfer-sign",
+        "writer-transfer-former",
+        "writer-transfer-accept",
+        "writer-transfer-peer",
+    ] {
+        separate_backups::launched(
+            Path::new(&desktop),
+            work.path(),
+            mode,
+            Path::new(""),
+            &fingerprint,
+        );
+        if mode == "writer-transfer-cancel" {
+            let target = fs::read_dir(&targets)
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap()
+                .path();
+            assert!(!fs::read_dir(target).unwrap().any(|entry| {
+                entry
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .ends_with(".writer-grant.json")
+            }));
+        }
+    }
+    println!(
+        "m11_installed_writer_handoff=passed two_profiles=true cancelled_then_signed=true previous_writer_fenced=true"
+    );
+}
+
+#[test]
 fn public_kit_allows_ordinary_backup_but_partial_recovery_holds() {
     use super::super::{backup, recovered_search};
     use crate::recovery_store::{
@@ -264,9 +337,66 @@ fn scheduled_writer_relinquishes_before_a_peer_takes_the_same_target() {
         .request(&pair.profiles[1], &target, &original)
         .unwrap();
     assert!(second.assigned_head(&target).is_err());
-    let granted = first
-        .release(&pair.profiles[0], &target, &original, &b, &request)
+    use crate::ipc::backup_writer::handoff::{ResultView, Step};
+    let saved = |result| match result {
+        ResultView::Saved { file } => target.join(file),
+        other => panic!("expected public exchange file, got {other:?}"),
+    };
+    let assignment = saved(
+        first
+            .exchange(&pair.profiles[0], &target, Step::Share)
+            .unwrap(),
+    );
+    let request_path = saved(
+        second
+            .exchange(&pair.profiles[1], &target, Step::Request { assignment })
+            .unwrap(),
+    );
+    let review = || match first
+        .exchange(
+            &pair.profiles[0],
+            &target,
+            Step::Review {
+                request: request_path.clone(),
+            },
+        )
+        .unwrap()
+    {
+        ResultView::Review { review } => review,
+        other => panic!("expected transfer review, got {other:?}"),
+    };
+    let reviewed = review();
+    assert_eq!(reviewed.incoming_device, b.device_id().as_str());
+    assert_eq!(
+        reviewed.outgoing_fingerprint,
+        format!("{:x}", Sha256::digest(a.public_key()))
+    );
+    // Dismissing review never releases the old writer. A changed request needs fresh consent.
+    first
+        .verify_local_writer(&pair.profiles[0], &target)
         .unwrap();
+    let original_bytes = fs::read(&request_path).unwrap();
+    let mut changed: serde_json::Value = serde_json::from_slice(&original_bytes).unwrap();
+    let byte = changed["challenge"][0].as_u64().unwrap();
+    changed["challenge"][0] = (byte ^ 1).into();
+    fs::write(&request_path, serde_json::to_vec(&changed).unwrap()).unwrap();
+    let approve = |reviewed| {
+        first.exchange(
+            &pair.profiles[0],
+            &target,
+            Step::Approve {
+                request: request_path.clone(),
+                reviewed,
+            },
+        )
+    };
+    assert_eq!(approve(reviewed.clone()), Err(Error::Authority));
+    first
+        .verify_local_writer(&pair.profiles[0], &target)
+        .unwrap();
+    fs::write(&request_path, original_bytes).unwrap();
+    let grant_path = saved(approve(reviewed).unwrap());
+    let granted: Assignment = serde_json::from_slice(&fs::read(&grant_path).unwrap()).unwrap();
     let reopened = FileBackedSecureStore::open(a_store.root()).unwrap();
     let old = DeviceRole {
         store: &reopened,
@@ -306,6 +436,17 @@ fn scheduled_writer_relinquishes_before_a_peer_takes_the_same_target() {
         second.accept(&pair.profiles[1], &target, &damaged),
         Err(Error::Signature)
     );
+    let mut renumbered = serde_json::to_value(&granted).unwrap();
+    assert_eq!(renumbered["grants"][0]["reserved_through"], 1);
+    renumbered["grants"][0]["reserved_through"] = 0.into();
+    assert_eq!(
+        second.accept(
+            &pair.profiles[1],
+            &target,
+            &serde_json::from_value(renumbered).unwrap()
+        ),
+        Err(Error::Signature)
+    );
     assert_eq!(
         second.accept(&pair.profiles[1], &replacement, &granted),
         Err(Error::Target)
@@ -315,15 +456,27 @@ fn scheduled_writer_relinquishes_before_a_peer_takes_the_same_target() {
             .accept(&pair.profiles[1], &target, &independent)
             .is_err()
     );
-    second.accept(&pair.profiles[1], &target, &granted).unwrap();
+    assert_eq!(
+        second
+            .exchange(
+                &pair.profiles[1],
+                &target,
+                Step::Accept { grant: grant_path }
+            )
+            .unwrap(),
+        ResultView::Accepted
+    );
     second.accept(&pair.profiles[1], &target, &retry).unwrap();
     second
         .verify_local_writer(&pair.profiles[1], &target)
         .unwrap();
     assert_ne!(second.assigned_head(&target).unwrap(), separate_head);
-    successor_jobs
-        .enqueue(&prior, Sha256::digest(fs::read(&prior).unwrap()).into(), 2)
-        .unwrap();
+    let delayed = work.path().join("delayed-generation");
+    fs::rename(&prior, &delayed).unwrap();
+    let checks = work.path().join("successor-checkpoints");
+    fs::create_dir(&checks).unwrap();
+    successor_jobs.configure(&target, &checks).unwrap();
+    assert_eq!(successor_jobs.due(0).unwrap().unwrap().generation, 2);
     assert_eq!(
         successor_jobs
             .resume(&b, &stop, || {}, |out| fs::write(out, b"new writer"))
@@ -334,11 +487,21 @@ fn scheduled_writer_relinquishes_before_a_peer_takes_the_same_target() {
         fs::read(target.join("backup-00000000000000000002.pgp")).unwrap(),
         b"new writer"
     );
+    assert!(!prior.try_exists().unwrap());
+    fs::rename(delayed, &prior).unwrap();
+    assert_eq!(fs::read(&prior).unwrap(), b"prior synthetic backup");
     let granted = second.reopen(&target).unwrap();
     let return_request = old.request(&pair.profiles[0], &target, &granted).unwrap();
+    // Even loss of the visible file cannot roll back the outgoing writer's reservation.
+    fs::rename(
+        target.join("backup-00000000000000000002.pgp"),
+        work.path().join("delayed-second"),
+    )
+    .unwrap();
     let returned = second
         .release(&pair.profiles[1], &target, &granted, &a, &return_request)
         .unwrap();
+    assert_eq!(returned.reserved_through(), 2);
     assert!(second.accept(&pair.profiles[1], &target, &granted).is_err());
     old.accept(&pair.profiles[0], &target, &returned).unwrap();
     assert_eq!(

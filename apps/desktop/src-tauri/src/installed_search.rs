@@ -48,6 +48,22 @@ pub(super) fn writer_folder(create: bool) -> Option<PathBuf> {
 
 pub(super) fn verification_file(title: &str) -> Option<PathBuf> {
     let work = PathBuf::from(std::env::var_os("CRYPTEX_M11_REOPEN_FIXTURE")?);
+    let extension = match title {
+        "Select the writer assignment in the target folder" => Some(".writer-assignment.json"),
+        "Select the new device's writer request in the target folder" => {
+            Some(".writer-request.json")
+        }
+        "Select the signed writer grant in the target folder" => Some(".writer-grant.json"),
+        _ => None,
+    };
+    if let Some(extension) = extension {
+        let files = std::fs::read_dir(writer_folder(false)?).ok()?;
+        let mut matches = files
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().ends_with(extension));
+        let selected = matches.next()?.path();
+        return matches.next().is_none().then_some(selected);
+    }
     match title {
         "Select the first-device recovery backup" => Some(work.join("first-check/backup.pgp")),
         "Select its checkpoint from your separate trusted folder"
@@ -155,6 +171,15 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
     .canonicalize()?;
     let mode = std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").ok();
     let expected = match mode.as_deref() {
+        Some("writer-transfer-request" | "writer-transfer-accept" | "writer-transfer-peer") => {
+            "writer-peer/identity/brain_identity.json"
+        }
+        Some(
+            "writer-transfer-share"
+            | "writer-transfer-sign"
+            | "writer-transfer-cancel"
+            | "writer-transfer-former",
+        ) => "export-source/identity/brain_identity.json",
         None => "replacement/recovery/first-device.json",
         Some("pair-write") => "replacement/recovery/first-device.json",
         Some("first-device-export" | "first-device-wrong" | "first-device-import") => {
@@ -228,6 +253,7 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
         }
     }
     let requests = match mode.as_deref() {
+        Some("writer-transfer-sign") => 2,
         Some("verify-cancel" | "writer-decline") => 0,
         Some("pair-write") => 5,
         Some("writer-enable" | "decline" | "wrong-brain" | "write" | "overlap") => 2,

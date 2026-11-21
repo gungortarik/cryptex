@@ -16,10 +16,13 @@ use std::path::Path;
 
 const MARKER: &str = "backup-target.id";
 const DOMAIN: &[u8] = b"cryptex/backup/writer-handoff/v1\0";
+// Recovery checkpoints cross the JSON boundary into the packaged reader.
+const MAX_GENERATION: u64 = (1u64 << 53) - 1;
 // The daemon owns one profile instance. Its workers can see the same target
 // through different locally synchronized directories with different file locks.
 static ROLE_CHANGES: std::sync::Mutex<()> = std::sync::Mutex::new(());
 type Hash = [u8; 32];
+pub mod exchange;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
@@ -67,13 +70,15 @@ pub struct Request {
 #[serde(deny_unknown_fields)]
 struct Grant {
     request: Request,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reserved_through: Option<u64>,
     signature: Vec<u8>,
 }
 
 impl Grant {
     fn head(&self) -> Result<Hash, Error> {
         Ok(Sha256::new()
-            .chain_update(message(&self.request)?)
+            .chain_update(message(&self.request, self.reserved_through)?)
             .chain_update(&self.signature)
             .finalize()
             .into())
@@ -92,11 +97,25 @@ fn encoded(value: &impl Serialize) -> Result<Vec<u8>, Error> {
     serde_json_canonicalizer::to_vec(value).map_err(|_| Error::History)
 }
 
-fn message(request: &Request) -> Result<Vec<u8>, Error> {
+fn message(request: &Request, reserved_through: Option<u64>) -> Result<Vec<u8>, Error> {
+    if let Some(number) = reserved_through {
+        return Ok([
+            b"cryptex/backup/writer-handoff/v2\0".as_slice(),
+            &encoded(&(request, number))?,
+        ]
+        .concat());
+    }
     Ok([DOMAIN, encoded(request)?.as_slice()].concat())
 }
 
 impl Assignment {
+    pub(crate) fn reserved_through(&self) -> u64 {
+        self.grants
+            .iter()
+            .filter_map(|grant| grant.reserved_through)
+            .max()
+            .unwrap_or(0)
+    }
     fn id(&self) -> Result<Hash, Error> {
         if self.origin.version != 1 {
             return Err(Error::History);
@@ -110,7 +129,13 @@ impl Assignment {
         }
         let mut current = &self.origin.writer;
         let mut previous = id;
+        let mut reserved = None;
         for grant in &self.grants {
+            if grant.reserved_through < reserved
+                || grant.reserved_through.is_some_and(|n| n >= MAX_GENERATION)
+            {
+                return Err(Error::History);
+            }
             if current.device == grant.request.next.device || current.key == grant.request.next.key
             {
                 return Err(Error::History);
@@ -118,7 +143,7 @@ impl Assignment {
             if grant.request.prior != previous {
                 return Err(Error::History);
             }
-            let bytes = message(&grant.request)?;
+            let bytes = message(&grant.request, grant.reserved_through)?;
             let signature =
                 Signature::from_slice(&grant.signature).map_err(|_| Error::Signature)?;
             VerifyingKey::from_bytes(&current.key)
@@ -127,6 +152,7 @@ impl Assignment {
                 .map_err(|_| Error::Signature)?;
             previous = grant.head()?;
             current = &grant.request.next;
+            reserved = grant.reserved_through;
         }
         Ok((previous, current))
     }
@@ -137,6 +163,10 @@ impl Assignment {
 enum LocalRole {
     Active(Hash),
     Released(Request),
+    ReleasedNumbered {
+        request: Request,
+        reserved_through: u64,
+    },
     Awaiting(Request),
 }
 
@@ -156,6 +186,48 @@ fn marker(dir: &Directory) -> Result<Hash, Error> {
 }
 
 impl DeviceRole<'_> {
+    fn generation_account(&self, target: Hash) -> Result<AccountLabel, Error> {
+        let key = Sha256::digest(encoded(&(
+            "reserved-generation",
+            target,
+            Writer::from(self.local),
+        ))?);
+        Ok(AccountLabel::backup_role(&format!("{key:x}")))
+    }
+
+    fn generation_reservation(&self, target: Hash) -> Result<u64, Error> {
+        let account = self.generation_account(target)?;
+        match self.store.get(
+            ServiceLabel::device_credentials(self.env).as_str(),
+            account.as_str(),
+        ) {
+            Ok(bytes) => Ok(u64::from_be_bytes(
+                bytes.try_into().map_err(|_| Error::History)?,
+            )),
+            Err(SecureStoreError::Missing) => Ok(0),
+            Err(_) => Err(Error::Store),
+        }
+    }
+
+    /// Called under both writer locks, before making the numbered file visible.
+    pub(crate) fn reserve_generation(&self, dir: &Directory, generation: u64) -> Result<(), Error> {
+        let id = marker(dir)?;
+        let reserved = self.generation_reservation(id)?;
+        if generation < reserved || generation == 0 {
+            return Err(Error::History);
+        }
+        if generation > reserved {
+            self.store
+                .put(
+                    ServiceLabel::device_credentials(self.env).as_str(),
+                    self.generation_account(id)?.as_str(),
+                    &generation.to_be_bytes(),
+                )
+                .map_err(|_| Error::Store)?;
+        }
+        Ok(())
+    }
+
     fn changes(&self) -> Result<std::sync::MutexGuard<'static, ()>, Error> {
         ROLE_CHANGES.lock().map_err(|_| Error::Store)
     }
@@ -236,7 +308,9 @@ impl DeviceRole<'_> {
         let _change = self.changes()?;
         let expected = match self.load(id)?.ok_or(Error::Authority)? {
             LocalRole::Active(head) => head,
-            LocalRole::Awaiting(request) | LocalRole::Released(request) => request.prior,
+            LocalRole::Awaiting(request)
+            | LocalRole::Released(request)
+            | LocalRole::ReleasedNumbered { request, .. } => request.prior,
         };
         let service = ServiceLabel::device_credentials(self.env);
         let read = |head| {
@@ -427,7 +501,7 @@ impl DeviceRole<'_> {
         match self.load(id)? {
             None => {}
             Some(LocalRole::Awaiting(request)) if request.prior == prior => return Ok(request),
-            Some(LocalRole::Released(old))
+            Some(LocalRole::Released(old) | LocalRole::ReleasedNumbered { request: old, .. })
                 if assignment.grants.iter().any(|g| g.request == old) => {}
             _ => return Err(Error::Authority),
         }
@@ -459,6 +533,16 @@ impl DeviceRole<'_> {
         let (head, current) = assignment.verify(id)?;
         let _change = self.changes()?;
         let next = Writer::from(next);
+        let bound = self
+            .store
+            .get(
+                ServiceLabel::device_credentials(self.env).as_str(),
+                self.path_account(target)?.as_str(),
+            )
+            .map_err(|_| Error::Store)?;
+        if bound.as_slice() != id {
+            return Err(Error::Authority);
+        }
         if *current != Writer::from(self.local)
             || current.device == next.device
             || current.key == next.key
@@ -468,23 +552,55 @@ impl DeviceRole<'_> {
             return Err(Error::Authority);
         }
         let _snapshot = self.check_authority(profile, &assignment.origin.brain, Some(&next))?;
-        match self.load(id)? {
-            Some(LocalRole::Active(active)) if active == head => {}
-            Some(LocalRole::Released(old)) if old == *request => {}
+        let reserved_through = match self.load(id)? {
+            Some(LocalRole::Active(active)) if active == head => {
+                let mut last = assignment
+                    .reserved_through()
+                    .max(self.generation_reservation(id)?);
+                // Existing scheduled generations predate the per-target reservation.
+                // Names can reserve numbers but confer no authority to read, prune or overwrite.
+                for entry in std::fs::read_dir(target).map_err(|_| Error::Target)? {
+                    let name = entry.map_err(|_| Error::Target)?.file_name();
+                    if let Some(number) = name
+                        .to_str()
+                        .and_then(crate::backup_scheduler::retention::generation_number)
+                    {
+                        last = last.max(number);
+                    }
+                }
+                if last >= MAX_GENERATION {
+                    return Err(Error::History);
+                }
+                Some(last)
+            }
+            Some(LocalRole::Released(old)) if old == *request => None,
+            Some(LocalRole::ReleasedNumbered {
+                request: old,
+                reserved_through,
+            }) if old == *request => Some(reserved_through),
             _ => return Err(Error::Authority),
-        }
+        };
         let key =
             load_existing_event_signing_key(self.store, self.env, profile, self.local.device_id())
                 .map_err(|_| Error::Authority)?;
         if key.signing_key.verifying_key().as_bytes() != &current.key {
             return Err(Error::Authority);
         }
-        let bytes = message(request)?;
-        self.save(id, &LocalRole::Released(request.clone()))?;
+        let bytes = message(request, reserved_through)?;
+        if let Some(number) = reserved_through {
+            self.save(
+                id,
+                &LocalRole::ReleasedNumbered {
+                    request: request.clone(),
+                    reserved_through: number,
+                },
+            )?;
+        }
         let signature = key.signing_key.sign(&bytes).to_bytes().to_vec();
         let mut result = assignment.clone();
         result.grants.push(Grant {
             request: request.clone(),
+            reserved_through,
             signature,
         });
         Ok(result)

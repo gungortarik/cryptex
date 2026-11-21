@@ -107,6 +107,16 @@ durably gives up its authority to publish and prune on that target. The recipien
 verifies the target, the current writer's signature and its own pending request.
 Restarting the former writer cannot reactivate its previous jobs.
 
+Under **Scheduled backup writer → Transfer the writer role**, the current
+device saves its public assignment in the target folder. The incoming device
+selects that assignment and saves its request there. The current device
+reviews the target ID, both device IDs and their signing-key fingerprints,
+then chooses whether to sign. The new device selects the signed grant and
+can enable its daily schedule. New grants sign the highest generation number
+reserved by the previous writers so delayed files keep their original names.
+If a grant file fails to publish, the previous writer can repeat the same
+request to export the grant after restarting.
+
 The designated backup writer is not the canonical master device.
 
 It is an operational role only.

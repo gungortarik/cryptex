@@ -50,6 +50,13 @@ pub fn installed() -> io::Result<()> {
         .is_ok_and(|m| m.starts_with("first-device-check") || m.starts_with("first-device-clean"))
     {
         ("clean-replacement", "clean-credentials")
+    } else if std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").is_ok_and(|m| {
+        matches!(
+            m.as_str(),
+            "writer-transfer-request" | "writer-transfer-accept" | "writer-transfer-peer"
+        )
+    }) {
+        ("writer-peer", "writer-peer-credentials")
     } else if verifying {
         ("verify-session", "verify-credentials")
     } else if exporting

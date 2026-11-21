@@ -1,5 +1,6 @@
 //! Owner-selected filesystem targets for the scheduled backup writer.
 use super::*;
+pub mod handoff;
 
 pub(super) const OPERATION: &str = "backup.writer.target";
 const CAPABILITY: &str = "backup.writer.owner";
@@ -7,6 +8,10 @@ const CAPABILITY: &str = "backup.writer.owner";
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Action {
+    Handoff {
+        target: PathBuf,
+        exchange: handoff::Step,
+    },
     Create {
         parent: PathBuf,
     },
@@ -35,6 +40,7 @@ pub enum Action {
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Outcome {
+    Handoff { exchange: handoff::ResultView },
     Cancelled,
     Created { folder: String },
     LocalWriter,
@@ -114,6 +120,7 @@ fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
     let path = match &action {
         Action::Create { parent } => parent,
         Action::Inspect { target }
+        | Action::Handoff { target, .. }
         | Action::Schedule { target, .. }
         | Action::Retain { target, .. } => target.as_path(),
         Action::Verify { files } | Action::PrepareRemoval { files, .. } => {
@@ -141,6 +148,12 @@ fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
         role::Error::Store => Error::Uncertain,
     };
     match action {
+        Action::Handoff { target, exchange } => {
+            let exchange = writer
+                .exchange(&ctx.runtime_root, &target, exchange)
+                .map_err(map)?;
+            Ok(Outcome::Handoff { exchange })
+        }
         Action::Create { parent } => {
             let (target, _) = writer.create(&ctx.runtime_root, &parent).map_err(map)?;
             writer

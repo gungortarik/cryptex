@@ -38,13 +38,23 @@
     return;
   }
   const panel = () => document.querySelector(writer ? '[aria-labelledby="backup-writer-heading"]' : '[aria-labelledby="manual-backup-heading"]');
-  const action = mode.startsWith("writer-verify") ? "Verify scheduled backup" : mode === "writer-retain" ? "Save retention" : mode === "writer-enable" ? "Enable daily backup" : mode === "writer-pause" ? "Pause scheduled backups" : writer ? (["writer-create", "writer-decline"].includes(mode) ? "Create backup target" : "Check writer") :
-    (mode.startsWith("verify") ? "Verify manual backup" : "Export encrypted backup");
+  const transfer = {
+    "writer-transfer-share": ["Share current assignment", /^Saved manual-[0-9a-f]{32}\.writer-assignment\.json in the selected backup target\.$/],
+    "writer-transfer-request": ["Request writer role", /^Saved manual-[0-9a-f]{32}\.writer-request\.json in the selected backup target\.$/],
+    "writer-transfer-sign": ["Review writer transfer", /^Saved manual-[0-9a-f]{32}\.writer-grant\.json in the selected backup target\.$/],
+    "writer-transfer-cancel": ["Review writer transfer", /^Selection cancelled\.$/],
+    "writer-transfer-accept": ["Accept signed grant", /^This device now holds the writer role for the selected target\.$/],
+    "writer-transfer-peer": ["Check writer", /^This device is the designated writer for the selected target\.$/],
+    "writer-transfer-former": ["Check writer", /^This device could not prove writer authority for the selected target\.$/],
+  }[mode];
+  const action = transfer?.[0] ?? (mode.startsWith("writer-verify") ? "Verify scheduled backup" : mode === "writer-retain" ? "Save retention" : mode === "writer-enable" ? "Enable daily backup" : mode === "writer-pause" ? "Pause scheduled backups" : writer ? (["writer-create", "writer-decline"].includes(mode) ? "Create backup target" : "Check writer") :
+    (mode.startsWith("verify") ? "Verify manual backup" : "Export encrypted backup"));
   let clicked = false;
   let visible = false;
   try {
     const deadline = Date.now() + 60000;
     while (Date.now() < deadline) {
+      if (transfer && panel()?.querySelector("details:not([open])")) panel().querySelector("summary").click();
       const button = [...(panel()?.querySelectorAll("button") ?? [])].find(el =>
         el.textContent === action);
       if (!clicked && button && !button.disabled) {
@@ -52,7 +62,7 @@
         button.click();
       }
       const status = panel()?.querySelector('[role="status"]')?.textContent;
-      visible = mode === "writer-create" ? /^Assigned this device as writer for cryptex-backup-[0-9a-f]{64}\.$/.test(status ?? "") :
+      visible = transfer ? transfer[1].test(status ?? "") : mode === "writer-create" ? /^Assigned this device as writer for cryptex-backup-[0-9a-f]{64}\.$/.test(status ?? "") :
         mode === "writer-decline" ? status === "Selection cancelled." :
         mode === "writer-verify" ? status === "Scheduled backup verified by restoring it in temporary storage." :
         mode === "writer-verify-wrong" ? status?.startsWith("Cryptex could not complete scheduled backup verification") === true :
