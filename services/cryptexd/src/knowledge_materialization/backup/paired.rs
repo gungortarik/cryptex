@@ -11,6 +11,20 @@ pub(crate) struct PriorFiles<'a> {
     pub checkpoint: &'a Path,
 }
 
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ArchivedSource {
+    pub digest: [u8; 32],
+    selection: RecoverySelection,
+}
+
+pub(crate) fn archive_name(digest: [u8; 32]) -> String {
+    format!(
+        "archived-{:x}.pgp",
+        sha2::digest::Output::<Sha256>::from(digest)
+    )
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct ParentAuthority {
@@ -22,6 +36,8 @@ pub(super) struct ParentAuthority {
 enum Format {
     #[serde(rename = "cryptex.recovered-backup-pair.v1")]
     SeparateFiles,
+    #[serde(rename = "cryptex.scheduled-backup-pair.v1")]
+    ScheduledFiles,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -58,6 +74,10 @@ pub(super) fn validate_lineage(
 }
 
 impl Pair {
+    pub(super) fn scheduled(&self) -> bool {
+        matches!(self.format, Format::ScheduledFiles)
+    }
+
     pub(super) fn validate(&self) -> Result<(), Error> {
         let old_key = self.archived.writer()?;
         let old = self.archived.checkpoint(&old_key)?;
@@ -119,6 +139,114 @@ pub(crate) struct Destination<'a> {
     pub checkpoints: &'a Path,
 }
 
+// Keep the original on the designated volume so the ordinary timer needs
+// neither the original source volume nor the offline Recovery Kit.
+pub(crate) fn bind_original(
+    root: &Path,
+    store: &dyn SecureStore,
+    env: SecureStoreEnvironment,
+    prior: PriorFiles<'_>,
+    target: &Path,
+) -> Result<ArchivedSource, Error> {
+    independent_folders(
+        prior.backup.parent().ok_or(Error::Checkpoint)?,
+        prior.checkpoint.parent().ok_or(Error::Checkpoint)?,
+    )?;
+    let selection = serde_json::from_slice(&super::restore::read_selected(prior.checkpoint, 8192)?)
+        .map_err(|_| Error::Checkpoint)?;
+    let (_, parent) = prepare_selected(root, store, env, 1, Some(&selection))?;
+    let digest = parent
+        .ok_or(Error::RecoveryHistory)?
+        .approval
+        .request
+        .backup_sha256;
+    let mut old = copy_verified_cipher(prior.backup, digest)?;
+    let dir = Directory::open(target).map_err(|_| Error::ExportDestination)?;
+    let name = archive_name(digest);
+    if !dir.exists(&name).map_err(|_| Error::ExportDestination)? {
+        let id = manual::export_id()?;
+        let partial = format!("manual-{id:032x}.partial");
+        let mut output = dir
+            .open_file(&partial, true)
+            .map_err(|_| Error::ExportDestination)?;
+        if io::copy(&mut old, &mut output).is_err() {
+            dir.discard_partial_manual_export(id, output)
+                .map_err(|_| Error::ExportDestination)?;
+            return Err(Error::ExportPublication);
+        }
+        dir.promote(&partial, &output, &dir, &name)
+            .map_err(|_| Error::ExportPublication)?;
+    }
+    verify_archived(&dir, digest)?;
+    Ok(ArchivedSource { digest, selection })
+}
+
+pub(crate) fn verify_archived(dir: &Directory, digest: [u8; 32]) -> Result<(), Error> {
+    let mut input = dir
+        .open_file(&archive_name(digest), false)
+        .map_err(|_| Error::RecoveryHistory)?;
+    let before = source_snapshot(&input).map_err(|_| Error::RecoveryHistory)?;
+    let mut hash = Sha256::new();
+    if io::copy(&mut input, &mut hash).map_err(|_| Error::Archive)? != before.length
+        || source_snapshot(&input).map_err(|_| Error::RecoveryHistory)? != before
+        || <[u8; 32]>::from(hash.finalize()) != digest
+    {
+        return Err(Error::RecoveryHistory);
+    }
+    Ok(())
+}
+
+pub(crate) fn scheduled_pair(
+    root: &Path,
+    store: &dyn SecureStore,
+    env: SecureStoreEnvironment,
+    generation: u64,
+    original: &ArchivedSource,
+    codec: &Path,
+    recipient: &[u8],
+) -> Result<(NamedTempFile, Vec<u8>), Error> {
+    let (prepared, parent) =
+        prepare_selected(root, store, env, generation, Some(&original.selection))?;
+    let parent = parent.ok_or(Error::RecoveryHistory)?;
+    if parent.approval.request.backup_sha256 != original.digest {
+        return Err(Error::RecoveryHistory);
+    }
+    encrypt_pair(
+        prepared,
+        parent,
+        original.selection.clone(),
+        Format::ScheduledFiles,
+        codec,
+        recipient,
+    )
+}
+
+fn encrypt_pair(
+    prepared: Prepared,
+    parent: ParentAuthority,
+    archived: RecoverySelection,
+    format: Format,
+    codec: &Path,
+    recipient: &[u8],
+) -> Result<(NamedTempFile, Vec<u8>), Error> {
+    let cipher = prepared.encrypt(codec, recipient)?;
+    let mut hash = Sha256::new();
+    io::copy(&mut cipher.reopen().map_err(|_| Error::Archive)?, &mut hash)
+        .map_err(|_| Error::Archive)?;
+    let pair = Pair {
+        format,
+        archived,
+        replacement: prepared.selection,
+        replacement_sha256: hash.finalize().into(),
+        parent,
+    };
+    pair.validate()?;
+    Ok((
+        cipher,
+        serde_json::to_vec(&pair).map_err(|_| Error::Checkpoint)?,
+    ))
+}
+
 pub(crate) fn export_recovered(
     root: &Path,
     store: &dyn SecureStore,
@@ -142,21 +270,16 @@ pub(crate) fn export_recovered(
     let (prepared, parent) = prepare_selected(root, store, env, 1, Some(&archived))?;
     let parent = parent.ok_or(Error::RecoveryHistory)?;
     let old = copy_verified_cipher(prior.backup, parent.approval.request.backup_sha256)?;
-    let cipher = prepared.encrypt(codec, recipient)?;
-    let mut hash = Sha256::new();
-    io::copy(&mut cipher.reopen().map_err(|_| Error::Archive)?, &mut hash)
-        .map_err(|_| Error::Archive)?;
-    let pair = Pair {
-        format: Format::SeparateFiles,
-        archived,
-        replacement: prepared.selection,
-        replacement_sha256: hash.finalize().into(),
+    let (cipher, json) = encrypt_pair(
+        prepared,
         parent,
-    };
-    pair.validate()?;
+        archived,
+        Format::SeparateFiles,
+        codec,
+        recipient,
+    )?;
     let dir = Directory::open(target).map_err(|_| Error::ExportDestination)?;
     let recovery = Directory::open(checkpoints).map_err(|_| Error::ExportDestination)?;
-    let json = serde_json::to_vec(&pair).map_err(|_| Error::Checkpoint)?;
     let id = manual::export_id()?;
     let old = manual::publish_file(&dir, id, "prior.pgp", old)?;
     let new = manual::publish_file(

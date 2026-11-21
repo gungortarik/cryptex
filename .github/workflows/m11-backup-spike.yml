@@ -209,5 +209,6 @@ jobs:
           grep -Fx 'm11_separate_files=passed archived_bytes=identical replacement=independent both_notes=restored missing=held swapped=held source=lost' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_installed_codec=passed public_recipient=true restored_with_daemon_signature=true' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_installed_writer_handoff=passed two_profiles=true cancelled_then_signed=true previous_writer_fenced=true' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
+          grep -Fx 'm11_recovered_schedule=passed original=byte_identical missing=held replacement_alone=held both_histories=restored source=lost' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep '^m11_installed_search=passed launches=2 archive=true replacement=true reader=cryptexd canonical=unchanged$' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_offline_backup_target=passed capture=committed search=reopened backup=unchanged' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"

@@ -41,7 +41,7 @@ export function BackupWriter() {
         unsafe_target: "Choose a backup folder outside the profile. To check a target, select its Cryptex backup folder.",
         history: "Cryptex could not verify the signed writer history.",
         unavailable: "Backup writer settings are unavailable for this profile.",
-        original_required: "Use manual export for a recovered device. Select its original encrypted backup and checkpoint to include both histories.",
+        original_required: "Select the original encrypted backup and its independent checkpoint to enable daily backups on this recovered device.",
         verification: "Cryptex could not complete scheduled backup verification and retention. Check the generation and recovery files.",
         recipient: "Select and confirm the Recovery Kit’s public certificate before scheduling backups.",
         busy: "Another backup operation is in progress.",

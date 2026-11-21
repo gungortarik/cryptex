@@ -98,23 +98,36 @@ fn tick(context: &SearchContext) -> Result<(), Error> {
             &stopped,
             || {},
             |staged| {
-                let prepared = backup::prepare(
-                    &ctx.runtime_root,
-                    ctx.store.as_ref(),
-                    ctx.environment,
-                    job.generation,
-                )
-                .map_err(|_| io::Error::other("backup history held"))?;
-                let cipher = prepared
-                    .encrypt(&config.codec, &recipient)
-                    .map_err(|_| io::Error::other("backup encryption failed"))?;
+                let (cipher, json) = if let Some(original) = &job.original {
+                    backup::scheduled_pair(
+                        &ctx.runtime_root,
+                        ctx.store.as_ref(),
+                        ctx.environment,
+                        job.generation,
+                        original,
+                        &config.codec,
+                        &recipient,
+                    )
+                    .map_err(|_| io::Error::other("original or replacement backup held"))?
+                } else {
+                    let prepared = backup::prepare(
+                        &ctx.runtime_root,
+                        ctx.store.as_ref(),
+                        ctx.environment,
+                        job.generation,
+                    )
+                    .map_err(|_| io::Error::other("backup history held"))?;
+                    let cipher = prepared
+                        .encrypt(&config.codec, &recipient)
+                        .map_err(|_| io::Error::other("backup encryption failed"))?;
+                    (cipher, serde_json::to_vec(&prepared.selection)?)
+                };
                 let mut file = std::fs::File::create_new(staged)?;
                 io::copy(&mut cipher.reopen()?, &mut file)?;
                 let mut digest = Sha256::new();
                 io::copy(&mut cipher.reopen()?, &mut digest)?;
                 let name = format!("backup-{:020}-{:x}.json", job.generation, digest.finalize());
                 let part = format!("{name}.partial");
-                let json = serde_json::to_vec(&prepared.selection)?;
                 let error = |_| io::Error::other("backup checkpoint publication failed");
                 let mut output = checkpoints.open_file(&part, true).map_err(error)?;
                 output.write_all(&json)?;

@@ -180,6 +180,15 @@ byte for byte. A complete recovery check must open both files and verify the
 new device's relationship to the original history. Keep their public recovery
 checkpoint independently of the backup target.
 
+To enable daily backups on a recovered device, select the original ciphertext
+and its independent checkpoint once at setup. Cryptex verifies both against
+the recovery approval, then preserves the original ciphertext on the target.
+Subsequent numbered files contain the replacement device's history. To restore,
+select the numbered file and its independent checkpoint, and keep the original
+encrypted file in the same target folder. Verification reconstructs both
+histories. The original file is shared across daily generations and is outside
+numbered retention.
+
 ## 12. Failure behavior
 
 Relevant backup/recovery testing includes:

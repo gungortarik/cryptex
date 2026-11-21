@@ -26,7 +26,7 @@ pub struct Checkpoint<'a> {
 
 /// Public selection saved independently of the encrypted backup. Its trust
 /// comes from the owner's authenticated recovery material.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RecoverySelection {
     version: u8,

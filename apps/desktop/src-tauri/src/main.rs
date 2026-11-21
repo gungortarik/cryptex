@@ -577,7 +577,15 @@ async fn m11_backup_writer(
         } else if mode == WriterCommand::Schedule {
             if !ensure_backup_recipient().map_err(|_| Error::Recipient)? {return Ok(Outcome::Cancelled);}
             let Some(checkpoints) = backup_folder(true) else {return Ok(Outcome::Cancelled)};
-            backup_writer::desktop(Action::Schedule { target: path, checkpoints })
+            let schedule = |original| backup_writer::desktop(Action::Schedule { target: path.clone(), checkpoints: checkpoints.clone(), original });
+            match schedule(None) {
+                Err(Error::OriginalRequired) => {
+                    let Some(backup) = backup_input_file("Select the original encrypted backup used to recover this device") else {return Ok(Outcome::Cancelled)};
+                    let Some(checkpoint) = backup_input_file("Select the independently saved checkpoint for that original backup") else {return Ok(Outcome::Cancelled)};
+                    schedule(Some(backup_writer::Original {backup, checkpoint}))
+                }
+                result => result,
+            }
         } else {
             backup_writer::desktop(Action::Inspect { target: path })
         }

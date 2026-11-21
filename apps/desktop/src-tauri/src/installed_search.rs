@@ -31,7 +31,7 @@ pub(super) fn recipient_folder() -> Option<PathBuf> {
 
 pub(super) fn writer_folder(create: bool) -> Option<PathBuf> {
     let work = PathBuf::from(std::env::var_os("CRYPTEX_M11_REOPEN_FIXTURE")?);
-    let parent = work.join("writer-targets");
+    let parent = work.join(writer_fixture_folder("writer-targets"));
     if create {
         return Some(parent);
     }
@@ -44,6 +44,14 @@ pub(super) fn writer_folder(create: bool) -> Option<PathBuf> {
         return None;
     }
     Some(target)
+}
+
+fn writer_fixture_folder(name: &str) -> String {
+    if std::env::var_os("CRYPTEX_M11_REHEARSE_RECOVERED_SCHEDULE").is_some() {
+        format!("recovered-{name}")
+    } else {
+        name.to_owned()
+    }
 }
 
 pub(super) fn verification_file(title: &str) -> Option<PathBuf> {
@@ -88,7 +96,8 @@ pub(super) fn verification_file(title: &str) -> Option<PathBuf> {
             if std::env::var("CRYPTEX_M11_INSTALLED_EXPORT")
                 .is_ok_and(|m| m.starts_with("writer-verify")) =>
         {
-            let mut entries = std::fs::read_dir(work.join("schedule-checkpoints")).ok()?;
+            let mut entries =
+                std::fs::read_dir(work.join(writer_fixture_folder("schedule-checkpoints"))).ok()?;
             let selected = entries.next()?.ok()?.path();
             if entries.next().is_some() {
                 return None;
@@ -145,7 +154,7 @@ pub(super) fn selected_folder(checkpoint: bool) -> Option<PathBuf> {
     let work = PathBuf::from(std::env::var_os("CRYPTEX_M11_REOPEN_FIXTURE")?);
     let mode = std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").ok()?;
     if checkpoint && mode == "writer-enable" {
-        return Some(work.join("schedule-checkpoints"));
+        return Some(work.join(writer_fixture_folder("schedule-checkpoints")));
     }
     if checkpoint && mode == "cancel" {
         return None;
@@ -171,6 +180,12 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
     .canonicalize()?;
     let mode = std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").ok();
     let expected = match mode.as_deref() {
+        Some(m)
+            if m.starts_with("writer-")
+                && std::env::var_os("CRYPTEX_M11_REHEARSE_RECOVERED_SCHEDULE").is_some() =>
+        {
+            "replacement/recovery/first-device.json"
+        }
         Some("writer-transfer-request" | "writer-transfer-accept" | "writer-transfer-peer") => {
             "writer-peer/identity/brain_identity.json"
         }
@@ -253,6 +268,11 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
         }
     }
     let requests = match mode.as_deref() {
+        Some("writer-enable")
+            if std::env::var_os("CRYPTEX_M11_REHEARSE_RECOVERED_SCHEDULE").is_some() =>
+        {
+            3
+        }
         Some("writer-transfer-sign") => 2,
         Some("verify-cancel" | "writer-decline") => 0,
         Some("pair-write") => 5,

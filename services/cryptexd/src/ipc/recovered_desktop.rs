@@ -57,6 +57,8 @@ pub fn installed() -> io::Result<()> {
         )
     }) {
         ("writer-peer", "writer-peer-credentials")
+    } else if std::env::var_os("CRYPTEX_M11_REHEARSE_RECOVERED_SCHEDULE").is_some() {
+        ("replacement", "test-credentials")
     } else if verifying {
         ("verify-session", "verify-credentials")
     } else if exporting

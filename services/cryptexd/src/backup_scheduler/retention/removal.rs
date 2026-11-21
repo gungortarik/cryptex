@@ -106,6 +106,11 @@ impl VerifiedBackups<'_> {
         };
         let prior = self.receipt(old)?;
         let next = self.receipt(new)?;
+        // This removal review compares individual reconstructed histories.
+        // It cannot authorize a mixed-history deletion using a single member.
+        if prior.archive.is_some() || next.archive.is_some() {
+            return Err(denied());
+        }
         let previous = reconstruct(old, &prior)?;
         let replacement = reconstruct(new, &next)?;
         let (a, first_purges) = retention_state(previous.path(), enrolled).map_err(|_| denied())?;

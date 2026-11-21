@@ -6,13 +6,30 @@ pub(super) struct Trial {
     new: std::path::PathBuf,
     old: std::path::PathBuf,
     checkpoint: std::path::PathBuf,
+    scheduled: std::path::PathBuf,
+    scheduled_checkpoint: std::path::PathBuf,
 }
 
 pub(super) fn launched(desktop: &Path, work: &Path, mode: &str, password: &Path, digest: &str) {
+    launch(desktop, work, mode, password, digest, false);
+}
+
+fn launch(
+    desktop: &Path,
+    work: &Path,
+    mode: &str,
+    password: &Path,
+    digest: &str,
+    recovered_schedule: bool,
+) {
     let script = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tools/m11-backup-spike/installed_desktop.py");
+    let mut command = Command::new("python");
+    if recovered_schedule {
+        command.env("CRYPTEX_M11_REHEARSE_RECOVERED_SCHEDULE", "1");
+    }
     assert!(
-        Command::new("python")
+        command
             .arg("-B")
             .arg(script)
             .arg("export")
@@ -94,11 +111,56 @@ pub(super) fn export(
         .join(new.file_name().unwrap())
         .with_extension("json");
     assert!(checkpoint.is_file());
+    let targets = work.join("recovered-writer-targets");
+    let scheduled_checkpoints = work.join("recovered-schedule-checkpoints");
+    fs::create_dir(&targets).unwrap();
+    fs::create_dir(&scheduled_checkpoints).unwrap();
+    let scheduled_action = |mode| launch(desktop, work, mode, password, &digest, true);
+    scheduled_action("writer-create");
+    scheduled_action("writer-enable");
+    fs::remove_file(input.join("original.pgp")).unwrap();
+    fs::remove_file(selections.join("original.json")).unwrap();
+    scheduled_action("writer-resume");
+    let target = fs::read_dir(targets)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let scheduled = target.join("backup-00000000000000000001.pgp");
+    let scheduled_checkpoint = fs::read_dir(&scheduled_checkpoints)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let saved = fs::read(&scheduled_checkpoint).unwrap();
+    let selection: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+    // A valid checkpoint for the new history alone must not earn a receipt for both.
+    fs::write(
+        &scheduled_checkpoint,
+        serde_json::to_vec(&selection["replacement"]).unwrap(),
+    )
+    .unwrap();
+    scheduled_action("writer-verify-wrong");
+    fs::write(&scheduled_checkpoint, &saved).unwrap();
+    let archive = target.join(format!(
+        "archived-{:x}.pgp",
+        Sha256::digest(fs::read(source).unwrap())
+    ));
+    assert_eq!(fs::read(&archive).unwrap(), fs::read(source).unwrap());
+    let detached = work.join("detached-original.pgp");
+    fs::rename(&archive, &detached).unwrap();
+    scheduled_action("writer-verify-wrong");
+    fs::rename(&detached, &archive).unwrap();
+    scheduled_action("writer-verify");
     Trial {
         desktop: desktop.to_owned(),
         new,
         old,
         checkpoint,
+        scheduled,
+        scheduled_checkpoint,
     }
 }
 
@@ -171,6 +233,42 @@ impl Trial {
         );
         assert!(hits[1].iter().all(|(id, _)| id != old_note));
         drop(profiles);
+        let restored = backup::reconstruct_files(
+            Path::new(&codec),
+            &self.scheduled,
+            &self.scheduled_checkpoint,
+            kit,
+            password,
+            scratch.path(),
+        )
+        .unwrap();
+        assert_eq!(restored.len(), 2);
+        let selected: serde_json::Value =
+            serde_json::from_slice(&fs::read(self.scheduled_checkpoint).unwrap()).unwrap();
+        for ((profile, name), expected) in
+            restored.iter().zip(["archived", "replacement"]).zip(&hits)
+        {
+            let selection: crate::backup_inventory::RecoverySelection =
+                serde_json::from_value(selected[name].clone()).unwrap();
+            let snapshot =
+                backup::snapshot(profile.path(), BRAIN, &selection.writer().unwrap()).unwrap();
+            let notes = snapshot
+                .verified_records()
+                .iter()
+                .filter_map(|record| match record {
+                    VersionedRecord::VerifiedV1(note) => {
+                        let cryptex_events::EventPayload::MemoryNote(n) = &note.payload;
+                        Some((note.event_id.clone(), n.text.clone()))
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(&notes, expected);
+        }
+        drop(restored);
+        println!(
+            "m11_recovered_schedule=passed original=byte_identical missing=held replacement_alone=held both_histories=restored source=lost"
+        );
         // A sound newer file cannot make a mixed or incomplete pair verify.
         fs::copy(&new, &old).unwrap();
         assert!(open(&new).is_err());

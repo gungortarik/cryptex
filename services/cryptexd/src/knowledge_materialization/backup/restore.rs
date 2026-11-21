@@ -50,6 +50,21 @@ pub(crate) fn reconstruct_files(
     unlock: &Path,
     scratch: &Path,
 ) -> Result<Vec<tempfile::TempDir>, Error> {
+    reconstruct_selected(codec, backup, checkpoint, kit, unlock, scratch, None)
+}
+
+/// The scheduled verifier uses a private frozen copy of the numbered file.
+/// Locate the companion on the publication's target and bind it to the
+/// daemon's publication receipt before either decrypted history is admitted.
+pub(crate) fn reconstruct_selected(
+    codec: &Path,
+    backup: &Path,
+    checkpoint: &Path,
+    kit: &Path,
+    unlock: &Path,
+    scratch: &Path,
+    scheduled: Option<(&Path, Option<[u8; 32]>)>,
+) -> Result<Vec<tempfile::TempDir>, Error> {
     independent_folders(
         backup.parent().ok_or(Error::Checkpoint)?,
         checkpoint.parent().ok_or(Error::Checkpoint)?,
@@ -57,6 +72,9 @@ pub(crate) fn reconstruct_files(
     let bytes = read_selected(checkpoint, 32768)?;
     let keys = KitFiles::load(codec, kit, unlock)?;
     if let Ok(selected) = serde_json::from_slice::<RecoverySelection>(&bytes) {
+        if scheduled.is_some_and(|(_, digest)| digest.is_some()) {
+            return Err(Error::RecoveryHistory);
+        }
         let (file, _) = open_recovery_source(backup).map_err(|_| Error::Archive)?;
         return Ok(vec![open_file(&keys, file, &selected, None, scratch)?]);
     }
@@ -72,7 +90,20 @@ pub(crate) fn reconstruct_files(
         && stem
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("prior"));
-    let (older, newer) = if selected_prior {
+    let (older, newer) = if pair.scheduled() {
+        let digest = pair.parent.approval.request.backup_sha256;
+        let target = match scheduled {
+            Some((dir, Some(expected))) if digest == expected => dir,
+            Some(_) => return Err(Error::RecoveryHistory),
+            None => backup.parent().ok_or(Error::Checkpoint)?,
+        };
+        (
+            target.join(super::paired::archive_name(digest)),
+            backup.to_owned(),
+        )
+    } else if scheduled.is_some() {
+        return Err(Error::RecoveryHistory);
+    } else if selected_prior {
         (backup.to_path_buf(), stem.with_extension("pgp"))
     } else {
         (backup.with_extension("prior.pgp"), backup.to_path_buf())

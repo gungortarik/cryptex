@@ -21,6 +21,8 @@ pub enum Action {
     Schedule {
         target: PathBuf,
         checkpoints: PathBuf,
+        #[serde(default)]
+        original: Option<Original>,
     },
     Retain {
         target: PathBuf,
@@ -35,6 +37,13 @@ pub enum Action {
         files: super::backup_verify::Selection,
     },
     Pause,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Original {
+    pub backup: PathBuf,
+    pub checkpoint: PathBuf,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -230,30 +239,33 @@ fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
                 .map_err(|_| Error::Unavailable)?;
             catalog
                 .verify(&anchor, &published, |cipher| {
-                    let mut profiles = crate::knowledge_materialization::backup::reconstruct_files(
+                    let profiles = crate::knowledge_materialization::backup::reconstruct_selected(
                         &config.codec,
                         cipher,
                         &files.checkpoint,
                         &files.kit,
                         &files.unlock,
                         scratch.path(),
+                        Some((target, published.archived_digest)),
                     )
                     .map_err(|_| io::Error::other("scheduled restore held"))?;
-                    if profiles.len() != 1 {
-                        return Err(io::Error::other("unexpected scheduled history count"));
-                    }
-                    let profile = profiles.pop().unwrap();
-                    let path = profile.path().to_owned();
-                    Ok((profile, path))
+                    let path = profiles
+                        .last()
+                        .ok_or_else(|| io::Error::other("missing scheduled history"))?
+                        .path()
+                        .to_owned();
+                    Ok((profiles, path))
                 })
                 .map_err(|_| Error::Verification)?
-                .close()
+                .into_iter()
+                .try_for_each(|profile| profile.close())
                 .map_err(|_| Error::Uncertain)?;
             Ok(Outcome::Verified)
         }
         Action::Schedule {
             target,
             checkpoints,
+            original,
         } => {
             if !checkpoints.is_absolute() || !checkpoints.is_dir() {
                 return Err(Error::UnsafeTarget);
@@ -268,7 +280,7 @@ fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
                 .map_err(map)?;
             let brain = crate::identity_runtime::load_brain_identity(&ctx.runtime_root)
                 .map_err(|_| Error::History)?;
-            if crate::knowledge_materialization::recovered_search::for_profile(
+            let recovered = crate::knowledge_materialization::recovered_search::for_profile(
                 &ctx.runtime_root,
                 &brain.brain_id,
                 anchor.device_id(),
@@ -276,13 +288,40 @@ fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
                 ctx.environment,
             )
             .map_err(|_| Error::History)?
-            .is_some()
-            {
-                return Err(Error::OriginalRequired);
-            }
+            .is_some();
             recipient(&ctx)?;
-            jobs.configure(&target, &checkpoints)
-                .map_err(|_| Error::Uncertain)?;
+            match (recovered, original) {
+                (true, None) => return Err(Error::OriginalRequired),
+                (false, Some(_)) => return Err(Error::InvalidRequest),
+                (true, Some(source)) => {
+                    for path in [&source.backup, &source.checkpoint] {
+                        if !path.is_absolute() {
+                            return Err(Error::UnsafeTarget);
+                        }
+                        crate::paths::assert_outside_repository(path)
+                            .map_err(|_| Error::UnsafeTarget)?;
+                        independent_folders(
+                            &ctx.runtime_root,
+                            path.parent().ok_or(Error::UnsafeTarget)?,
+                        )
+                        .map_err(|_| Error::UnsafeTarget)?;
+                    }
+                    let archive = crate::knowledge_materialization::backup::bind_original(
+                        &ctx.runtime_root,
+                        ctx.store.as_ref(),
+                        ctx.environment,
+                        crate::knowledge_materialization::backup::PriorFiles {
+                            backup: &source.backup,
+                            checkpoint: &source.checkpoint,
+                        },
+                        &target,
+                    )
+                    .map_err(|_| Error::Verification)?;
+                    jobs.configure_history(&target, &checkpoints, Some(archive))
+                }
+                (false, None) => jobs.configure(&target, &checkpoints),
+            }
+            .map_err(|_| Error::Uncertain)?;
             Ok(Outcome::Scheduled)
         }
         Action::Inspect { target } => {

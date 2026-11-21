@@ -25,6 +25,8 @@ pub(crate) fn generation_number(name: &str) -> Option<u64> {
 struct Receipt {
     digest: [u8; 32],
     purges: [u8; 32],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    archive: Option<[u8; 32]>,
 }
 
 pub(crate) struct VerifiedBackups<'a> {
@@ -92,7 +94,11 @@ impl VerifiedBackups<'_> {
                 .map_err(|_| {
                     io::Error::new(io::ErrorKind::InvalidData, "unverified purge history")
                 })?;
-        let record = serde_json::to_vec(&Receipt { digest, purges })?;
+        let record = serde_json::to_vec(&Receipt {
+            digest,
+            purges,
+            archive: publication.archived_digest,
+        })?;
         let service = ServiceLabel::device_credentials(self.environment);
         let account = self.account(Some(number))?;
         match self.store.get(service.as_str(), account.as_str()) {
@@ -180,6 +186,7 @@ impl VerifiedBackups<'_> {
             )
         })?;
         let mut verified = Vec::new();
+        let mut checked_archives = std::collections::BTreeSet::new();
         for entry in fs::read_dir(self.target)? {
             let name = entry?.file_name();
             let Some(number) = name.to_str().and_then(generation_number) else {
@@ -198,6 +205,14 @@ impl VerifiedBackups<'_> {
                         // Never let routine retention consume an old generation
                         // across a purge, even after another backup is verified.
                         continue;
+                    }
+                    if let Some(digest) = receipt.archive
+                        && checked_archives.insert(digest)
+                    {
+                        crate::knowledge_materialization::backup::verify_archived(&dir, digest)
+                            .map_err(|_| {
+                                io::Error::other("original scheduled backup unavailable")
+                            })?;
                     }
                     receipt.digest
                 }

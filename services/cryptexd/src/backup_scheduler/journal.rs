@@ -1,6 +1,7 @@
 //! Device-local scheduler state. The daemon serializes changes under its profile
 //! instance lock. Neither the removable target nor an imported backup supplies this record.
 use super::{Outcome, PendingBackup, generation_digest};
+use crate::knowledge_materialization::backup::ArchivedSource;
 use crate::secure_store::{
     AccountLabel, SecureStore, SecureStoreEnvironment, SecureStoreError, ServiceLabel,
 };
@@ -38,6 +39,8 @@ struct Job {
 #[serde(deny_unknown_fields)]
 struct Schedule {
     checkpoints: PathBuf,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    original: Option<ArchivedSource>,
     enabled: bool,
     next_due: u64,
 }
@@ -45,11 +48,13 @@ struct Schedule {
 pub(crate) struct Due {
     pub target: PathBuf,
     pub checkpoints: PathBuf,
+    pub original: Option<ArchivedSource>,
     pub generation: u64,
 }
 
 /// Only the local scheduler's journal can identify an automatic publication.
 pub(crate) struct PublishedGeneration {
+    pub(crate) archived_digest: Option<[u8; 32]>,
     pub(super) writer: LocalTrustAnchor,
     pub(super) path: PathBuf,
     pub(super) number: u64,
@@ -167,6 +172,15 @@ impl<'a> DeviceJobs<'a> {
 
     /// Persist the selected checkpoint directory before enabling autonomous publication.
     pub fn configure(&self, target: &Path, checkpoints: &Path) -> io::Result<()> {
+        self.configure_history(target, checkpoints, None)
+    }
+
+    pub fn configure_history(
+        &self,
+        target: &Path,
+        checkpoints: &Path,
+        original: Option<ArchivedSource>,
+    ) -> io::Result<()> {
         let head = self
             .role()
             .assigned_head(target)
@@ -186,16 +200,17 @@ impl<'a> DeviceJobs<'a> {
             }
         };
         if let Some(schedule) = &mut job.schedule {
-            if schedule.checkpoints != checkpoints {
+            if schedule.checkpoints != checkpoints || schedule.original != original {
                 return Err(io::Error::new(
                     io::ErrorKind::AlreadyExists,
-                    "different checkpoint folder",
+                    "different checkpoint folder or original backup",
                 ));
             }
             schedule.enabled = true;
         } else {
             job.schedule = Some(Schedule {
                 checkpoints: checkpoints.to_owned(),
+                original,
                 enabled: true,
                 next_due: 0,
             });
@@ -249,6 +264,7 @@ impl<'a> DeviceJobs<'a> {
         Ok(Some(Due {
             target: job.prior.parent().unwrap().to_owned(),
             checkpoints: schedule.checkpoints,
+            original: schedule.original,
             generation: job.generation,
         }))
     }
@@ -271,8 +287,12 @@ impl<'a> DeviceJobs<'a> {
     ) -> io::Result<()> {
         // Only a completed journal-owned generation can receive an automatic-retention receipt.
         let account = self.publication_account(&job.output(), head)?;
+        let mut receipt = digest.to_vec();
+        if let Some(original) = job.schedule.as_ref().and_then(|s| s.original.as_ref()) {
+            receipt.extend_from_slice(&original.digest);
+        }
         match self.store.get(self.service.as_str(), account.as_str()) {
-            Ok(prior) if prior == digest => (),
+            Ok(prior) if prior == receipt => (),
             Ok(_) => {
                 return Err(io::Error::other(
                     "conflicting scheduled publication receipt",
@@ -280,7 +300,7 @@ impl<'a> DeviceJobs<'a> {
             }
             Err(SecureStoreError::Missing) => self
                 .store
-                .put(self.service.as_str(), account.as_str(), &digest)
+                .put(self.service.as_str(), account.as_str(), &receipt)
                 .map_err(io::Error::other)?,
             Err(error) => return Err(io::Error::other(error)),
         }
@@ -302,13 +322,20 @@ impl<'a> DeviceJobs<'a> {
             .assigned_head(target)
             .map_err(super::role_error)?;
         let account = self.publication_account(path, head)?;
-        let digest = self
+        let receipt = self
             .store
             .get(self.service.as_str(), account.as_str())
-            .map_err(io::Error::other)?
-            .try_into()
-            .map_err(|_| io::Error::other("invalid publication receipt"))?;
+            .map_err(io::Error::other)?;
+        let (digest, archived_digest) = match receipt.as_slice() {
+            digest if digest.len() == 32 => (digest.try_into().unwrap(), None),
+            both if both.len() == 64 => (
+                both[..32].try_into().unwrap(),
+                Some(both[32..].try_into().unwrap()),
+            ),
+            _ => return Err(io::Error::other("invalid publication receipt")),
+        };
         Ok(PublishedGeneration {
+            archived_digest,
             writer: self.owner.clone(),
             path: path.to_owned(),
             number,
@@ -344,12 +371,22 @@ impl<'a> DeviceJobs<'a> {
         }
         Ok([
             PublishedGeneration {
+                archived_digest: job
+                    .schedule
+                    .as_ref()
+                    .and_then(|s| s.original.as_ref())
+                    .map(|a| a.digest),
                 writer: self.owner.clone(),
                 path: job.prior.clone(),
                 number: previous_number,
                 digest: job.prior_hash,
             },
             PublishedGeneration {
+                archived_digest: job
+                    .schedule
+                    .as_ref()
+                    .and_then(|s| s.original.as_ref())
+                    .map(|a| a.digest),
                 writer: self.owner.clone(),
                 path: job.output(),
                 number: job.generation,
@@ -411,6 +448,13 @@ impl<'a> DeviceJobs<'a> {
                         io::ErrorKind::PermissionDenied,
                         "backup role has changed",
                     ));
+                }
+                if let Some(original) = job.schedule.as_ref().and_then(|s| s.original.as_ref()) {
+                    crate::knowledge_materialization::backup::verify_archived(
+                        &target,
+                        original.digest,
+                    )
+                    .map_err(|_| io::Error::other("original scheduled ciphertext unavailable"))?;
                 }
                 if generation_digest(&prior)? != job.prior_hash {
                     return Err(io::Error::new(
