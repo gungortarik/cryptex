@@ -1,5 +1,17 @@
 # M11 encrypted backup container rehearsal
 
+## First-device approval on a single replacement computer
+
+At `6f9e2d8`, the installed Windows and macOS applications exported a public challenge from a prepared temporary replacement profile. The separate Recovery Kit program matched the selected backup bytes and authenticated Kit checkpoint, then signed the exact device key and challenge after the test supplied the explicit owner choice. Cancellation, redirected input, a wrong ciphertext and a different archive history all failed. The installed application rejected another key's signature and accepted the Kit's signature. After reopening, search returned the historical note and the replacement device's note. [Installed application and daemon checks](https://github.com/gungortarik/cryptex/actions/runs/44859268497)
+
+The Windows x64 and macOS ARM64 workflow artifacts contain the offline program, runtime and libraries. The signing program is absent from the ordinary Desktop package. The rehearsal prepares the restored archive and its independent device credential in the fixture before opening Desktop. Starting this preparation from a blank installation is still open. Personal profiles retain the existing write gate.
+
+## Scheduled backup and retention in the installed application
+
+At `e5045b2`, the Windows and macOS applications prompted for writer designation, reopened the assignment after restart, and rejected a copied target marker. At `59ac22a`, an owner-enabled daily schedule survived a daemon restart and produced ciphertext that the rehearsal restored after removing the source credentials. [Writer designation](https://github.com/gungortarik/cryptex/actions/runs/44856662825) · [Scheduled backup](https://github.com/gungortarik/cryptex/actions/runs/44857555574)
+
+At `18953f9`, the installed clients exercised the retention preference and sandbox verification for scheduled generations. The daemon checks a device-local publication receipt as well as the ciphertext. A renamed or substituted generation fails verification. Verified generations with an earlier purge history remain subject to separate owner review. The installed rehearsal uses temporary ordinary profiles. Scheduling after recovery onto a replacement device remains open. [Windows and macOS installed results](https://github.com/gungortarik/cryptex/actions/runs/44857929625)
+
 ## Separate files after recovering onto a replacement device
 
 The installed application exported the original device's encrypted backup byte for byte and wrote a second encrypted file for the replacement device's history. The owner keeps their public checkpoint in a separate trusted folder. At `7c15103`, both native runners removed the disposable replacement profile and its credential store, then selected the saved files and Recovery Kit in a fresh session. Selecting either file with the pair checkpoint reconstructed both histories. The test checked the original and replacement note contents. A mismatched original stopped export before either output was written. Removing the original or substituting the new ciphertext for it prevented verification of the pair. [Windows and macOS installed application results](https://github.com/gungortarik/cryptex/actions/runs/44854833344)
