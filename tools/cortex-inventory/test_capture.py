@@ -1,9 +1,11 @@
 """Submit synthetic owner approvals to a real, disposable-only daemon process."""
+from contextlib import ExitStack
 import hashlib
 import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 import uuid
@@ -15,6 +17,19 @@ DAEMON = Path(os.environ["CRYPTEX_M15_DAEMON"]).resolve()
 
 
 class ReviewedCaptureTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if sys.platform == "darwin" and os.environ.get("GITHUB_ACTIONS") == "true":
+            # Use an unlocked disposable Keychain in the unattended runner.
+            sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts/m8"))
+            cls.addClassCleanup(sys.path.pop, 0)
+            from mac_ci_credential_keychain import CredentialKeychain
+            from mac_identity_preflight import run_bounded
+
+            stack = ExitStack()
+            cls.addClassCleanup(stack.close)
+            stack.enter_context(CredentialKeychain(Path(tempfile.gettempdir()), run_bounded))
+
     def setUp(self):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
