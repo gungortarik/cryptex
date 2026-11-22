@@ -1,5 +1,9 @@
 # 34 — Current Implementation Handoff
 
+## M15 retry after loss of the first receipt
+
+At `d1fd78b`, all eight reviewed capture cases passed on [Windows and macOS](https://github.com/gungortarik/cryptex/actions/runs/45070764001). In the new case the disposable daemon exited immediately after the normal capture service confirmed the commit and before the client received a receipt. The harness checked the committed receipt on disk and resubmitted the identical approval in a fresh process. The returned event ID matched that receipt, the signed history contained exactly one restricted note with the expected text digest, and the canonical packs were byte-identical across retry. The source snapshot stayed intact. This checks post-commit reply loss using synthetic data. M15's explicit review of duplicates and conflicts across source items remains open.
+
 ## M15 reviewed capture across a daemon restart
 
 At `8e5d56f`, the [Windows and macOS CI run](https://github.com/gungortarik/cryptex/actions/runs/45066583859) passed all seven reviewed capture cases on each platform using synthetic sources and temporary profiles. After the first daemon exited, a second process reopened the enrolled signing key through the native credential store. Retrying the approval returned the same receipt and one signed restricted note. The source snapshot and canonical pack bytes matched the originals. A changed classification was refused, a missing receipt returned an uncertain result with one note on disk, and a missing key prevented replay. The macOS job uses an unlocked disposable Keychain in the runner's login context. This covers an orderly exit. The next recovery case is interruption after a commit but before the caller receives the receipt.
