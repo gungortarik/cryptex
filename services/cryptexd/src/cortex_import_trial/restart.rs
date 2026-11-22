@@ -62,6 +62,10 @@ pub(super) fn run(source: &Path, mode: &str, id: &str) -> Result<(), LifecycleEr
     if source_directory.starts_with(&root) || root.starts_with(&source_directory) {
         return Err(fault("source_and_trial_profile_overlap"));
     }
+    #[cfg(target_os = "macos")]
+    let _noninteractive =
+        security_framework::os::macos::keychain::SecKeychain::disable_user_interaction()
+            .map_err(|_| fault("trial_keychain_interaction_policy_failed"))?;
     let store = TrialKey {
         native: NativeStore::new(),
         id,

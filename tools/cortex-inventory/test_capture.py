@@ -109,9 +109,14 @@ class ReviewedCaptureTest(unittest.TestCase):
         self.assertEqual(events[0]["classification"], "restricted")
 
     def run_phase(self, mode, trial_id, *decisions, expect_success=True):
+        env = self.env.copy()
+        if sys.platform == "darwin" and os.environ.get("GITHUB_ACTIONS") == "true":
+            # securityd resolves the runner's selected default Keychain through
+            # its login home. The daemon's trial profile still lives in TMPDIR.
+            env["HOME"] = os.environ["HOME"]
         run = subprocess.run([DAEMON, "cortex-import-disposable", self.source, mode, trial_id],
                              input=b"".join(json.dumps(d).encode() + b"\n" for d in decisions),
-                             capture_output=True, cwd=self.profile, env=self.env, timeout=90)
+                             capture_output=True, cwd=self.profile, env=env, timeout=90)
         self.assertNotIn(b"private body marker", run.stdout + run.stderr)
         if not expect_success:
             self.assertNotEqual(run.returncode, 0)
