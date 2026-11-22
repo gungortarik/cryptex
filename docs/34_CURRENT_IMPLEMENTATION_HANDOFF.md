@@ -2,7 +2,7 @@
 
 ## M14 candidate review
 
-The [platform acceptance review](../evidence/m14/platform-closeout-review.md) records the Windows and Mac tests for candidate `18b9b04`, including verification of a signed note through update, rollback and interrupted recovery. Read the Mac restricted-device regression and the supervisor and recovery findings before approving closure. M14 remains open.
+The [platform acceptance review](../evidence/m14/platform-closeout-review.md) records the Windows and Mac tests for candidate `18b9b04`, including verification of a signed note through update, rollback and interrupted recovery. The [restricted-device list correction](../evidence/m14/platform-closeout-review.md#restricted-device-list-after-a-transport-error) at `c6e2fc6` follows that review. The supervisor start control and updater timeout findings remain open for M14 review.
 
 ## M14 Windows console observation
 
