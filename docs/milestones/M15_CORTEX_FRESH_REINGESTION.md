@@ -54,6 +54,8 @@ One profile retains one approval for this trial. The source provenance and class
 
 M15 must verify relevant inventory/import failure behavior, provenance, dedup/conflict review, interrupted import/retry behavior and acceptance/cutover against the real target Cryptex model.
 
+The restart rehearsal uses two separate invocations of the feature-gated daemon. The first creates a trial profile and a fresh signing key in a dedicated Windows Credential Manager or macOS Keychain namespace. After it exits, the second opens the same temporary profile, loads the enrolled key, checks the saved approval and resolves the prior capture receipt before retrying. The harness compares both processes' identities, receipts, verified notes and canonical pack bytes. It removes the trial credential and profile at teardown. This exercises an orderly process exit between commit and retry.
+
 ## Completion gate
 
 M15 is complete only when scope items and relevant recovery/privacy/failure tests pass, required CI is green, Definition of Done is satisfied and human review is complete.

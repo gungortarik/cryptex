@@ -6,6 +6,7 @@ on:
       - 'crates/events/src/envelope.rs'
       - 'crates/events/src/limits.rs'
       - 'services/cryptexd/src/cortex_import_trial.rs'
+      - 'services/cryptexd/src/cortex_import_trial/**'
       - 'services/cryptexd/src/capture.rs'
       - '.github/workflows/m15-cortex-inventory.yml'
       - 'Cargo.toml'

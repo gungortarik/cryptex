@@ -93,6 +93,68 @@ class ReviewedCaptureTest(unittest.TestCase):
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0]["classification"], "restricted")
 
+    def run_phase(self, mode, trial_id, *decisions, expect_success=True):
+        run = subprocess.run([DAEMON, "cortex-import-disposable", self.source, mode, trial_id],
+                             input=b"".join(json.dumps(d).encode() + b"\n" for d in decisions),
+                             capture_output=True, cwd=self.profile, env=self.env, timeout=90)
+        self.assertNotIn(b"private body marker", run.stdout + run.stderr)
+        if not expect_success:
+            self.assertNotEqual(run.returncode, 0)
+            return run.stderr
+        self.assertEqual(run.returncode, 0, run.stderr)
+        return [json.loads(line) for line in run.stdout.splitlines()]
+
+    def start_retained_trial(self):
+        trial_id = str(uuid.uuid4())
+        self.addCleanup(self.run_phase, "--remove-trial-key", trial_id)
+        session, receipt, report = self.run_phase("--restart-create", trial_id, self.approval)
+        self.assertEqual(receipt["status"], "committed", receipt)
+        self.assertEqual(receipt["approval"], self.approval)
+        self.assertEqual(session["brain_id"], trial_id)
+        self.assertEqual(len(report["verified_notes"]), 1)
+        note = report["verified_notes"][0]
+        self.assertEqual(note["event_id"], receipt["event_id"])
+        self.assertEqual(note["classification"], "restricted")
+        self.assertEqual(note["text_sha256"], hashlib.sha256(self.text).hexdigest())
+        return trial_id, session, receipt, report
+
+    def test_restart_replays_one_signed_note(self):
+        source_before = snapshot(self.source)
+        trial_id, first, receipt, report = self.start_retained_trial()
+        root = self.temp / f"cryptex-m15-restart-{trial_id}"
+
+        def packs():
+            return {p.relative_to(root): p.read_bytes() for p in (root / "canonical").rglob("*")
+                    if p.is_file() and p.suffix in (".seg", ".open")}
+
+        original = packs()
+        self.assertTrue(original)
+        second, refusal, replay, reopened = self.run_phase(
+            "--restart-replay", trial_id, dict(self.approval, classification="public"), self.approval)
+        self.assertNotEqual(first["pid"], second["pid"])
+        for key in ("brain_id", "device_id", "signing_key_id"):
+            self.assertEqual(first[key], second[key])
+        self.assertEqual(refusal, {"status": "rejected", "issue": "approval_conflict"})
+        self.assertEqual(replay, receipt)
+        self.assertEqual(reopened, report)
+        self.assertEqual(packs(), original)
+        self.assertEqual(snapshot(self.source), source_before)
+
+    def test_restart_refuses_missing_native_key(self):
+        trial_id, _, _, _ = self.start_retained_trial()
+        self.run_phase("--remove-trial-key", trial_id)
+        diagnostic = self.run_phase("--restart-replay", trial_id, self.approval, expect_success=False)
+        self.assertIn(b"trial_key_unavailable", diagnostic)
+
+    def test_restart_refuses_missing_capture_receipt(self):
+        trial_id, session, _, report = self.start_retained_trial()
+        root = self.temp / f"cryptex-m15-restart-{trial_id}"
+        (root / "derived" / "capture_receipts" / trial_id / session["device_id"] /
+         (self.approval["capture_id"] + ".json")).unlink()
+        _, refusal, reopened = self.run_phase("--restart-replay", trial_id, self.approval)
+        self.assertEqual(refusal, {"status": "uncertain", "issue": "prior_commit_unverified"})
+        self.assertEqual(reopened, report)
+
 
 if __name__ == "__main__":
     unittest.main()
