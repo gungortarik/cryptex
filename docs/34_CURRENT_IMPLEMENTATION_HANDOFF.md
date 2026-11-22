@@ -1,6 +1,12 @@
 # 34 — Current Implementation Handoff
 
-## M14 installed update and rollback
+## M14 local package updater
+
+The [native updater run](https://github.com/gungortarik/cryptex/actions/runs/44992690019) at `2ba12e9` exercised `cryptex-updater apply` on Windows under a temporary standard account and on macOS 26 under the disposable runner account. Both installed Desktops reconnected after the compatible upgrade to `0.14.2`. For the incompatible `0.14.3` package the updater observed the protocol 2/1 rejection, restored the preceding working image and launched `0.14.2` at its original path. The independently observed GUI PID matched the updater's launch receipt and its daemon answered on protocol 2. Both executable hashes matched the working pair.
+
+Both runs also rejected an unapproved package fingerprint and recovered a simulated interruption after package selection on the next invocation. Receipts and the standalone native tools are attached to the run. The [M14 contract](milestones/M14_PLATFORM_POLISH_UPDATES.md#local-staged-desktop-updates) describes staging a locally approved package. Signed distribution and power-loss durability remain separate gates.
+
+## Earlier M14 installer rehearsal
 
 At `23174ea`, the [installed update rehearsal](https://github.com/gungortarik/cryptex/actions/runs/44990571351) exercised three native packages on Windows and macOS. Each platform used one disposable account and the same profile and install location across four launches. Desktop first connected with IPC protocol 1, then reconnected after upgrading both components to protocol 2. The deliberately mismatched package paired Desktop protocol 2 with a protocol 1 daemon. Its explicit IPC rejection triggered the rehearsal controller to reinstall the most recently working package. Desktop then connected again on protocol 2. Both restored executables matched their pre-rollback SHA-256 digests.
 
