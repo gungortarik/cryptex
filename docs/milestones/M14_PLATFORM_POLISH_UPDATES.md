@@ -34,6 +34,16 @@ M14 includes:
 
 M14 must verify platform lifecycle behavior, update/reconnect/rollback paths as applicable, DPI/Retina/theme/accessibility behavior and packaged-build smoke tests on macOS and Windows.
 
+## Local staged Desktop updates
+
+The native `cryptex-updater` command runs separately from Desktop. It updates a closed per-user installation at `%LOCALAPPDATA%\Programs\Cryptex` on Windows or `~/Applications/Cryptex.app` on macOS. The updater works with complete, locally staged package images that support the Desktop update probe. Canonical data lives outside these directories.
+
+The packaging step records the output of `cryptex-updater fingerprint PATH` for the trusted source image. The operator places the image beside the installation with the suffix `.pending` and runs `cryptex-updater apply APPROVED_SHA256`. The command checks the staged image against that independently supplied fingerprint. It probes the installed Desktop and its own daemon before changing the installation.
+
+On a correlated protocol rejection the updater puts the rejected image back in the staging directory, restores the working installation, checks its fingerprint, probes its daemon again and launches Desktop at its usual path. On success the displaced image occupies the staging directory. The next package must be staged explicitly. Retrying after an interrupted selection recovers the recorded working image when both package fingerprints and their locations can be verified. An unknown image or a busy profile produces an error.
+
+This flow covers a local package handover. Publisher signing, delivery channels and release distribution remain subject to the M17 gates.
+
 ## Completion gate
 
 M14 is complete only when scope items and relevant cross-platform/failure/UI tests pass, required CI is green, Definition of Done is satisfied and human review is complete.

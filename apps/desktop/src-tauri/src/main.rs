@@ -61,7 +61,7 @@ fn daemon_override() -> Option<PathBuf> {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 struct ProbeState {
     child: Arc<Mutex<Option<Child>>>,
     runtime_root: Arc<Mutex<Option<PathBuf>>>,
@@ -77,6 +77,24 @@ struct ProbeState {
     capture_guard_sync_ok: Arc<AtomicBool>,
     /// True while a user-initiated Quit confirm/shutdown is in progress (blocks re-entry).
     user_quit_in_progress: Arc<AtomicBool>,
+}
+
+impl Default for ProbeState {
+    fn default() -> Self {
+        Self {
+            child: Arc::new(Mutex::new(None)),
+            runtime_root: Arc::new(Mutex::new(None)),
+            cryptexd_bin: Arc::new(Mutex::new(None)),
+            restart_attempts: Arc::new(Mutex::new(0)),
+            restart_not_before: Arc::new(Mutex::new(Instant::now())),
+            pending_exit_code: Arc::new(Mutex::new(None)),
+            engine_stopped_by_owner: Arc::new(Mutex::new(false)),
+            supervised_pid: Arc::new(Mutex::new(None)),
+            capture_session_dirty: Arc::new(AtomicBool::new(false)),
+            capture_guard_sync_ok: Arc::new(AtomicBool::new(false)),
+            user_quit_in_progress: Arc::new(AtomicBool::new(false)),
+        }
+    }
 }
 
 #[tauri::command]
