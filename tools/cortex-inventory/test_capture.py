@@ -106,12 +106,53 @@ class ReviewedCaptureTest(unittest.TestCase):
 
     def test_replay_cannot_substitute_source_or_class(self):
         (self.notes / "copy.md").write_bytes(self.text)
-        replies, events = self.submit(self.approval, dict(self.approval, classification="public"),
-                                      dict(self.approval, source_path="Notes/copy.md"))
+        blocked, events = self.submit(self.approval)
+        self.assertEqual(events, [])
+        self.assertEqual(blocked[0]["status"], "needs_review")
+        self.assertEqual(blocked[0]["review"]["exact_duplicates"], [["Notes/copy.md", "Notes/ilk.MD"]])
+        choice = dict(self.approval, review_sha256=blocked[0]["review"]["review_sha256"])
+        replies, events = self.submit(choice, dict(choice, classification="public"),
+                                      dict(choice, source_path="Notes/copy.md"))
         self.assertEqual(replies[0]["status"], "committed", replies[0])
         self.assertEqual(replies[1:], [{"status": "rejected", "issue": "approval_conflict"}] * 2)
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0]["classification"], "restricted")
+
+    def test_conflict_requires_current_review_before_capture(self):
+        self.text = b"# Trip\nprivate body marker: Monday"
+        self.file.write_bytes(self.text)
+        self.approval["source_sha256"] = hashlib.sha256(self.text).hexdigest()
+        other = self.notes / "second.md"
+        other.write_bytes(b"# Trip\nTuesday")
+        replies, events = self.submit(self.approval)
+        self.assertEqual(events, [])
+        self.assertEqual(replies[0]["status"], "needs_review")
+        report = replies[0]["review"]
+        self.assertEqual(report["possible_conflicts"], [["Notes/ilk.MD", "Notes/second.md"]])
+        preview = subprocess.run([BINARY, "--review-notes", self.source], env=self.env,
+                                 cwd=self.profile, capture_output=True, timeout=30)
+        self.assertEqual(preview.returncode, 2)
+        self.assertEqual(json.loads(preview.stdout), report)
+        choice = dict(self.approval, review_sha256=json.loads(preview.stdout)["review_sha256"])
+        other.write_bytes(b"# Trip\nWednesday")
+        replies, events = self.submit(choice)
+        self.assertEqual(events, [])
+        self.assertEqual(replies[0]["status"], "needs_review")
+        choice["review_sha256"] = replies[0]["review"]["review_sha256"]
+        replies, events = self.submit(self.approval, choice, choice)
+        self.assertEqual(replies[0]["status"], "needs_review")
+        self.assertEqual(replies[1], replies[2])
+        self.assertEqual(replies[1]["approval"], choice)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["event_id"], replies[1]["event_id"])
+        self.assertEqual(events[0]["text_sha256"], self.approval["source_sha256"])
+        self.assertEqual(events[0]["classification"], "restricted")
+
+        other.write_bytes(b"\xff")
+        replies, events = self.submit(choice)
+        self.assertEqual(events, [])
+        self.assertEqual(replies[0]["status"], "needs_review")
+        self.assertNotIn("review_sha256", replies[0]["review"])
 
     def run_phase(self, mode, trial_id, *decisions, expected_exit=0):
         env = self.env.copy()

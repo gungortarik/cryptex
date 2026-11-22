@@ -56,6 +56,44 @@ class InventoryTest(unittest.TestCase):
     def preview(self, path, expected=0):
         return self.invoke("--preview-note", self.source, path, expected=expected)
 
+    def test_review_groups_exact_copies_and_possible_title_conflicts(self):
+        notes = self.source / "Notes"
+        notes.mkdir()
+        first = b"# Team schedule\nprivate body marker: Tuesday\n"
+        files = {"a.md": first, "b.MD": first,
+                 "c.md": b"---\r\nclassification: public\r\n---\r\n# TEAM   SCHEDULE\r\nWednesday",
+                 "d.md": b"# Another topic\nTuesday", "e.md": b"no title",
+                 "outside.txt": first}
+        for name, data in reversed(files.items()):
+            (notes / name).write_bytes(data)
+        before = snapshot(self.source)
+        report = self.invoke("--review-notes", self.source, expected=2)
+        self.assertEqual(report["exact_duplicates"], [["Notes/a.md", "Notes/b.MD"]])
+        self.assertEqual(report["possible_conflicts"], [["Notes/a.md", "Notes/b.MD", "Notes/c.md"]])
+        self.assertEqual(report["findings"], [])
+        self.assertEqual(report["notes"], {"Notes/" + k: hashlib.sha256(v).hexdigest()
+                                          for k, v in files.items() if k != "outside.txt"})
+        self.assertRegex(report["review_sha256"], r"^[0-9a-f]{64}$")
+        self.assertNotIn("schedule", json.dumps(report).lower())
+        self.assertEqual(report, self.invoke("--review-notes", self.source, expected=2))
+        self.assertEqual(before, snapshot(self.source))
+
+    def test_review_distinguishes_matching_title_copies_and_unreadable_items(self):
+        notes = self.source / "Notes"
+        notes.mkdir()
+        (notes / "one.md").write_bytes(b"# Same\nprivate body marker")
+        clear = self.invoke("--review-notes", self.source)
+        self.assertEqual([clear[k] for k in ("exact_duplicates", "possible_conflicts", "findings")],
+                         [[], [], []])
+        (notes / "two.md").write_bytes((notes / "one.md").read_bytes())
+        duplicates = self.invoke("--review-notes", self.source, expected=2)
+        self.assertEqual(duplicates["possible_conflicts"], [])
+        self.assertEqual(duplicates["exact_duplicates"], [["Notes/one.md", "Notes/two.md"]])
+        (notes / "invalid.md").write_bytes(b"\xff")
+        incomplete = self.invoke("--review-notes", self.source, expected=2)
+        self.assertNotIn("review_sha256", incomplete)
+        self.assertEqual(incomplete["findings"], [{"source_path": "Notes/invalid.md", "issue": "invalid_text"}])
+
     def test_note_mapping_preserves_text_and_requires_classification(self):
         notes = self.source / "Notes"
         notes.mkdir()

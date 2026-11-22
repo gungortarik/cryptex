@@ -60,10 +60,7 @@ fn exact_metadata(parent: &Dir, name: &str) -> Result<Metadata, ReviewIssue> {
     Err(ReviewIssue::Source(Issue::Disappeared))
 }
 
-fn read_note(source: &Path, path: &str) -> Result<MemoryNotePayload, ReviewIssue> {
-    let name = path
-        .strip_prefix("Notes/")
-        .ok_or(ReviewIssue::UnmappedCategory)?;
+fn validate_name(name: &str) -> Result<(), ReviewIssue> {
     if name.contains(['/', '\\', ':'])
         || !Path::new(name)
             .extension()
@@ -71,12 +68,37 @@ fn read_note(source: &Path, path: &str) -> Result<MemoryNotePayload, ReviewIssue
     {
         return Err(ReviewIssue::UnmappedCategory);
     }
+    Ok(())
+}
+
+pub(super) fn notes_directory(source: &Path) -> Result<Dir, ReviewIssue> {
     let root = source_directory(source).map_err(ReviewIssue::Source)?;
     if !exact_metadata(&root, "Notes")?.is_dir() {
         return Err(ReviewIssue::Source(Issue::NotDirectory));
     }
-    let folder = root.open_dir_nofollow("Notes")?;
-    if !exact_metadata(&folder, name)?.is_file() {
+    Ok(root.open_dir_nofollow("Notes")?)
+}
+
+fn read_note(source: &Path, path: &str) -> Result<MemoryNotePayload, ReviewIssue> {
+    let name = path
+        .strip_prefix("Notes/")
+        .ok_or(ReviewIssue::UnmappedCategory)?;
+    validate_name(name)?;
+    let folder = notes_directory(source)?;
+    let metadata = exact_metadata(&folder, name)?;
+    read_listed_note(&folder, name, &metadata)
+}
+
+pub(super) fn read_listed_note(
+    folder: &Dir,
+    name: &str,
+    metadata: &Metadata,
+) -> Result<MemoryNotePayload, ReviewIssue> {
+    validate_name(name)?;
+    if indirect(metadata) {
+        return Err(ReviewIssue::Source(Issue::LinkOrReparsePoint));
+    }
+    if !metadata.is_file() {
         return Err(ReviewIssue::NotRegularFile);
     }
     let mut options = OpenOptions::new();
@@ -122,7 +144,7 @@ fn read_note(source: &Path, path: &str) -> Result<MemoryNotePayload, ReviewIssue
     MemoryNotePayload::new(text).map_err(|_| ReviewIssue::TooLarge)
 }
 
-fn digest(payload: &MemoryNotePayload) -> String {
+pub(super) fn digest(payload: &MemoryNotePayload) -> String {
     format!("{:x}", Sha256::digest(payload.text.as_bytes()))
 }
 

@@ -1,8 +1,10 @@
 //! Inventory a legacy source or preview the mapping of one explicitly selected note.
 mod note_mapping;
+mod note_review;
 use cap_fs_ext::DirExt;
 use cap_std::fs::{Dir, Metadata};
 pub use note_mapping::{ReviewIssue, preview, reviewed_payload};
+pub use note_review::{print_review, review_notes};
 use serde::Serialize;
 use std::{io, path::Path, process::ExitCode};
 

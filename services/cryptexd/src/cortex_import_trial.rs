@@ -4,7 +4,7 @@ use cryptexd::secure_store::SecureStore;
 #[cfg(any(windows, target_os = "macos"))]
 mod restart;
 use cryptex_core::{BrainIdentity, DeviceId, validate::parse_uuid_str};
-use cryptex_cortex_inventory::reviewed_payload;
+use cryptex_cortex_inventory::{review_notes, reviewed_payload};
 use cryptex_events::{Classification, ContentHashHex, EventPayload};
 use cryptexd::{
     FakeSecureStore, SecureStoreEnvironment,
@@ -37,6 +37,8 @@ struct Approval {
     source_path: String,
     source_sha256: String,
     classification: Classification,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    review_sha256: Option<String>,
 }
 
 fn fault(code: &str) -> LifecycleError {
@@ -45,21 +47,25 @@ fn fault(code: &str) -> LifecycleError {
 
 // Store the owner decision before capture. Its capture ID also identifies the
 // daemon's idempotent capture receipt, including if its first reply gets lost.
-fn bind(root: &Path, approval: &Approval, replay_only: bool) -> io::Result<bool> {
-    let path = root.join("cortex-note-approval.json");
-    let matches_stored = || -> io::Result<bool> {
-        let stored: Approval = serde_json::from_reader(fs::File::open(&path)?)?;
-        Ok(&stored == approval)
-    };
-    if replay_only {
-        return matches_stored();
+fn check_saved(path: &Path, approval: &Approval) -> io::Result<Option<bool>> {
+    match fs::File::open(path) {
+        Ok(file) => Ok(Some(
+            &serde_json::from_reader::<_, Approval>(file)? == approval,
+        )),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
     }
+}
+
+fn bind(root: &Path, path: &Path, approval: &Approval) -> io::Result<bool> {
     let mut pending = tempfile::NamedTempFile::new_in(root)?;
     serde_json::to_writer(pending.as_file_mut(), approval)?;
     pending.as_file().sync_all()?;
-    match pending.persist_noclobber(&path) {
+    match pending.persist_noclobber(path) {
         Ok(_) => Ok(true),
-        Err(e) if e.error.kind() == io::ErrorKind::AlreadyExists => matches_stored(),
+        Err(e) if e.error.kind() == io::ErrorKind::AlreadyExists => {
+            Ok(check_saved(path, approval)? == Some(true))
+        }
         Err(e) => Err(e.error),
     }
 }
@@ -83,20 +89,36 @@ fn capture(
         Ok(payload) => payload,
         Err(issue) => return Ok(json!({"status":"rejected","issue":issue})),
     };
-    if !bind(root, &approval, mode == TrialMode::Replay)
-        .map_err(|_| fault("approval_storage_failed"))?
-    {
+    let path = root.join("cortex-note-approval.json");
+    let saved = check_saved(&path, &approval).map_err(|_| fault("approval_storage_failed"))?;
+    if saved == Some(false) {
         return Ok(json!({"status":"rejected","issue":"approval_conflict"}));
     }
-    // A replay of a completed trial must not allocate a new record if the
-    // original receipt disappeared between processes.
-    if mode == TrialMode::Replay
-        && !matches!(
+    if mode == TrialMode::Replay && saved.is_none() {
+        return Err(fault("approval_storage_failed"));
+    }
+    let previously_committed = saved == Some(true)
+        && matches!(
             cryptexd::capture::resolve_capture(store, DEV, root, &approval.capture_id),
             CaptureOutcome::Committed(_)
-        )
-    {
+        );
+    if mode == TrialMode::Replay && !previously_committed {
         return Ok(json!({"status":"uncertain","issue":"prior_commit_unverified"}));
+    }
+    if !previously_committed {
+        let review = review_notes(source);
+        if review.review_sha256.is_none()
+            || review.notes.get(&approval.source_path) != Some(&approval.source_sha256)
+            || ((review.requires_choice(&approval.source_path) || approval.review_sha256.is_some())
+                && approval.review_sha256 != review.review_sha256)
+        {
+            return Ok(json!({"status":"needs_review","review":review}));
+        }
+        if saved.is_none()
+            && !bind(root, &path, &approval).map_err(|_| fault("approval_storage_failed"))?
+        {
+            return Ok(json!({"status":"rejected","issue":"approval_conflict"}));
+        }
     }
     let request = CaptureRequest {
         capture_id: approval.capture_id.clone(),

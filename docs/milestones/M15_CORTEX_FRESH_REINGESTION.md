@@ -56,6 +56,12 @@ M15 must verify relevant inventory/import failure behavior, provenance, dedup/co
 
 The restart rehearsal uses two separate invocations of the feature-gated daemon. The first creates a trial profile and a fresh signing key in a dedicated Windows Credential Manager or macOS Keychain namespace. After it exits, the second opens the same temporary profile, loads the enrolled key, checks the saved approval and resolves the prior capture receipt before retrying. The harness compares both processes' identities, receipts, verified notes and canonical pack bytes. It removes the trial credential and profile at teardown. This exercises an orderly process exit between commit and retry.
 
+### Comparing synthetic notes before capture
+
+Run `cryptex-cortex-inventory --review-notes SOURCE_DIRECTORY` against a stable snapshot. The read-only JSON report lists the relative path and exact content SHA-256 for each mapped Markdown file directly under `Notes/`. Identical byte digests form duplicate groups. Files with different digests and the same leading level-one Markdown title form possible conflict groups. Title comparison lowercases text and collapses whitespace. A leading front matter block is skipped. The report omits titles and bodies. This heuristic can miss contradictions expressed under different titles.
+
+Exit code 0 means the scan finished with no candidates. Exit code 2 means there are groups to review or files that could not be checked. Inspect the listed originals to decide which file to keep. To capture a member of a group in the disposable daemon, include the current report's `review_sha256` alongside that file's path, digest, classification and capture ID in the approval. This selects one file for this trial. The daemon recomputes the review before writing. An outdated choice returns the current report. An incomplete scan reports the affected paths and issues and withholds the review digest.
+
 ## Completion gate
 
 M15 is complete only when scope items and relevant recovery/privacy/failure tests pass, required CI is green, Definition of Done is satisfied and human review is complete.
