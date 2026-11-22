@@ -60,6 +60,16 @@ pub(super) fn probe() -> Result<(), String> {
         return Err("unowned daemon".into());
     }
     let result = owned_health(&state);
+    #[cfg(feature = "m14-installed-update-check")]
+    let result = result.and_then(|health| {
+        if health.status == "incompatible" {
+            super::installed_update_check::hold_live_probe_for_timeout(
+                &runtime,
+                health.daemon_pid,
+            )?;
+        }
+        Ok(health)
+    });
     stop_daemon_for_user_quit(&state, "update_probe_stop")?;
     if observe()?.lock_held {
         return Err("update daemon did not release its lock".into());

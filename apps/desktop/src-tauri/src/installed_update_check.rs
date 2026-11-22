@@ -39,6 +39,24 @@ fn check(app: &AppHandle) -> Result<serde_json::Value, String> {
     Ok(receipt)
 }
 
+/// Keep both the native probe session and its daemon alive beyond the production deadline.
+pub(super) fn hold_live_probe_for_timeout(
+    root: &std::path::Path,
+    daemon: u32,
+) -> Result<(), String> {
+    if root
+        .join("m14-timeout-probe")
+        .try_exists()
+        .map_err(|e| e.to_string())?
+    {
+        fs::create_dir(root.join(format!("m14-held-live-{}-{daemon}", std::process::id())))
+            .map_err(|e| e.to_string())?;
+        std::thread::sleep(std::time::Duration::from_secs(120));
+        return Err("timeout fixture outlived its updater".into());
+    }
+    Ok(())
+}
+
 /// Hold only the disposable candidate's reply. The actual updater remains
 /// uninstrumented and the probe still owns its native session lock.
 pub(super) fn hold_rejected_reply(root: &std::path::Path) -> Result<(), String> {

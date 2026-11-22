@@ -1,12 +1,14 @@
 //! Apply an explicitly staged local package while the user has quit Desktop.
 use cryptex_updater::{Health, Layout, PROBE, desktop};
+use process_wrap::std::{ChildWrapper, CommandWrap};
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     env, fs,
     io::{self, Read},
     path::Path,
-    process::{Command, Stdio},
+    process::{Command, ExitStatus, Stdio},
+    sync::mpsc,
     thread,
     time::{Duration, Instant},
 };
@@ -63,32 +65,88 @@ fn package_digest(path: &Path) -> io::Result<String> {
     ))
 }
 
-fn probe(package: &Path) -> io::Result<Health> {
-    let mut child = Command::new(desktop(package))
-        .arg(PROBE)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .spawn()?;
-    let deadline = Instant::now() + Duration::from_secs(30);
-    let exit = loop {
-        if let Some(status) = child.try_wait()? {
-            break status;
-        }
-        if Instant::now() >= deadline {
-            return Err(error(
-                "update probe timed out; quit Desktop before recovery",
-            ));
+enum Probe {
+    Replied(Health),
+    TimedOut,
+}
+
+fn require_connection_check(package: &Path) -> io::Result<Health> {
+    match probe(package)? {
+        Probe::Replied(health) => Ok(health),
+        Probe::TimedOut => Err(error("working Desktop update probe timed out")),
+    }
+}
+
+fn wait_for_exit(
+    child: &mut dyn ChildWrapper,
+    timeout: Duration,
+) -> io::Result<Option<ExitStatus>> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let status = child.try_wait()?;
+        if status.is_some() || Instant::now() >= deadline {
+            return Ok(status);
         }
         thread::sleep(Duration::from_millis(50));
-    };
-    let mut bytes = Vec::new();
-    child
-        .stdout
+    }
+}
+
+fn terminate_probe(child: &mut dyn ChildWrapper) -> io::Result<()> {
+    // Signal only this probe's job/process group, then reap the child before recovery.
+    child.start_kill()?;
+    wait_for_exit(child, Duration::from_secs(5))?
+        .ok_or_else(|| error("update probe did not exit after termination"))?;
+    Ok(())
+}
+
+fn probe(package: &Path) -> io::Result<Probe> {
+    let mut command = Command::new(desktop(package));
+    command
+        .arg(PROBE)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped());
+    let mut command = CommandWrap::from(command);
+    #[cfg(windows)]
+    command.wrap(process_wrap::std::JobObject);
+    #[cfg(unix)]
+    command.wrap(process_wrap::std::ProcessGroup::leader());
+    let mut child = command.spawn()?;
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let stdout = child
+        .stdout()
         .take()
-        .ok_or_else(|| error("missing probe output"))?
-        .take(4097)
-        .read_to_end(&mut bytes)?;
-    if !exit.success() || bytes.len() > 4096 {
+        .ok_or_else(|| error("missing probe output"))?;
+    let (send, receive) = mpsc::sync_channel(1);
+    // Keep the pipe and retained child under one deadline. A descendant may still
+    // hold stdout after the probe exits. Keep the leader unreaped until the read ends.
+    if let Err(cause) = thread::Builder::new().spawn(move || {
+        let mut bytes = Vec::new();
+        let reply = stdout.take(4097).read_to_end(&mut bytes).map(|_| bytes);
+        let _ = send.send(reply);
+    }) {
+        terminate_probe(&mut *child)?;
+        return Err(cause);
+    }
+    let bytes = match receive.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+        Ok(Ok(bytes)) if bytes.len() <= 4096 => bytes,
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            terminate_probe(&mut *child)?;
+            return Ok(Probe::TimedOut);
+        }
+        _ => {
+            terminate_probe(&mut *child)?;
+            return Err(error("invalid Desktop update probe output"));
+        }
+    };
+    let Some(exit) = wait_for_exit(
+        &mut *child,
+        deadline.saturating_duration_since(Instant::now()),
+    )?
+    else {
+        terminate_probe(&mut *child)?;
+        return Ok(Probe::TimedOut);
+    };
+    if !exit.success() {
         return Err(error("Desktop failed its update probe"));
     }
     let health: Health = serde_json::from_slice(&bytes)?;
@@ -104,7 +162,7 @@ fn probe(package: &Path) -> io::Result<Health> {
     {
         return Err(error("invalid Desktop update response"));
     }
-    Ok(health)
+    Ok(Probe::Replied(health))
 }
 
 fn vacant(path: &Path) -> io::Result<bool> {
@@ -154,7 +212,7 @@ impl Intent {
         }
         let old = working.ok_or_else(|| error("working image missing during recovery"))?;
         let new = staged.ok_or_else(|| error("staged image missing during recovery"))?;
-        let verified = probe(old)?;
+        let verified = require_connection_check(old)?;
         if verified.status != "connected" {
             return Err(error("retained Desktop could not reconnect"));
         }
@@ -171,7 +229,7 @@ impl Intent {
         if old != &layout.active {
             fs::rename(&layout.previous, &layout.active)?;
         }
-        let restored = probe(&layout.active)?;
+        let restored = require_connection_check(&layout.active)?;
         if restored.status != "connected" || restored.desktop_protocol != verified.desktop_protocol
         {
             return Err(error("recovered Desktop could not reconnect"));
@@ -221,15 +279,15 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
             "run the standalone updater from outside Desktop's install directory",
         ));
     }
-    let before = probe(&layout.active)?;
+    let before = require_connection_check(&layout.active)?;
     if before.status != "connected" {
         return Err(error("current Desktop does not have a working daemon"));
     }
-    Intent {
+    let intent = Intent {
         working: original.clone(),
         staged: approved.to_owned(),
-    }
-    .save(&journal)?;
+    };
+    intent.save(&journal)?;
     fs::rename(&layout.active, &layout.previous)?;
     if let Err(cause) = fs::rename(&layout.pending, &layout.active) {
         fs::rename(&layout.previous, &layout.active)?;
@@ -238,7 +296,15 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
     if package_digest(&layout.active)? != approved {
         return Err(error("activated package changed"));
     }
-    let candidate = probe(&layout.active)?;
+    let candidate = match probe(&layout.active)? {
+        Probe::Replied(health) => health,
+        Probe::TimedOut => {
+            let mut checks = vec![before];
+            checks.extend(intent.restore(layout)?);
+            fs::remove_file(journal)?;
+            return reopen(layout, transaction, "rolled_back_timeout", checks);
+        }
+    };
     let mut checks = vec![before, candidate];
     let outcome = if checks[1].status == "incompatible" {
         fs::rename(&layout.active, &layout.pending)?;
@@ -246,7 +312,7 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
         if package_digest(&layout.active)? != original {
             return Err(error("previous package changed"));
         }
-        let restored = probe(&layout.active)?;
+        let restored = require_connection_check(&layout.active)?;
         if restored.status != "connected" || restored.desktop_protocol != checks[0].desktop_protocol
         {
             return Err(error("restored Desktop could not reconnect"));

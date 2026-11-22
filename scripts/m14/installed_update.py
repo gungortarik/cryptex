@@ -179,6 +179,34 @@ def interrupt_after_selection(tool, approved, working, active, runtime, journal,
             "busy_recovery_refused": True, "journal_and_images_verified": True}
 
 
+def apply_with_live_timeout(tool, approved, runtime, env):
+    armed = runtime / "m14-timeout-probe"
+    armed.touch(exist_ok=False)
+    try:
+        with subprocess.Popen([sys.executable, "-c", "import time; time.sleep(180)"]) as unrelated:
+            try:
+                started = time.monotonic()
+                result = run(tool, "apply", approved, env=env, text=True, stdout=subprocess.PIPE, timeout=110)
+                elapsed = time.monotonic() - started
+                marker, = runtime.glob("m14-held-live-*")
+                probe_pid, daemon_pid = map(int, marker.name.removeprefix("m14-held-live-").split("-"))
+                if min(probe_pid, daemon_pid) <= 0 or probe_pid == daemon_pid or elapsed < 30:
+                    raise RuntimeError("The candidate did not exercise the native probe timeout")
+                wait_for_desktop_exit(probe_pid)
+                wait_for_desktop_exit(daemon_pid)
+                if unrelated.poll() is not None:
+                    raise RuntimeError("Probe cleanup stopped an unrelated process")
+                return result, {"probe_pid": probe_pid, "daemon_pid": daemon_pid,
+                                "probe_and_daemon_exited": True, "unrelated_process_survived": True,
+                                "apply_elapsed_seconds": round(elapsed, 2)}
+            finally:
+                if unrelated.poll() is None:
+                    unrelated.terminate()
+                unrelated.wait(timeout=10)
+    finally:
+        armed.unlink()
+
+
 def verify_note(daemon, runtime):
     events = runtime / "canonical/events"
     packs = sorted(path for path in events.rglob("*") if path.suffix in (".seg", ".open"))
@@ -235,7 +263,7 @@ def exercise(packages, work, runtime, env):
     previous = active.with_name(active.name + ".previous")
     state = (Path(os.environ["LOCALAPPDATA"]) if WINDOWS else Path.home() / "Library/Application Support") / "Cryptex-Updater"
     journal = state / "package-transition.json"
-    for index, source in enumerate((images[0][0], images[1][0], images[1][0])):
+    for index, source in enumerate((images[0][0], images[1][0], images[1][0], images[1][0])):
         if WINDOWS:
             shutil.copytree(source, pending)
         else:
@@ -252,15 +280,20 @@ def exercise(packages, work, runtime, env):
             wrong = subprocess.run([tool, "apply", "0" * 64], env=env, capture_output=True, timeout=30)
             if wrong.returncode == 0 or b"approved digest" not in wrong.stderr:
                 raise RuntimeError("Unexpected outcome for an unapproved staged image")
-        process = run(tool, "apply", approved, env=env, text=True, stdout=subprocess.PIPE, timeout=150)
+        if index == 3:
+            process, timeout_evidence = apply_with_live_timeout(tool, approved, runtime, env)
+            if run(tool, "fingerprint", pending, text=True, capture_output=True).stdout.strip() != approved:
+                raise RuntimeError("Timeout rollback changed the staged candidate")
+        else:
+            process = run(tool, "apply", approved, env=env, text=True, stdout=subprocess.PIPE, timeout=150)
         report = json.loads(process.stdout)
-        expected = ([(1, 1), (2, 2)], [(2, 2), (2, 1), (2, 2)], [(2, 2), (2, 2)])[index]
+        expected = ([(1, 1), (2, 2)], [(2, 2), (2, 1), (2, 2)], [(2, 2), (2, 2)], [(2, 2)] * 3)[index]
         checks = report["checks"]
         if [(c["desktop_protocol"], c["daemon_protocol"]) for c in checks] != expected:
             raise RuntimeError(f"Unexpected IPC handshake sequence: {checks}")
         if [c["status"] for c in checks] != ["incompatible" if a != b else "connected" for a, b in expected]:
             raise RuntimeError("Unexpected update decision evidence")
-        if report["outcome"] != ("updated", "rolled_back", "recovered")[index]:
+        if report["outcome"] != ("updated", "rolled_back", "recovered", "rolled_back_timeout")[index]:
             raise RuntimeError(f"Unexpected updater outcome: {report}")
         if journal.exists() or previous.exists():
             raise RuntimeError("Completed operation retained an unfinished transition")
@@ -283,6 +316,8 @@ def exercise(packages, work, runtime, env):
         transaction = {"updater": report, "reopened": reopened, "canonical_note_verified": True}
         if index == 2:
             transaction["interruption"] = interruption
+        if index == 3:
+            transaction["timeout"] = timeout_evidence
         receipts.append(transaction)
         # Keep the displaced package as evidence and free the staging name.
         pending.rename(user_root / ("Cryptex-displaced-" + str(index)))
