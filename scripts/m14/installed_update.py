@@ -108,6 +108,31 @@ def install(package, destination):
     return desktop, (digest(desktop), expected_daemon)
 
 
+def wait_for_desktop_exit(pid):
+    if WINDOWS:
+        import _winapi
+        try:
+            handle = _winapi.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE
+        except OSError as error:
+            if error.winerror == 87:  # This PID already exited.
+                return
+            raise
+        try:
+            if _winapi.WaitForSingleObject(handle, 15000) == _winapi.WAIT_OBJECT_0:
+                return
+        finally:
+            _winapi.CloseHandle(handle)
+    else:
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return
+            time.sleep(0.1)
+    raise TimeoutError("The disposable Desktop did not exit after recording its connection")
+
+
 def exercise(packages, work, runtime, env):
     user_root = Path(os.environ["LOCALAPPDATA"]) / "Programs" if WINDOWS else Path.home() / "Applications"
     user_root.mkdir(parents=True, exist_ok=True)
@@ -180,16 +205,7 @@ def exercise(packages, work, runtime, env):
             raise RuntimeError("Active Desktop or daemon differs from the working upgrade")
         # The GUI writes its receipt just before exiting in the disposable build.
         # Wait for the native session lock via the process handle below.
-        if WINDOWS:
-            run("powershell.exe", "-NoProfile", "-Command",
-                f"$p=Get-Process -Id {reopened['desktop_pid']} -ErrorAction SilentlyContinue; if ($p) {{ $p.WaitForExit(15000) | Out-Null }}")
-        else:
-            while time.monotonic() < deadline:
-                try:
-                    os.kill(reopened["desktop_pid"], 0)
-                except ProcessLookupError:
-                    break
-                time.sleep(0.1)
+        wait_for_desktop_exit(reopened["desktop_pid"])
         receipts.append({"updater": report, "reopened": reopened})
         # Keep the displaced package as evidence and free the staging name.
         pending.rename(user_root / ("Cryptex-displaced-" + str(index)))
