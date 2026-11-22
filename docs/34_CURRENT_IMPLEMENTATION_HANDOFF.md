@@ -2,7 +2,7 @@
 
 ## M14 login startup
 
-The disposable Windows and Mac accounts each observed one Cryptex startup over 60 seconds and confirmed removal of the native startup entry at `ca1cd81`. CI exercised the registered launch in an existing session. New-login acceptance requires the two device receipts after signing out of the temporary OS accounts and signing back in. The native handoff packages are attached to the [M14 run](https://github.com/gungortarik/cryptex/actions/runs/44963838273). Each launcher writes `M14-OTURUM-SONUC-*.json` beside itself after verification.
+The disposable Windows and Mac accounts each observed one Cryptex startup over 60 seconds and confirmed removal of the native startup entry at `ca1cd81`. CI exercised the registered launch in an existing session. The owner completed a fresh Windows VM login with the temporary account. The PowerShell readback showed a different logon SID from preparation, a match with the ready session, one launch in that session, a positive removal marker, and no Cryptex value in the user's Run key. The original verifier included an earlier launch from another session; the screenshot confirmed the Windows result independently of a JSON receipt. The verifier at `cf13818` counts attempts per observed session. Fresh macOS login verification remains pending. The native handoff packages are attached to the [M14 run](https://github.com/gungortarik/cryptex/actions/runs/44963838273). Each launcher writes `M14-OTURUM-SONUC-*.json` beside itself after verification.
 
 ## M13 closure
 
