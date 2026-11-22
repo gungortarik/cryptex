@@ -1,5 +1,9 @@
 # 34 — Current Implementation Handoff
 
+## M15 first reviewed daemon capture
+
+At `ae862a1` the feature-gated `cryptexd` trial recorded the first synthetic Cortex note through the normal capture service. [Windows and macOS CI](https://github.com/gungortarik/cryptex/actions/runs/45064930721) passed four end-to-end cases each. All four classifications survived signed pack readback with the original UTF-8 digest. The same approval returned the same event twice with one record on disk. A stale digest or invalid decision produced zero notes, and an attempted path or classification substitution left the original restricted note intact. The trial used a fresh temporary Brain and an in-memory signing-key store. Disk readback took place in the same daemon session. The next recovery check is to repeat the approval after a process restart with the disposable profile and its signing identity retained.
+
 ## M15 first Cortex note mapping
 
 At `0a6552f`, a selected synthetic `Notes/example.md` can be previewed as a v1 `memory.note`. The production payload constructor validates the exact UTF-8 text. The preview exposes the relative path, size and digest for review and leaves classification open. The [mapping contract](milestones/M15_CORTEX_FRESH_REINGESTION.md#first-category-mapping-for-synthetic-sources) is scoped to the synthetic export convention. [Native temporary-profile CI](https://github.com/gungortarik/cryptex/actions/runs/45064094813) passed all six new mapping tests on both platforms, including byte preservation, bounds, ambiguity and denied access. The next step is to bind an explicit classification and reviewed source digest to an import through the daemon in a disposable profile.
