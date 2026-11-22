@@ -1,5 +1,11 @@
 # 34 — Current Implementation Handoff
 
+## M14 installed update and rollback
+
+At `23174ea`, the [installed update rehearsal](https://github.com/gungortarik/cryptex/actions/runs/44990571351) exercised three native packages on Windows and macOS. Each platform used one disposable account and the same profile and install location across four launches. Desktop first connected with IPC protocol 1, then reconnected after upgrading both components to protocol 2. The deliberately mismatched package paired Desktop protocol 2 with a protocol 1 daemon. Its explicit IPC rejection triggered the rehearsal controller to reinstall the most recently working package. Desktop then connected again on protocol 2. Both restored executables matched their pre-rollback SHA-256 digests.
+
+The workflow retains the four launch receipts for each OS. The versions `0.14.1` through `0.14.3` identify test packages. Package selection and reinstallation ran in the external test controller. Delivery through a signed distribution updater remains outside this check.
+
 ## M14 window restoration
 
 At `e03aaa2` the shared Desktop reopen handler restores a minimized main window before focusing it. The [native shell checks](https://github.com/gungortarik/cryptex/actions/runs/44986955290) passed on Windows under a disposable standard user and on macOS in a temporary runner profile. They minimized and restored the real window, closed it to the background and reopened it, then checked the original search text and the identity of the running daemon. The rehearsal invokes the native reopen handler directly. Physical tray or Dock clicks were outside this check. The [registered startup regression](https://github.com/gungortarik/cryptex/actions/runs/44986955320) also passed on both platforms. The next M14 step is installed Desktop and daemon update coordination, including reconnection and rollback of an incompatible pair.
