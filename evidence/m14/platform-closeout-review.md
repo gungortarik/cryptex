@@ -1,8 +1,28 @@
 # M14 platform acceptance review
 
-Review target [`18b9b04`](https://github.com/gungortarik/cryptex/compare/d4b621b...18b9b04). The product sources are unchanged from the Windows console observation build. The last candidate change adds a signed public note to the installed-updater rehearsal.
+## Final candidate
 
-On November 22, 2026, the candidate entered final review for the disposable-account scope. M14 remains open. Resolve or disposition the findings below against the accepted ADR and obtain human diff review before closure.
+The [M14 diff from the M13 close to `c5926f9`](https://github.com/gungortarik/cryptex/compare/d4b621b...c5926f9) includes the three corrections from the initial review. Its last product change is `f2298b0`. The only subsequent changes up to the candidate are the update contract, handoff and evidence.
+
+| Acceptance check | Evidence for this candidate |
+| --- | --- |
+| Installed package and startup registration | The [Windows and macOS release smoke](https://github.com/gungortarik/cryptex/actions/runs/45057522341) checked that environment and file requests for a foreign service were refused and that the packaged daemon stayed live through hide and restore. The Windows observer saw zero console-window and console-process events when it executed the registered command in a fresh logon. [Registration, one launch and removal](https://github.com/gungortarik/cryptex/actions/runs/45057521436) ran on both platforms. Earlier interactive sign-in receipts are identified separately below. |
+| Update and recovery | The [four installed update transactions](https://github.com/gungortarik/cryptex/actions/runs/45057521421) verified a signed note through upgrade, incompatible rollback, interrupted recovery and probe timeout. Both timeout receipts identify the reconnected working version, matching binary hashes, exit of both owned processes and survival of an unrelated process. |
+| Desktop shell, display and keyboard | [Native shell and rendered UI checks](https://github.com/gungortarik/cryptex/actions/runs/45058746648) passed window restoration and keyboard navigation. Each platform passed six combinations of light/dark appearance and 100%, 150% and 200% scale. The reviewed 200% screenshots retain a visible focus indicator and search button. |
+| Authorization and lifecycle | [Native startup and restart](https://github.com/gungortarik/cryptex/actions/runs/45058743825) passed on Windows and macOS. The [restriction regression](https://github.com/gungortarik/cryptex/actions/runs/45058839606) also passed, covering the previously reported stale-device case. |
+| Required CI | [Full CI](https://github.com/gungortarik/cryptex/actions/runs/45058740658) covers workspace checks on both platforms and IPC isolation between Windows accounts. |
+
+The package and updater tests use disposable accounts. The scope covers local staged updates and process interruption. Distribution signing and notarization are assigned to M17. The display evidence uses emulated density and keyboard traversal. The interruption evidence comes from process termination.
+
+In the [first full CI attempt](https://github.com/gungortarik/cryptex/actions/runs/45058740658/attempts/1), the Windows runner lost access to its workspace during release compilation (OS error 433). The same error prevented checkout and pnpm post-job actions from reading their own files. The [Windows rerun](https://github.com/gungortarik/cryptex/actions/runs/45058740658/attempts/2) passed on a fresh runner at the same revision.
+
+The technical acceptance checks passed on November 22, 2026. Fourteen local Windows test-harness checks also passed. The remaining gate is the owner's review of the candidate diff above.
+
+## Initial review and follow-up
+
+Initial review target [`18b9b04`](https://github.com/gungortarik/cryptex/compare/d4b621b...18b9b04). The product sources are unchanged from the Windows console observation build. The last candidate change adds a signed public note to the installed-updater rehearsal.
+
+The initial review on November 22, 2026 identified three findings in the disposable-account scope. The following sections trace their corrections and native verification.
 
 | M14 requirement | Evidence and limits |
 | --- | --- |
@@ -11,7 +31,7 @@ On November 22, 2026, the candidate entered final review for the disposable-acco
 | Scaling, appearance and keyboard | The native WebView exercises zoom. The built renderer exercises navigation, focus and search in two appearances at three densities. These are automated viewport and keyboard checks. Hardware monitor changes and assistive-technology sessions were outside these runs. |
 | Installation and package recovery | The ordinary release smoke installs NSIS on Windows and an app bundle on macOS. In a separate disposable-account rehearsal, the local updater uses three instrumented packages to exercise a compatible handover, explicit protocol rejection, and recovery after the updater process is killed. The signed-note check verifies the signature and compares the canonical pack set and bytes before and after those transitions, including the interrupted selection. |
 
-## Native results
+## Initial candidate test results
 
 The candidate's [full CI](https://github.com/gungortarik/cryptex/actions/runs/45044676425) passed Windows and macOS readiness and the Windows cross-account IPC check. The [separate native startup suite](https://github.com/gungortarik/cryptex/actions/runs/45045335417) passed on both platforms, including the Mac restricted-peer check that failed on the earlier run. Only the installed-updater test script changed between those runs. The retry leaves the cause of the first failure open. Fourteen local Windows M14 harness tests also passed.
 
