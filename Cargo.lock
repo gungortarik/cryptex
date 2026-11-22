@@ -992,6 +992,7 @@ dependencies = [
  "bytes",
  "cc",
  "cryptex-core",
+ "cryptex-cortex-inventory",
  "cryptex-events",
  "cryptex-knowledge",
  "cryptex-projection",

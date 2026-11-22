@@ -7,6 +7,7 @@ publish = false
 default-run = "cryptexd"
 
 [features]
+m15-disposable-import = ["dep:cryptex-cortex-inventory"]
 m11-offline-verifier = []
 disposable-ipc = []
 m11-installed-search-check = ["disposable-ipc"]
@@ -29,6 +30,7 @@ required-features = ["m11-offline-verifier"]
 cc = "=1.5.1"
 
 [dependencies]
+cryptex-cortex-inventory = { path = "../../tools/cortex-inventory", optional = true }
 same-file = "1"
 cryptex-core = { path = "../../crates/core" }
 cryptex-events = { path = "../../crates/events" }

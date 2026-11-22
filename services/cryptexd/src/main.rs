@@ -6,6 +6,9 @@ use std::process;
 use std::thread;
 use std::time::Duration;
 
+#[cfg(feature = "m15-disposable-import")]
+mod cortex_import_trial;
+
 use cryptex_core::BrainIdentity;
 use cryptex_events::envelope::Classification;
 use cryptexd::canonical_writer::CanonicalWriterConfig;
@@ -124,6 +127,8 @@ fn run_with_ready(
     }
 
     match args[0].as_str() {
+        #[cfg(feature = "m15-disposable-import")]
+        "cortex-import-disposable" => cortex_import_trial::run(&args[1..]),
         "lifecycle" => run_lifecycle(&args[1..], ordinary_ipc, ready),
         "identity" => run_identity(&args[1..]),
         #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]

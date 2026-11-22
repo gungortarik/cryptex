@@ -5,6 +5,8 @@ on:
       - 'tools/cortex-inventory/**'
       - 'crates/events/src/envelope.rs'
       - 'crates/events/src/limits.rs'
+      - 'services/cryptexd/src/cortex_import_trial.rs'
+      - 'services/cryptexd/src/capture.rs'
       - '.github/workflows/m15-cortex-inventory.yml'
       - 'Cargo.toml'
       - 'Cargo.lock'
@@ -30,3 +32,9 @@ jobs:
         env:
           CRYPTEX_INVENTORY_BIN: target/debug/cryptex-cortex-inventory${{ runner.os == 'Windows' && '.exe' || '' }}
         run: python -B tools/cortex-inventory/test_cli.py -v
+      - run: cargo build --locked -p cryptexd --bin cryptexd --features m15-disposable-import
+      - name: Verify the reviewed note against the daemon's signed local history
+        env:
+          CRYPTEX_INVENTORY_BIN: target/debug/cryptex-cortex-inventory${{ runner.os == 'Windows' && '.exe' || '' }}
+          CRYPTEX_M15_DAEMON: target/debug/cryptexd${{ runner.os == 'Windows' && '.exe' || '' }}
+        run: python -B tools/cortex-inventory/test_capture.py -v

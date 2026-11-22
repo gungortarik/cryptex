@@ -48,6 +48,10 @@ Unmapped paths, unreadable or indirect items, multiply linked files, whitespace-
 
 ### Milestone verification
 
+The `m15-disposable-import` Cargo feature adds `cryptexd cortex-import-disposable SOURCE_DIRECTORY` for the first synthetic note trial. It allocates a fresh temporary Brain and uses an in-memory development key store. Each local stdin line supplies one explicit decision with `capture_id`, `source_path`, `source_sha256` from the preview, and a Cryptex `classification`. The daemon rereads the selected item once, compares the digest and submits those same bytes to its normal capture service.
+
+One profile retains one approval for this trial. The source provenance and classification in that approval link to the daemon capture receipt by capture ID. Retrying the same decision resolves the same event. Reusing it with a different source path or classification is refused. At EOF the daemon reopens the packs, verifies the signature and chain, and reports the event identity, classification and digest of the stored text. The temporary profile is removed on normal exit. This trial covers on-disk readback in one daemon session. Real-profile import and durable cutover remain later work.
+
 M15 must verify relevant inventory/import failure behavior, provenance, dedup/conflict review, interrupted import/retry behavior and acceptance/cutover against the real target Cryptex model.
 
 ## Completion gate

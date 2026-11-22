@@ -9,7 +9,7 @@ use std::{io::Read, path::Path, process::ExitCode};
 
 #[derive(Serialize)]
 #[serde(rename_all = "snake_case")]
-enum ReviewIssue {
+pub enum ReviewIssue {
     UnmappedCategory,
     Source(Issue),
     MultipleLinks,
@@ -18,6 +18,7 @@ enum ReviewIssue {
     InvalidText,
     TooLarge,
     SourceChanged,
+    DigestMismatch,
 }
 
 impl From<std::io::Error> for ReviewIssue {
@@ -59,7 +60,7 @@ fn exact_metadata(parent: &Dir, name: &str) -> Result<Metadata, ReviewIssue> {
     Err(ReviewIssue::Source(Issue::Disappeared))
 }
 
-fn map<'a>(source: &Path, path: &'a str) -> Result<Preview<'a>, ReviewIssue> {
+fn read_note(source: &Path, path: &str) -> Result<MemoryNotePayload, ReviewIssue> {
     let name = path
         .strip_prefix("Notes/")
         .ok_or(ReviewIssue::UnmappedCategory)?;
@@ -118,18 +119,39 @@ fn map<'a>(source: &Path, path: &'a str) -> Result<Preview<'a>, ReviewIssue> {
     if text.trim().is_empty() {
         return Err(ReviewIssue::EmptyText);
     }
-    let payload = MemoryNotePayload::new(text).map_err(|_| ReviewIssue::TooLarge)?;
+    MemoryNotePayload::new(text).map_err(|_| ReviewIssue::TooLarge)
+}
+
+fn digest(payload: &MemoryNotePayload) -> String {
+    format!("{:x}", Sha256::digest(payload.text.as_bytes()))
+}
+
+/// Return exactly the bytes checked against the owner's preview.
+pub fn reviewed_payload(
+    source: &Path,
+    path: &str,
+    approved_sha256: &str,
+) -> Result<MemoryNotePayload, ReviewIssue> {
+    let payload = read_note(source, path)?;
+    if digest(&payload) != approved_sha256 {
+        return Err(ReviewIssue::DigestMismatch);
+    }
+    Ok(payload)
+}
+
+fn map<'a>(source: &Path, path: &'a str) -> Result<Preview<'a>, ReviewIssue> {
+    let payload = read_note(source, path)?;
     Ok(Preview::Mapped {
         source_category: "markdown_note",
         source_path: path,
         event_type: EventType::MemoryNote,
-        source_sha256: format!("{:x}", Sha256::digest(payload.text.as_bytes())),
+        source_sha256: digest(&payload),
         text_bytes: payload.text.len(),
         classification_required: true,
     })
 }
 
-pub(super) fn preview(source: &Path, path: Option<&str>) -> ExitCode {
+pub fn preview(source: &Path, path: Option<&str>) -> ExitCode {
     let result = path
         .ok_or(ReviewIssue::Source(Issue::NonUtf8Name))
         .and_then(|path| map(source, path));
