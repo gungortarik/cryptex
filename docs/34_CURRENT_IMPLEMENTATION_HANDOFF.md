@@ -1,5 +1,13 @@
 # 34 — Current Implementation Handoff
 
+## M14 installed release packages
+
+At `7c886ed` CI built the ordinary release NSIS installer and macOS app without rehearsal features. In a fresh Windows standard account and the disposable macOS 26 runner account, the locally installed Desktop started its packaged daemon. Closing the window to the background and restoring it preserved both PIDs. Harness shutdown released the daemon lock. Windows verified the GUI subsystem and the entire installed executable against the release binary with Tauri's NSIS stamp. macOS verified the bundle identifier, macOS 26 minimum and copied payload. [Native package receipts](https://github.com/gungortarik/cryptex/actions/runs/45037033065)
+
+The installed-update rehearsal now publishes its disposable JSON receipt after serialization finishes. Both platforms verified the compatible update, incompatible rollback and recovery after terminating the updater. In all three cases the reopened Desktop connected to the expected daemon. The restored executable pair matched the working upgrade byte for byte. [Update and recovery receipts](https://github.com/gungortarik/cryptex/actions/runs/45037033089)
+
+The package smoke exercised foreground launch and window restoration. The next check is console-free background launch from the installed Windows startup entry, as required by ADR-0012. M14 closure still requires the remaining gate review and human review.
+
 ## M14 display scaling, appearance and keyboard navigation
 
 At `c93a49c` the [desktop shell run](https://github.com/gungortarik/cryptex/actions/runs/45032548525) exercised the native WebView in a disposable Windows standard account and macOS runner account. At 100%, 150% and 200% WebView zoom in both light and dark appearance, the CSS viewport reflowed to the expected width. The navigation and search controls stayed within it and the page had no horizontal overflow.
