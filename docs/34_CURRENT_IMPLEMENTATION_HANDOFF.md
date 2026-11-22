@@ -1,5 +1,9 @@
 # 34 — Current Implementation Handoff
 
+## M15 first Cortex note mapping
+
+At `0a6552f`, a selected synthetic `Notes/example.md` can be previewed as a v1 `memory.note`. The production payload constructor validates the exact UTF-8 text. The preview exposes the relative path, size and digest for review and leaves classification open. The [mapping contract](milestones/M15_CORTEX_FRESH_REINGESTION.md#first-category-mapping-for-synthetic-sources) is scoped to the synthetic export convention. [Native temporary-profile CI](https://github.com/gungortarik/cryptex/actions/runs/45064094813) passed all six new mapping tests on both platforms, including byte preservation, bounds, ambiguity and denied access. The next step is to bind an explicit classification and reviewed source digest to an import through the daemon in a disposable profile.
+
 ## M15 read-only Cortex inventory
 
 At `27bc74b`, the [inventory CLI](milestones/M15_CORTEX_FRESH_REINGESTION.md#first-step-read-only-source-inventory) produced a deterministic metadata listing for a synthetic legacy directory. The [native Windows and macOS checks](https://github.com/gungortarik/cryptex/actions/runs/45063607269) used temporary user-profile directories and a fixture containing a SQLite database and a read-only note. Both runs verified unchanged source bytes and modification times, an empty target profile, and reviewable results for missing, inaccessible, indirect and over-depth entries. The POSIX run also checked a named pipe. The next step is to define and review the first legacy category mapping, then exercise extraction on synthetic content before any canonical import.
