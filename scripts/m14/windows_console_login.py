@@ -1,4 +1,4 @@
-"""Observe the installed GUI during Windows alternate-shell logon processing."""
+"""Measure console starts and window shows while the installed Windows GUI starts."""
 import ctypes as c
 from ctypes import wintypes as w
 import json
@@ -36,6 +36,22 @@ close = api(KERNEL, "CloseHandle", w.BOOL, w.HANDLE)
 query_image = api(KERNEL, "QueryFullProcessImageNameW", w.BOOL, w.HANDLE, w.DWORD, w.LPWSTR, c.POINTER(w.DWORD))
 open_token = api(ADV, "OpenProcessToken", w.BOOL, w.HANDLE, w.DWORD, c.POINTER(w.HANDLE))
 token_info = api(ADV, "GetTokenInformation", w.BOOL, w.HANDLE, c.c_int, c.c_void_p, w.DWORD, c.POINTER(w.DWORD))
+
+
+process_times = api(KERNEL, "GetProcessTimes", w.BOOL, w.HANDLE, *(c.POINTER(w.FILETIME),) * 4)
+
+
+def creation_time(pid):
+    process = open_process(0x1000, False, pid)
+    if not process:
+        raise c.WinError(c.get_last_error())
+    try:
+        times = [w.FILETIME() for _ in range(4)]
+        if not process_times(process, *(c.byref(value) for value in times)):
+            raise c.WinError(c.get_last_error())
+        return times[0].dwHighDateTime << 32 | times[0].dwLowDateTime
+    finally:
+        close(process)
 
 
 def identity(pid):
@@ -95,11 +111,11 @@ class ConsoleObserver:
 
     def calibrate(self):
         # CREATE_NEW_CONSOLE with SW_SHOWNORMAL is intentional only in this
-        # positive control. The OS launches Cryptex independently of this process.
+        # positive control. Never supply a window-suppression flag to Cryptex.
         info = subprocess.STARTUPINFO()
         info.dwFlags = subprocess.STARTF_USESHOWWINDOW
         info.wShowWindow = 1
-        with subprocess.Popen([sys.executable, "-c", "import time; time.sleep(1)"],
+        with subprocess.Popen([Path(sys.executable).with_name("python.exe"), "-c", "import time; time.sleep(1)"],
                               creationflags=subprocess.CREATE_NEW_CONSOLE, startupinfo=info) as control:
             deadline = time.monotonic() + 5
             while time.monotonic() < deadline:
@@ -115,48 +131,51 @@ class ConsoleObserver:
         self.starts.clear()
 
 
-def observe(desktop, runtime, session):
+def observe(desktop, runtime, session, *, windows_logon):
+    snapshot = runtime / "gui-proof.snapshot"
     with ConsoleObserver() as observer:
-        observer.calibrate()
-        shell = Path(os.environ["SystemRoot"]) / "System32/runonce.exe"
-        startup = subprocess.Popen([shell, "/AlternateShellStartup"])
-        try:
-            deadline = time.monotonic() + 90
-            stable_since = None
-            pids = None
-            while time.monotonic() < deadline:
-                observer.pump()
-                if observer.windows or observer.starts:
-                    raise RuntimeError(f"Console detected during logon: window shows={len(observer.windows)}, "
-                                       f"console starts={len(observer.starts)}")
-                if startup.poll() not in (0, None):
-                    raise RuntimeError(f"Windows shell startup exited with {startup.returncode}")
-                snapshot = (runtime / "gui-proof.snapshot").read_text(encoding="utf-8")
-                fields = dict(line.split("=", 1) for line in snapshot.splitlines() if "=" in line)
-                if fields.get("note") == "desktop_launched" and fields.get("daemon_pid_observation") == "live":
-                    pair = (int(fields["desktop_pid"]), int(fields["daemon_pid"]))
-                    if stable_since is None:
-                        pids = pair
-                        stable_since = time.monotonic()
-                    if pair != pids:
-                        raise RuntimeError("Desktop or daemon changed during startup")
-                    if time.monotonic() - stable_since >= 10:
-                        if identity(pair[0]) != (desktop, session) or identity(pair[1]) != (desktop.with_name("cryptexd.exe"), session):
-                            raise RuntimeError("Installed image or logon identity mismatch")
-                        observer.pump()
-                        if observer.windows or observer.starts:
-                            raise RuntimeError("Console observed at the end of startup")
-                        return {"desktop_pid": pair[0], "daemon_pid": pair[1], "console_show_events": 0,
-                                "console_process_events": 0, "positive_control_seen": True,
-                                "observation_after_readiness_seconds": 10}
-                time.sleep(.01)
-            raise TimeoutError("Windows logon processing did not start the installed Desktop")
-        finally:
-            try:
-                startup.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                startup.terminate()
-                startup.wait(timeout=5)
+        armed_at = time.time_ns() // 100 + 116444736000000000  # Windows FILETIME
+        launched = None
+        if not windows_logon:
+            observer.calibrate()
+            entry = registration()
+            check_entry(entry, desktop)
+            launched = subprocess.Popen(entry, executable=str(desktop))
+        deadline = time.monotonic() + 90
+        stable_since = None
+        pids = None
+        while time.monotonic() < deadline:
+            observer.pump()
+            if observer.windows or observer.starts:
+                raise RuntimeError(f"Console detected: window shows={len(observer.windows)}, "
+                                   f"console starts={len(observer.starts)}")
+            if launched is not None and launched.poll() is not None:
+                raise RuntimeError(f"Registered Desktop exited with {launched.returncode}")
+            body = snapshot.read_text(encoding="utf-8") if snapshot.exists() else ""
+            fields = dict(line.split("=", 1) for line in body.splitlines() if "=" in line)
+            if body.endswith("\n") and fields.get("note") == "desktop_launched" and fields.get("daemon_pid_observation") == "live":
+                pair = (int(fields["desktop_pid"]), int(fields["daemon_pid"]))
+                if stable_since is None:
+                    if creation_time(pair[0]) <= armed_at:
+                        raise RuntimeError("Observer missed the beginning of Desktop startup")
+                    if launched is not None and pair[0] != launched.pid:
+                        raise RuntimeError("Unexpected registered Desktop process")
+                    pids = pair
+                    stable_since = time.monotonic()
+                if pids != pair:
+                    raise RuntimeError("Desktop or daemon changed during startup")
+                if time.monotonic() - stable_since >= 10:
+                    if identity(pair[0]) != (desktop, session) or identity(pair[1]) != (desktop.with_name("cryptexd.exe"), session):
+                        raise RuntimeError("Installed image or logon identity mismatch")
+                    observer.pump()
+                    if observer.windows or observer.starts:
+                        raise RuntimeError("Console observed at the end of startup")
+                    observer.calibrate()
+                    return {"desktop_pid": pair[0], "daemon_pid": pair[1], "console_show_events": 0,
+                            "console_process_events": 0, "positive_control_seen": True,
+                            "observer_armed_before_launch": True, "observation_after_readiness_seconds": 10}
+            time.sleep(.02)
+        raise TimeoutError("Did not observe the installed Desktop become ready")
 
 
 def main():
@@ -180,7 +199,7 @@ def main():
         raise RuntimeError("Expected a fresh Windows logon after preparation")
     check_entry(registration(), desktop)
     try:
-        report = observe(desktop, runtime, session)
+        report = observe(desktop, runtime, session, windows_logon=False)
     finally:
         check_entry(registration(), desktop)
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN, 0, winreg.KEY_SET_VALUE) as key:
@@ -193,7 +212,7 @@ def main():
         if time.monotonic() >= deadline:
             raise TimeoutError("Installed Desktop did not exit")
         time.sleep(.1)
-    report.update(distinct_logon=True, startup_entry_removed=True, activation="windows-alternate-shell")
+    report.update(distinct_logon=True, startup_entry_removed=True, activation="registered-command-in-new-logon")
     print(json.dumps(report), flush=True)
     (scratch / "m14-windows-console-login.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
 
