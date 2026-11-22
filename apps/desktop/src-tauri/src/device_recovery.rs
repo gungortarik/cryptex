@@ -268,11 +268,9 @@ impl Session {
         }
         #[cfg(windows)]
         let mut session = {
-            let path = std::env::current_exe().map_err(|_| Failure::Startup)?;
-            let daemon = path.parent().ok_or(Failure::Startup)?.join("cryptexd.exe");
+            let daemon = super::installed_daemon().map_err(|_| Failure::Startup)?;
             let (pid, child) =
-                super::start_daemon_inner(daemon.to_str().ok_or(Failure::Startup)?, root)
-                    .map_err(|_| Failure::Startup)?;
+                super::start_daemon_inner(&daemon, root).map_err(|_| Failure::Startup)?;
             Self {
                 root: root.into(),
                 pid,

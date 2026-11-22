@@ -345,10 +345,7 @@ impl Owner {
                     let prepared = Startup::current_profile(Duration::from_secs(15), profile)
                         .map_err(|e| e.to_string())?;
                     let path = prepared.daemon_path();
-                    let mut command = super::daemon_hold_command(
-                        path.to_str().ok_or("candidate_path")?,
-                        &runtime,
-                    )?;
+                    let mut command = super::daemon_hold_command(&path, &runtime)?;
                     command.stderr(std::process::Stdio::inherit());
                     let daemon = prepared
                         .launch(command, &runtime.join("ready"))
@@ -877,7 +874,7 @@ fn durable_daemon(root: &Path, profile: ContentProfile) -> Result<LocalDaemon, S
     let prepared =
         Startup::current_profile(Duration::from_secs(15), profile).map_err(|e| e.to_string())?;
     let path = prepared.daemon_path();
-    let mut command = super::daemon_hold_command(path.to_str().ok_or("candidate_path")?, root)?;
+    let mut command = super::daemon_hold_command(&path, root)?;
     command.stderr(std::process::Stdio::inherit());
     let mut daemon = prepared
         .launch(command, &root.join("ready"))
@@ -1474,8 +1471,7 @@ pub(super) fn recovery_start(runtime: &Path) -> Result<LocalDaemon, String> {
         Startup::current_profile(Duration::from_secs(15), ContentProfile::ExistingProfile)
             .map_err(|_| "recovery_native_prepare")?;
     let path = prepared.daemon_path();
-    let command =
-        super::daemon_hold_command(path.to_str().ok_or("recovery_daemon_path")?, runtime)?;
+    let command = super::daemon_hold_command(&path, runtime)?;
     let mut daemon = prepared
         .launch(command, &runtime.join("ready"))
         .map_err(|_| "recovery_native_start")?;
