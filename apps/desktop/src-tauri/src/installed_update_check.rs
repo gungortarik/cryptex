@@ -39,6 +39,25 @@ fn check(app: &AppHandle) -> Result<serde_json::Value, String> {
     Ok(receipt)
 }
 
+/// Hold only the disposable candidate's reply. The actual updater remains
+/// uninstrumented and the probe still owns its native session lock.
+pub(super) fn hold_rejected_reply(root: &std::path::Path) -> Result<(), String> {
+    let armed = root.join("m14-interrupt-probe");
+    if !armed.try_exists().map_err(|e| e.to_string())? {
+        return Ok(());
+    }
+    fs::create_dir(root.join(format!("m14-held-probe-{}", std::process::id())))
+        .map_err(|e| e.to_string())?;
+    let started = std::time::Instant::now();
+    while armed.try_exists().map_err(|e| e.to_string())? {
+        if started.elapsed() >= std::time::Duration::from_secs(25) {
+            return Err("timed out waiting for updater interruption".into());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    Err("disposable probe released after updater interruption".into())
+}
+
 pub(super) fn observe(app: AppHandle) {
     std::thread::spawn(move || {
         let result = check(&app);

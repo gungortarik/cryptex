@@ -7,6 +7,7 @@ from pathlib import Path
 import plistlib
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -133,6 +134,51 @@ def wait_for_desktop_exit(pid):
     raise TimeoutError("The disposable Desktop did not exit after recording its connection")
 
 
+def interrupt_after_selection(tool, approved, working, active, runtime, journal, env):
+    armed = runtime / "m14-interrupt-probe"
+    armed.touch(exist_ok=False)
+    probe_pid = None
+    with subprocess.Popen([tool, "apply", approved], env=env, stdin=subprocess.DEVNULL) as updater:
+        try:
+            deadline = time.monotonic() + 45
+            while time.monotonic() < deadline:
+                markers = list(runtime.glob("m14-held-probe-*"))
+                if markers:
+                    marker, = markers
+                    probe_pid = int(marker.name.removeprefix("m14-held-probe-"))
+                    break
+                if updater.poll() is not None:
+                    raise RuntimeError(f"Updater exited before interruption: {updater.returncode}")
+                time.sleep(0.025)
+            if probe_pid is None:
+                raise TimeoutError("Candidate did not reach the interrupted probe")
+            intent = journal.read_bytes()
+            if json.loads(intent) != {"working": working, "staged": approved}:
+                raise RuntimeError("Updater did not journal the two approved images")
+            updater.kill()
+            exit_code = updater.wait(timeout=10)
+            if exit_code != (1 if WINDOWS else -signal.SIGKILL):
+                raise RuntimeError(f"Unexpected updater termination: {exit_code}")
+            busy = subprocess.run([tool, "apply", approved], env=env, capture_output=True, timeout=5)
+            if busy.returncode == 0 or b"quit Cryptex before updating" not in busy.stderr:
+                raise RuntimeError("Recovery did not respect the surviving probe's session lock")
+            if journal.read_bytes() != intent or active.with_name(active.name + ".pending").exists():
+                raise RuntimeError("Busy recovery changed the interrupted selection")
+        finally:
+            armed.unlink()
+            if updater.poll() is None:
+                updater.kill()
+                updater.wait(timeout=10)
+            if probe_pid is not None:
+                wait_for_desktop_exit(probe_pid)
+    previous = active.with_name(active.name + ".previous")
+    for path, expected in ((active, approved), (previous, working)):
+        if run(tool, "fingerprint", path, text=True, capture_output=True).stdout.strip() != expected:
+            raise RuntimeError("Interrupted package fingerprint differs from journal")
+    return {"updater_pid": updater.pid, "exit_code": exit_code, "probe_pid": probe_pid,
+            "busy_recovery_refused": True, "journal_and_images_verified": True}
+
+
 def exercise(packages, work, runtime, env):
     user_root = Path(os.environ["LOCALAPPDATA"]) / "Programs" if WINDOWS else Path.home() / "Applications"
     user_root.mkdir(parents=True, exist_ok=True)
@@ -161,6 +207,8 @@ def exercise(packages, work, runtime, env):
     shutil.copy2(packages[0][1].parent.parent / tool.name, tool)
     receipts = []
     previous = active.with_name(active.name + ".previous")
+    state = (Path(os.environ["LOCALAPPDATA"]) if WINDOWS else Path.home() / "Library/Application Support") / "Cryptex-Updater"
+    journal = state / "package-transition.json"
     for index, source in enumerate((images[0][0], images[1][0], images[1][0])):
         if WINDOWS:
             shutil.copytree(source, pending)
@@ -170,14 +218,8 @@ def exercise(packages, work, runtime, env):
         receipt.unlink(missing_ok=True)
         approved = run(tool, "fingerprint", source, text=True, capture_output=True).stdout.strip()
         if index == 2:
-            # Simulate losing the coordinator immediately after package selection.
-            # The restarted updater must recover the last confirmed version.
-            state = (Path(os.environ["LOCALAPPDATA"]) if WINDOWS else Path.home() / "Library/Application Support") / "Cryptex-Updater"
             working = run(tool, "fingerprint", active, text=True, capture_output=True).stdout.strip()
-            with (state / "package-transition.json").open("x", encoding="utf-8") as stream:
-                json.dump({"working": working, "staged": approved}, stream)
-            active.rename(previous)
-            pending.rename(active)
+            interruption = interrupt_after_selection(tool, approved, working, active, runtime, journal, env)
         else:
             wrong = subprocess.run([tool, "apply", "0" * 64], env=env, capture_output=True, timeout=30)
             if wrong.returncode == 0 or b"approved digest" not in wrong.stderr:
@@ -192,6 +234,8 @@ def exercise(packages, work, runtime, env):
             raise RuntimeError("Unexpected update decision evidence")
         if report["outcome"] != ("updated", "rolled_back", "recovered")[index]:
             raise RuntimeError(f"Unexpected updater outcome: {report}")
+        if journal.exists() or previous.exists():
+            raise RuntimeError("Completed operation retained an unfinished transition")
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
             if receipt.is_file() and receipt.stat().st_size:
@@ -206,7 +250,10 @@ def exercise(packages, work, runtime, env):
         # The GUI writes its receipt just before exiting in the disposable build.
         # Wait for the native session lock via the process handle below.
         wait_for_desktop_exit(reopened["desktop_pid"])
-        receipts.append({"updater": report, "reopened": reopened})
+        transaction = {"updater": report, "reopened": reopened}
+        if index == 2:
+            transaction["interruption"] = interruption
+        receipts.append(transaction)
         # Keep the displaced package as evidence and free the staging name.
         pending.rename(user_root / ("Cryptex-displaced-" + str(index)))
     return {"platform": sys.platform, "scope": "installed-product-updater", "transactions": receipts,

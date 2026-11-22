@@ -64,9 +64,14 @@ pub(super) fn probe() -> Result<(), String> {
     if observe()?.lock_held {
         return Err("update daemon did not release its lock".into());
     }
+    let health = result?;
+    #[cfg(feature = "m14-installed-update-check")]
+    if health.status == "incompatible" {
+        super::installed_update_check::hold_rejected_reply(&runtime)?;
+    }
     println!(
         "{}",
-        serde_json::to_string(&result?).map_err(|e| e.to_string())?
+        serde_json::to_string(&health).map_err(|e| e.to_string())?
     );
     Ok(())
 }
