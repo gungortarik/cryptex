@@ -26,7 +26,7 @@ else:
     manifest = {"source": commit, "installer_sha256": digest(setup),
                 "desktop_sha256": smoke["desktop_sha256"], "daemon_sha256": smoke["daemon_sha256"]}
     target = output / f"Cryptex-Konsol-{commit[:8]}.zip"
-prefix = "Cryptex-Erken-Olcum/"
+prefix = "Cryptex-Olcum-V2/"
 with zipfile.ZipFile(target, "x", compression=zipfile.ZIP_DEFLATED) as bundle:
     if setup:
         bundle.write(setup, prefix + "Cryptex-setup.exe")

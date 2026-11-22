@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 import time
 import winreg
 
@@ -115,20 +116,44 @@ class ConsoleObserver:
         info = subprocess.STARTUPINFO()
         info.dwFlags = subprocess.STARTF_USESHOWWINDOW
         info.wShowWindow = 1
-        with subprocess.Popen([Path(sys.executable).with_name("python.exe"), "-c", "import time; time.sleep(1)"],
-                              creationflags=subprocess.CREATE_NEW_CONSOLE, startupinfo=info) as control:
-            deadline = time.monotonic() + 5
-            while time.monotonic() < deadline:
+        # Exercise the configured terminal first. With Windows Terminal handoff the
+        # opening client's legacy start notification is not consistently delivered.
+        # Calibrate that second channel in an explicit classic console if needed.
+        with tempfile.TemporaryDirectory(prefix="Cryptex-control-") as folder:
+            for classic in (False, True):
                 self.pump()
-                if control.pid in self.starts and self.windows:
-                    break
-                time.sleep(.01)
-            else:
-                raise RuntimeError(f"Console calibration failed: window shows={len(self.windows)}, "
-                                   f"control start observed={control.pid in self.starts}")
-        self.pump()
-        self.windows.clear()
-        self.starts.clear()
+                self.windows.clear()
+                self.starts.clear()
+                pid_file = Path(folder) / f"client-{int(classic)}.pid"
+                client_code = ("import os,pathlib,sys,time; p=pathlib.Path(sys.argv[1]); "
+                               "tmp=p.with_suffix('.tmp'); tmp.write_text(str(os.getpid()),encoding='ascii'); "
+                               "tmp.replace(p); time.sleep(1)")
+                args = [Path(sys.executable).with_name("python.exe"), "-c", client_code, pid_file]
+                if classic:
+                    args.insert(0, Path(os.environ["SystemRoot"]) / "System32/conhost.exe")
+                with subprocess.Popen(args, creationflags=subprocess.CREATE_NEW_CONSOLE, startupinfo=info) as control:
+                    deadline = time.monotonic() + 8
+                    client = None
+                    while time.monotonic() < deadline:
+                        self.pump()
+                        if client is None and pid_file.exists():
+                            client = int(pid_file.read_text(encoding="ascii"))
+                        if client is not None and self.windows:
+                            if client in self.starts or (not classic and control.poll() is not None):
+                                break
+                        time.sleep(.01)
+                    else:
+                        raise RuntimeError(f"Console calibration failed: classic={classic}, "
+                                           f"window shows={len(self.windows)}, client PID available={client is not None}, "
+                                           f"client start observed={client in self.starts}, exit={control.poll()}")
+                    if control.wait(timeout=5) != 0:
+                        raise RuntimeError("Console calibration client failed")
+                self.pump()
+                if client in self.starts:
+                    self.windows.clear()
+                    self.starts.clear()
+                    return "default-window-and-legacy-process" if classic else "default-window-and-process"
+        raise RuntimeError("Known console process start was not observed")
 
 
 def current_startup(pair, desktop, session, armed_at):
@@ -188,8 +213,8 @@ def observe(desktop, runtime, session, *, windows_logon):
                     observer.pump()
                     if observer.windows or observer.starts:
                         raise RuntimeError("Console observed at the end of startup")
-                    observer.calibrate()
-                    return {"desktop_pid": pair[0], "daemon_pid": pair[1], "console_show_events": 0,
+                    calibration = observer.calibrate()
+                    return {"calibration": calibration,"desktop_pid": pair[0], "daemon_pid": pair[1], "console_show_events": 0,
                             "console_process_events": 0, "positive_control_seen": True,
                             "observer_lead_ms": (creation_time(pair[0]) - armed_at) / 10_000,
                             "observer_armed_before_launch": True, "observation_after_readiness_seconds": 10}

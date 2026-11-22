@@ -62,7 +62,7 @@ def installed(build, *, allow_install):
 
 
 def task(operation, token):
-    observer_task(operation, token, Path(__file__))
+    return observer_task(operation, token, Path(__file__))
 
 
 def main():
@@ -75,14 +75,21 @@ def main():
     if len(sys.argv) == 3 and sys.argv[1] == "observe":
         token = sys.argv[2]
         prior = json.loads(arm.read_bytes())
-        if prior != {"session": prior["session"], "source": build["source"], "folder": str(HERE), "token": token}:
+        if (prior.get("source"), prior.get("folder"), prior.get("token")) != (build["source"], str(HERE), token):
             raise RuntimeError("Hazirlik kaydi bu pakete ait degil.")
-        if session == prior["session"]:
-            # Only the on-demand preflight can run before the real sign-in.
-            with ConsoleObserver() as observer:
-                observer.calibrate()
-            (STATE / (token + ".ready")).touch(exist_ok=False)
+        if prior.get("phase") == "preflight":
+            try:
+                with ConsoleObserver() as observer:
+                    observer.calibrate()
+                (STATE / (token + ".ready")).touch(exist_ok=False)
+            except Exception as error:
+                pending = STATE / (token + ".tmp")
+                pending.write_text(f"{type(error).__name__}: {error}", encoding="utf-8")
+                pending.replace(STATE / (token + ".error"))
+                raise
             return
+        if prior.get("phase") != "armed" or session == prior["session"]:
+            raise RuntimeError("Yeni oturum gerekli.")
         report = {"platform": "win32", "activation": "interactive-windows-sign-in", "source": build["source"],
                   "observer": "per-user-logon-trigger", "distinct_logon": True}
         try:
@@ -129,17 +136,26 @@ def main():
     STATE.mkdir(exist_ok=True)
     token = uuid.uuid4().hex
     marker = STATE / (token + ".ready")
+    failure = STATE / (token + ".error")
+    state = {"source": build["source"], "session": session, "folder": str(HERE), "token": token, "phase": "preflight"}
     with arm.open("x", encoding="utf-8") as out:
-        json.dump({"source": build["source"], "session": session, "folder": str(HERE), "token": token}, out)
+        json.dump(state, out)
     try:
         task("create", token)
         try:
             task("preflight", token)
             deadline = time.monotonic() + 30
             while not marker.exists():
+                if failure.exists():
+                    raise RuntimeError(failure.read_text(encoding="utf-8"))
                 if time.monotonic() >= deadline:
-                    raise TimeoutError("Olcum araci gecici hesapta kalibrasyonu tamamlayamadi.")
+                    status = task("status", token)
+                    raise TimeoutError(f"Kalibrasyondan yanit gelmedi. {status}")
                 time.sleep(.1)
+            state["phase"] = "armed"
+            pending = STATE / (token + ".tmp")
+            pending.write_text(json.dumps(state), encoding="utf-8")
+            pending.replace(arm)
             add_new(RUN, "Cryptex", entry)
         except Exception:
             task("remove", token)
@@ -149,6 +165,7 @@ def main():
         raise
     finally:
         marker.unlink(missing_ok=True)
+        failure.unlink(missing_ok=True)
     print("HAZIR. Oturumu kapatip cryptexm14 hesabina tekrar girin.")
     print("Iki dakika dokunmadan bekleyin. Olcumden sonra kisa bir kalibrasyon penceresi acilir.")
     print("Sonuc dosyasi: " + str(RESULT))

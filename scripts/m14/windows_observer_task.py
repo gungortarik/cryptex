@@ -42,6 +42,8 @@ if ($env:M14_OBSERVER_OP -eq 'create') {
     }
     if ($env:M14_OBSERVER_OP -eq 'preflight') {
         $null = $task.Run($null)
+    } elseif ($env:M14_OBSERVER_OP -eq 'status') {
+        Write-Output ('Task state={0}, last result=0x{1:X8}' -f [int]$task.State, [int]$task.LastTaskResult)
     } else {
         $root.DeleteTask($name, 0)
     }
@@ -50,7 +52,7 @@ if ($env:M14_OBSERVER_OP -eq 'create') {
 
 
 def observer_task(operation, token, script):
-    if operation not in ("create", "preflight", "remove") or not re.fullmatch("[0-9a-f]{32}", token):
+    if operation not in ("create", "preflight", "status", "remove") or not re.fullmatch("[0-9a-f]{32}", token):
         raise ValueError("Invalid observer operation or test ID")
     if os.environ.get("USERNAME", "").lower() != "cryptexm14":
         raise RuntimeError("A temporary cryptexm14 account is required")
@@ -65,3 +67,4 @@ def observer_task(operation, token, script):
                             creationflags=subprocess.CREATE_NO_WINDOW)
     if result.returncode:
         raise RuntimeError(f"Task Scheduler ({operation}): " + result.stderr.decode(errors="replace").strip())
+    return result.stdout.decode(errors="replace").strip()

@@ -52,7 +52,7 @@ class HandoffTests(unittest.TestCase):
         token = "a" * 32
         self.state.mkdir()
         (self.state / "armed.json").write_text(json.dumps({
-            "source": "build", "folder": str(self.root), "session": "old", "token": token}))
+            "source": "build", "folder": str(self.root), "session": "old", "token": token, "phase": "armed"}))
         with patch.object(handoff.sys, "argv", ["handoff", "observe", token]), \
                 patch.object(handoff, "check_entry"), patch.object(handoff, "remove_owned"), \
                 patch.object(handoff, "task") as task, \
@@ -62,3 +62,18 @@ class HandoffTests(unittest.TestCase):
         self.assertEqual((report["passed"], report["distinct_logon"], report["error"]), (False, True, "late"))
         self.assertTrue(report["startup_entry_removed"])
         task.assert_called_once_with("remove", token)
+
+    def test_calibration_error_reaches_parent_even_with_different_scheduler_token(self):
+        def task(operation, token):
+            if operation == "preflight":
+                with patch.object(handoff.sys, "argv", ["handoff", "observe", token]), \
+                        patch.object(handoff, "identity", return_value=("pythonw", "different")), \
+                        patch.object(handoff.ConsoleObserver, "calibrate", side_effect=RuntimeError("missing PID")):
+                    with self.assertRaisesRegex(RuntimeError, "missing PID"):
+                        handoff.main()
+
+        with patch.object(handoff, "task", side_effect=task), patch.object(handoff, "add_new") as add:
+            with self.assertRaisesRegex(RuntimeError, "missing PID"):
+                handoff.main()
+        add.assert_not_called()
+        self.assertFalse(handoff.RESULT.exists())
