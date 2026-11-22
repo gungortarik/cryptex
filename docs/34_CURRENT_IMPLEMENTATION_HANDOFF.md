@@ -1,5 +1,9 @@
 # 34 — Current Implementation Handoff
 
+## M15 pre-import duplicate and conflict review
+
+At `932b5f4`, `--review-notes` groups exact byte duplicates and flags possible conflicts between different texts with the same leading Markdown title. The disposable daemon presents the same report before first capture of a grouped item and checks the selected source, classification and current review digest. A changed sibling invalidates the choice. An incomplete scan allows no new capture. In [Windows and macOS CI](https://github.com/gungortarik/cryptex/actions/runs/45077337328) all nine capture tests passed on each platform. The inventory suite passed fifteen tests on macOS and fourteen applicable tests on Windows. Synthetic fixtures verified overlapping groups, repeated review, zero writes on stale or missing approval, and a single signed restricted note after explicit selection. This covers the first Markdown mapping in temporary profiles. Review of provenance across multiple imported notes and final cutover remain open.
+
 ## M15 retry after loss of the first receipt
 
 At `d1fd78b`, all eight reviewed capture cases passed on [Windows and macOS](https://github.com/gungortarik/cryptex/actions/runs/45070764001). In the new case the disposable daemon exited immediately after the normal capture service confirmed the commit and before the client received a receipt. The harness checked the committed receipt on disk and resubmitted the identical approval in a fresh process. The returned event ID matched that receipt, the signed history contained exactly one restricted note with the expected text digest, and the canonical packs were byte-identical across retry. The source snapshot stayed intact. This checks post-commit reply loss using synthetic data. M15's explicit review of duplicates and conflicts across source items remains open.
