@@ -7,6 +7,7 @@ on:
       - '.github/workflows/m14-installed-update.yml'
       - 'scripts/m14/installed_update.py'
       - 'apps/desktop/src-tauri/**'
+      - 'apps/updater/**'
       - 'services/cryptexd/src/ipc.rs'
       - 'services/cryptexd/src/compat.rs'
       - 'scripts/m8/*standard-user*.ps1'
@@ -50,7 +51,12 @@ jobs:
       - name: Verify that unrelated IPC failures cannot qualify as a protocol rejection
         run: cargo test --locked -p cryptexd --lib health_protocol_mismatch_requires_an_explicit_correlated_rejection
       - name: Lint the installed update observer and desktop client
-        run: cargo clippy --locked -p cryptex-desktop --features m14-installed-update-check -- -D warnings
+        run: cargo clippy --locked -p cryptex-updater -p cryptex-desktop --features m14-installed-update-check -- -D warnings
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cryptex-local-updater-${{ runner.os }}
+          path: ${{ runner.temp }}/m14-packages/cryptex-updater*
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: m14-installed-update-${{ runner.os }}

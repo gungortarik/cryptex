@@ -44,6 +44,7 @@ mod protected_assets;
 mod retirement_file;
 #[cfg(feature = "m13-shell-check")]
 mod shell_check;
+mod update_health;
 
 fn runtime_root_path() -> Result<PathBuf, String> {
     if let Some(root) = pilot_runtime::root() {
@@ -60,7 +61,7 @@ fn daemon_override() -> Option<PathBuf> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 struct ProbeState {
     child: Arc<Mutex<Option<Child>>>,
     runtime_root: Arc<Mutex<Option<PathBuf>>>,
@@ -2369,7 +2370,6 @@ fn stop_supervised_daemon(state: &ProbeState) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(any(not(debug_assertions), feature = "m14-installed-update-check"))]
 fn start_daemon_for_desktop_launch(state: &ProbeState) -> Result<u32, String> {
     let runtime = runtime_root_path()?;
     fs::create_dir_all(&runtime).map_err(|error| error.to_string())?;
@@ -2994,6 +2994,20 @@ fn main() {
         eprintln!("Update rehearsal refused: {error}");
         std::process::exit(2);
     }
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new(cryptex_updater::PROBE)) {
+        if let Err(error) = update_health::probe() {
+            eprintln!("Installed Desktop health check failed: {error}");
+            std::process::exit(2);
+        }
+        return;
+    }
+    #[cfg(any(windows, target_os = "macos"))]
+    let _installed_session = cryptex_updater::Layout::current()
+        .and_then(|layout| layout.desktop_session())
+        .unwrap_or_else(|error| {
+            eprintln!("Desktop startup refused: {error}");
+            std::process::exit(2)
+        });
     #[cfg(feature = "m14-login-check")]
     if let Err(error) = login_check::record_attempt() {
         eprintln!("Login test refused: {error}");
@@ -3067,19 +3081,7 @@ fn main() {
     if pilot_runtime::root().is_some() {
         pilot_runtime::configure(context.config_mut());
     }
-    let probe_state = ProbeState {
-        child: Arc::new(Mutex::new(None)),
-        runtime_root: Arc::new(Mutex::new(None)),
-        cryptexd_bin: Arc::new(Mutex::new(None)),
-        restart_attempts: Arc::new(Mutex::new(0)),
-        restart_not_before: Arc::new(Mutex::new(Instant::now())),
-        pending_exit_code: Arc::new(Mutex::new(None)),
-        engine_stopped_by_owner: Arc::new(Mutex::new(false)),
-        supervised_pid: Arc::new(Mutex::new(None)),
-        capture_session_dirty: Arc::new(AtomicBool::new(false)),
-        capture_guard_sync_ok: Arc::new(AtomicBool::new(false)),
-        user_quit_in_progress: Arc::new(AtomicBool::new(false)),
-    };
+    let probe_state = ProbeState::default();
 
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())

@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import uuid
+import time
 
 ROOT = Path(__file__).resolve().parents[2]
 APP = ROOT / "apps/desktop"
@@ -106,66 +107,81 @@ def install(package, destination):
     return desktop, (digest(desktop), expected_daemon)
 
 
-def trial(package, destination, runtime, env):
-    desktop, fingerprints = install(package, destination)
-    result = runtime / "m14-update-result.json"
-    result.unlink(missing_ok=True)
-    with subprocess.Popen([desktop], env=env, cwd=destination) as child:
-        try:
-            code = child.wait(timeout=75)
-        except subprocess.TimeoutExpired:
-            child.kill()
-            raise
-    if code:
-        error = runtime / "start.error"
-        detail = error.read_text(encoding="utf-8") if error.is_file() else "no startup diagnostic"
-        raise RuntimeError(f"Installed Desktop {package[0]} exited with {code}: {detail}")
-    reply = json.loads(result.read_bytes())
-    if reply["version"] != package[0] or reply["desktop_pid"] != child.pid or reply["daemon_pid"] <= 0:
-        raise RuntimeError(f"Unexpected installed identity: {reply}")
-    return reply, fingerprints
-
-
 def exercise(packages, work, runtime, env):
-    destination = work / "Applications"
-    destination.mkdir()
+    user_root = Path(os.environ["LOCALAPPDATA"]) if WINDOWS else Path.home() / "Applications"
+    user_root.mkdir(parents=True, exist_ok=True)
+    active = user_root / ("Cryptex" if WINDOWS else "Cryptex.app")
+    pending = active.with_name(active.name + ".pending")
+    if any(path.exists() for path in (active, pending, active.with_name(active.name + ".previous"))):
+        raise RuntimeError("Expected a fresh installation in this disposable account")
+
+    # Prepare complete native payloads before installing the baseline. No test
+    # code installs, selects or launches the fallback during the transactions.
+    images = []
+    for version, artifact, daemon_hash in packages[1:]:
+        directory = work / version
+        directory.mkdir()
+        desktop, hashes = install((version, artifact, daemon_hash), directory)
+        images.append((directory if WINDOWS else directory / artifact.name, hashes))
+
+    initial_dir = active if WINDOWS else work / "bootstrap"
+    initial_dir.mkdir()
+    desktop, initial_hashes = install(packages[0], initial_dir)
+    if not WINDOWS:
+        (initial_dir / packages[0][1].name).rename(active)
+    desktop = active / ("cryptex-desktop.exe" if WINDOWS else "Contents/MacOS/" + desktop.name)
+    daemon = desktop.with_name("cryptexd" + SUFFIX)
+    tool = work / ("cryptex-updater" + SUFFIX)
+    shutil.copy2(packages[0][1].parent.parent / tool.name, tool)
     receipts = []
-
-    def launch(package):
-        reply, images = trial(package, destination, runtime, env)
-        receipts.append(reply)
-        return reply, images
-
-    def update(known_good, replacement):
-        candidate_reply, images = launch(replacement)
-        if candidate_reply["status"] == "connected":
-            return replacement, images
-        if candidate_reply["status"] != "incompatible":
-            raise RuntimeError("Missing update health decision")
-        restored_reply, restored_images = launch(known_good)
-        if restored_reply["status"] != "connected":
-            raise RuntimeError("Reinstalled fallback did not reconnect")
-        return known_good, restored_images
-
-    baseline, candidate, incompatible = packages
-    first, old_images = launch(baseline)
-    if (first["status"], first["desktop_protocol"], first["daemon_protocol"]) != ("connected", 1, 1):
-        raise RuntimeError("Baseline IPC connection failed")
-    active, good_images = update(baseline, candidate)
-    second = receipts[-1]
-    if active != candidate or (second["status"], second["desktop_protocol"], second["daemon_protocol"]) != ("connected", 2, 2):
-        raise RuntimeError("Updated pair failed to reconnect")
-    if any(old == new for old, new in zip(old_images, good_images)):
-        raise RuntimeError("Compatible update did not replace both installed components")
-    active, restored_images = update(active, incompatible)
-    if active != candidate or len(receipts) != 4:
-        raise RuntimeError("Incompatible update did not restore the last working version")
-    failed, restored = receipts[-2:]
-    if (failed["status"], failed["desktop_protocol"], failed["daemon_protocol"]) != ("incompatible", 2, 1):
-        raise RuntimeError("Installed pair did not return a correlated protocol rejection")
-    if (restored["status"], restored["desktop_protocol"], restored["daemon_protocol"]) != ("connected", 2, 2) or restored_images != good_images:
-        raise RuntimeError("Rollback did not restore and reconnect the last working pair")
-    return {"platform": sys.platform, "scope": "installed-rehearsal", "launches": receipts,
+    for index, (source, hashes) in enumerate(images):
+        if WINDOWS:
+            shutil.copytree(source, pending)
+        else:
+            run("ditto", source, pending)
+        receipt = runtime / "m14-update-result.json"
+        receipt.unlink(missing_ok=True)
+        approved = run(tool, "fingerprint", source, text=True, capture_output=True).stdout.strip()
+        wrong = subprocess.run([tool, "apply", "0" * 64], env=env, capture_output=True, timeout=30)
+        if wrong.returncode == 0 or b"approved digest" not in wrong.stderr:
+            raise RuntimeError("Updater accepted a different staged image or failed at the wrong boundary")
+        process = run(tool, "apply", approved, env=env, text=True, stdout=subprocess.PIPE, timeout=150)
+        report = json.loads(process.stdout)
+        expected = [(1, 1), (2, 2)] if index == 0 else [(2, 2), (2, 1), (2, 2)]
+        checks = report["checks"]
+        if [(c["desktop_protocol"], c["daemon_protocol"]) for c in checks] != expected:
+            raise RuntimeError(f"Unexpected IPC handshake sequence: {checks}")
+        if [c["status"] for c in checks] != ["incompatible" if a != b else "connected" for a, b in expected]:
+            raise RuntimeError("Unexpected update decision evidence")
+        if report["outcome"] != ("updated" if index == 0 else "rolled_back"):
+            raise RuntimeError(f"Unexpected updater outcome: {report}")
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            if receipt.is_file() and receipt.stat().st_size:
+                break
+            time.sleep(0.1)
+        reopened = json.loads(receipt.read_bytes())
+        if (reopened["desktop_pid"], reopened["version"], reopened["status"], reopened["daemon_protocol"]) != (
+                report["reopened_pid"], "0.14.2", "connected", 2):
+            raise RuntimeError(f"Reopened Desktop did not reconnect: {reopened}")
+        if (digest(desktop), digest(daemon)) != images[0][1] or any(a == b for a, b in zip(initial_hashes, images[0][1])):
+            raise RuntimeError("Active Desktop or daemon differs from the working upgrade")
+        # The GUI writes its receipt just before exiting in the disposable build.
+        # Wait for the native session lock via the process handle below.
+        if WINDOWS:
+            run("powershell.exe", "-NoProfile", "-Command",
+                f"$p=Get-Process -Id {reopened['desktop_pid']} -ErrorAction SilentlyContinue; if ($p) {{ $p.WaitForExit(15000) | Out-Null }}")
+        else:
+            while time.monotonic() < deadline:
+                try:
+                    os.kill(reopened["desktop_pid"], 0)
+                except ProcessLookupError:
+                    break
+                time.sleep(0.1)
+        receipts.append({"updater": report, "reopened": reopened})
+        # Keep the displaced package as evidence and free the staging name.
+        pending.rename(user_root / ("Cryptex-displaced-" + str(index)))
+    return {"platform": sys.platform, "scope": "installed-product-updater", "transactions": receipts,
             "restored_pair_byte_identical": True}
 
 
@@ -177,6 +193,9 @@ def main():
     packages_dir = Path(packages_dir).resolve()
     if action == "build" and getpass.getuser().lower() in ("runneradmin", "runner"):
         packages_dir.mkdir()
+        run("cargo", "build", "--locked", "-p", "cryptex-updater")
+        target = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")).resolve()
+        shutil.copy2(target / "debug" / ("cryptex-updater" + SUFFIX), packages_dir)
         packages = build_packages(packages_dir)
         for _, artifact, daemon_hash in packages:
             (artifact.parent / "daemon.sha256").write_text(daemon_hash, encoding="ascii")

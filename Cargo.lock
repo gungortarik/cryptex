@@ -839,6 +839,7 @@ dependencies = [
 name = "cryptex-desktop"
 version = "0.0.0"
 dependencies = [
+ "cryptex-updater",
  "cryptexd",
  "libc",
  "rfd",
@@ -908,6 +909,15 @@ dependencies = [
  "serde",
  "serde_json",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "cryptex-updater"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]

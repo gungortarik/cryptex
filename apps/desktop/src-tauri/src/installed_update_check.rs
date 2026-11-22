@@ -1,7 +1,6 @@
 //! Installed-package observation for disposable native CI accounts only.
 use super::{ProbeState, default_runtime_root_path, stop_daemon_for_user_quit};
-use cryptexd::ipc::{HealthProtocolMismatch, desktop_health_ping};
-use std::{env, fs, time::Duration};
+use std::{env, fs};
 use tauri::{AppHandle, Manager};
 
 pub(super) fn admit() -> Result<(), String> {
@@ -18,7 +17,10 @@ pub(super) fn admit() -> Result<(), String> {
     if env::var("RUNNER_ENVIRONMENT").as_deref() != Ok("github-hosted")
         || env::var("GITHUB_ACTIONS").as_deref() != Ok("true")
         || !disposable
-        || env::args_os().len() != 1
+        || !(env::args_os().len() == 1
+            || (env::args_os().len() == 2
+                && env::args_os().nth(1).as_deref()
+                    == Some(std::ffi::OsStr::new(cryptex_updater::PROBE))))
         || env::var_os("CRYPTEXD_BIN").is_some()
         || token.is_empty()
         || fs::read_to_string(default_runtime_root_path()?.join("m14-update-owner"))
@@ -31,38 +33,10 @@ pub(super) fn admit() -> Result<(), String> {
 }
 
 fn check(app: &AppHandle) -> Result<serde_json::Value, String> {
-    let state = app.state::<ProbeState>();
-    let pid = state
-        .child
-        .lock()
-        .map_err(|_| "child lock")?
-        .as_ref()
-        .ok_or("installed daemon was not started by Desktop")?
-        .id();
-    let lock = cryptexd::instance::observe_instance(&default_runtime_root_path()?)
-        .map_err(|e| e.to_string())?;
-    if !lock.lock_held || lock.holder_pid != Some(pid) {
-        return Err("daemon does not own the profile lock".into());
-    }
-    let (status, protocol) = match desktop_health_ping(Duration::from_secs(5)) {
-        Ok(reply) if reply.daemon_pid == pid && reply.error.is_none() => {
-            ("connected", reply.protocol_version)
-        }
-        Ok(_) => return Err("unexpected health responder".into()),
-        Err(error) => {
-            let rejection = error
-                .get_ref()
-                .and_then(|cause| cause.downcast_ref::<HealthProtocolMismatch>())
-                .filter(|reply| reply.daemon_pid == pid)
-                .ok_or_else(|| error.to_string())?;
-            ("incompatible", rejection.daemon_protocol)
-        }
-    };
-    Ok(serde_json::json!({
-        "status": status, "version": app.package_info().version.to_string(),
-        "desktop_pid": std::process::id(), "daemon_pid": pid,
-        "desktop_protocol": cryptexd::compat::DAEMON_PROTOCOL_VERSION, "daemon_protocol": protocol,
-    }))
+    let health = super::update_health::owned_health(&app.state::<ProbeState>())?;
+    let mut receipt = serde_json::to_value(health).map_err(|e| e.to_string())?;
+    receipt["version"] = app.package_info().version.to_string().into();
+    Ok(receipt)
 }
 
 pub(super) fn observe(app: AppHandle) {

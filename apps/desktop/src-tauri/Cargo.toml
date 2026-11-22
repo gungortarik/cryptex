@@ -18,6 +18,7 @@ m8-development-product = ["m8-local-startup-check", "cryptexd/m8-development-pro
 tauri-build.workspace = true
 
 [dependencies]
+cryptex-updater = { path = "../../updater" }
 serde_json.workspace = true
 serde.workspace = true
 tauri.workspace = true
