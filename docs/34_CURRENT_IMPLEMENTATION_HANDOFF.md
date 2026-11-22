@@ -2,13 +2,9 @@
 
 ## M14 Windows console observation
 
-The follow-up VM package uses a Task Scheduler logon trigger without a delay, scoped to the temporary user's interactive token. Before enabling the per-user Cryptex Run entry it starts the observer on demand and requires a successful console calibration in the preparation session. Windows dispatches the two components independently on the next actual sign-in. The observer checks real process creation time against its hook installation and reports the lead time only for a fully covered launch. The measured build on the VM is still `9a5035d`. The second interactive receipt is pending.
+The Windows 11 VM passed the installed release's console-free sign-in check in the temporary account. The observer from `cc47d75` was armed 5,281.8934 ms before the installed Desktop from `9a5035d` started. It verified the Desktop and daemon in the new logon and observed zero console window shows and zero console process-start events through ten seconds after readiness. Calibration detected a window in the default terminal and a known client's start in the classic console. The test removed the startup entry and observer task. The Desktop hash matches the package manifest. [Real sign-in receipt](../evidence/m14/windows-interactive-login-9a5035d-v2.json)
 
-At `9a5035d` the installed Windows release ran its registered background command in a fresh standard user's second logon. A WinEvent observer was armed before launch, detected the deliberate console in its calibration step, and recorded zero console window shows and zero console process starts through ten seconds after the installed Desktop connected to its daemon. The test also verified removal of the startup entry. [Native test and Windows receipt](https://github.com/gungortarik/cryptex/actions/runs/45040536680)
-
-The CI harness started the registered command in the new logon. On the Windows 11 VM the temporary account subsequently ran the one-click interactive sign-in test from the same build. The receipt reported `Observer missed the beginning of Desktop startup`, `startup_entry_removed: true` and `passed: false`. It contains no console event counts or calibration result. Whether a console appeared at sign-in remains unknown.
-
-That verifier checked snapshot PID timing before image and logon identity. The original receipt cannot distinguish a late observer from a stale or reused snapshot PID. The updated verifier checks the Desktop image and logon first, ignores obsolete snapshots and reports the timing difference for a verified late start. Windows unit tests cover both timing outcomes and daemon identity. The next real-login test still needs an observer ready before Explorer dispatches the startup command. [Original VM receipt](../evidence/m14/windows-interactive-login-9a5035d.json)
+The earlier VM run missed the start of the observation interval and was inconclusive. The separate hosted Windows test ran the registered command in a fresh logon. [Earlier VM receipt](../evidence/m14/windows-interactive-login-9a5035d.json) · [Native CI receipt](https://github.com/gungortarik/cryptex/actions/runs/45040536680)
 
 ## M14 installed release packages
 
@@ -16,7 +12,7 @@ At `7c886ed` CI built the ordinary release NSIS installer and macOS app without 
 
 The installed-update rehearsal now publishes its disposable JSON receipt after serialization finishes. Both platforms verified the compatible update, incompatible rollback and recovery after terminating the updater. In all three cases the reopened Desktop connected to the expected daemon. The restored executable pair matched the working upgrade byte for byte. [Update and recovery receipts](https://github.com/gungortarik/cryptex/actions/runs/45037033089)
 
-The package smoke exercised foreground launch and window restoration. The next check is console-free background launch from the installed Windows startup entry, as required by ADR-0012. M14 closure still requires the remaining gate review and human review.
+The package smoke exercised foreground launch and window restoration. The Windows VM sign-in receipt above covers the console-free background launch required by ADR-0012 for this build. M14 closure still requires the remaining gate review and human review.
 
 ## M14 display scaling, appearance and keyboard navigation
 
