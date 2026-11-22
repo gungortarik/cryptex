@@ -16,6 +16,11 @@ from test_cli import BINARY, snapshot
 DAEMON = Path(os.environ["CRYPTEX_M15_DAEMON"]).resolve()
 
 
+def canonical_packs(root):
+    return {p.relative_to(root): p.read_bytes() for p in (root / "canonical").rglob("*")
+            if p.is_file() and p.suffix in (".seg", ".open")}
+
+
 class ReviewedCaptureTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -108,7 +113,7 @@ class ReviewedCaptureTest(unittest.TestCase):
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0]["classification"], "restricted")
 
-    def run_phase(self, mode, trial_id, *decisions, expect_success=True):
+    def run_phase(self, mode, trial_id, *decisions, expected_exit=0):
         env = self.env.copy()
         if sys.platform == "darwin" and os.environ.get("GITHUB_ACTIONS") == "true":
             # securityd resolves the runner's selected default Keychain through
@@ -118,10 +123,10 @@ class ReviewedCaptureTest(unittest.TestCase):
                              input=b"".join(json.dumps(d).encode() + b"\n" for d in decisions),
                              capture_output=True, cwd=self.profile, env=env, timeout=90)
         self.assertNotIn(b"private body marker", run.stdout + run.stderr)
-        if not expect_success:
+        if expected_exit is None:
             self.assertNotEqual(run.returncode, 0)
             return run.stderr
-        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(run.returncode, expected_exit, run.stderr)
         return [json.loads(line) for line in run.stdout.splitlines()]
 
     def start_retained_trial(self):
@@ -143,11 +148,7 @@ class ReviewedCaptureTest(unittest.TestCase):
         trial_id, first, receipt, report = self.start_retained_trial()
         root = self.temp / f"cryptex-m15-restart-{trial_id}"
 
-        def packs():
-            return {p.relative_to(root): p.read_bytes() for p in (root / "canonical").rglob("*")
-                    if p.is_file() and p.suffix in (".seg", ".open")}
-
-        original = packs()
+        original = canonical_packs(root)
         self.assertTrue(original)
         second, refusal, replay, reopened = self.run_phase(
             "--restart-replay", trial_id, dict(self.approval, classification="public"), self.approval)
@@ -157,13 +158,45 @@ class ReviewedCaptureTest(unittest.TestCase):
         self.assertEqual(refusal, {"status": "rejected", "issue": "approval_conflict"})
         self.assertEqual(replay, receipt)
         self.assertEqual(reopened, report)
-        self.assertEqual(packs(), original)
+        self.assertEqual(canonical_packs(root), original)
+        self.assertEqual(snapshot(self.source), source_before)
+
+    def test_retry_after_commit_before_receipt_delivery(self):
+        source_before = snapshot(self.source)
+        trial_id = str(uuid.uuid4())
+        self.addCleanup(self.run_phase, "--remove-trial-key", trial_id)
+        # Only the initial session header reached the caller.
+        first, = self.run_phase("--exit-before-reply", trial_id, self.approval, expected_exit=86)
+        self.assertEqual(set(first), {"pid", "brain_id", "device_id", "signing_key_id"})
+        self.assertEqual(first["brain_id"], trial_id)
+        root = self.temp / f"cryptex-m15-restart-{trial_id}"
+        original = canonical_packs(root)
+        self.assertTrue(original)
+        capture_id = self.approval["capture_id"]
+        receipt_file = root / "derived" / "capture_receipts" / trial_id / first["device_id"] / (capture_id + ".json")
+        stored = json.loads(receipt_file.read_bytes())
+        self.assertEqual(stored["state"], "committed")
+        self.assertEqual(stored["capture_id"], capture_id)
+
+        second, retry, report = self.run_phase("--restart-replay", trial_id, self.approval)
+        for key in ("brain_id", "device_id", "signing_key_id"):
+            self.assertEqual(first[key], second[key])
+        self.assertEqual(retry["status"], "committed")
+        self.assertEqual(retry["approval"], self.approval)
+        self.assertEqual(retry["brain_id"], trial_id)
+        self.assertEqual(retry["event_id"], stored["event_id"])
+        self.assertEqual(report["verified_notes"], [{
+            "brain_id": trial_id, "event_id": stored["event_id"], "content_hash": retry["content_hash"],
+            "event_type": "memory.note", "classification": "restricted",
+            "text_sha256": hashlib.sha256(self.text).hexdigest(),
+        }])
+        self.assertEqual(canonical_packs(root), original)
         self.assertEqual(snapshot(self.source), source_before)
 
     def test_restart_refuses_missing_native_key(self):
         trial_id, _, _, _ = self.start_retained_trial()
         self.run_phase("--remove-trial-key", trial_id)
-        diagnostic = self.run_phase("--restart-replay", trial_id, self.approval, expect_success=False)
+        diagnostic = self.run_phase("--restart-replay", trial_id, self.approval, expected_exit=None)
         self.assertIn(b"trial_key_unavailable", diagnostic)
 
     def test_restart_refuses_missing_capture_receipt(self):

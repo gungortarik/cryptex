@@ -1,5 +1,5 @@
 //! Restart fixture: one native credential per disposable Brain, outside product labels.
-use super::{DEV, LifecycleError, emit, fault, initialize, session, trial_temp};
+use super::{DEV, LifecycleError, TrialMode, emit, fault, initialize, session, trial_temp};
 use cryptex_core::{DeviceId, validate::parse_uuid_str};
 #[cfg(target_os = "macos")]
 use cryptexd::MacosKeychainStore as NativeStore;
@@ -66,23 +66,30 @@ pub(super) fn run(source: &Path, mode: &str, id: &str) -> Result<(), LifecycleEr
     let _noninteractive =
         security_framework::os::macos::keychain::SecKeychain::disable_user_interaction()
             .map_err(|_| fault("trial_keychain_interaction_policy_failed"))?;
-    let store = TrialKey {
-        native: NativeStore::new(),
-        id,
-        create: mode == "--restart-create",
-    };
+    let native = NativeStore::new();
     if mode == "--remove-trial-key" {
-        match store.native.delete(SERVICE, id) {
+        match native.delete(SERVICE, id) {
             Ok(()) | Err(SecureStoreError::Missing) => (),
             Err(_) => return Err(fault("trial_key_cleanup_failed")),
         }
-        return match store.native.get(SERVICE, id) {
+        return match native.get(SERVICE, id) {
             Err(SecureStoreError::Missing) => Ok(()),
             _ => Err(fault("trial_key_cleanup_unconfirmed")),
         };
     }
+    let mode = match mode {
+        "--restart-create" => TrialMode::Capture,
+        "--exit-before-reply" => TrialMode::ExitBeforeReply,
+        "--restart-replay" => TrialMode::Replay,
+        _ => return Err(fault("invalid_restart_operation")),
+    };
+    let store = TrialKey {
+        native,
+        id,
+        create: mode != TrialMode::Replay,
+    };
     match mode {
-        "--restart-create" => {
+        TrialMode::Capture | TrialMode::ExitBeforeReply => {
             #[cfg(unix)]
             {
                 use std::os::unix::fs::DirBuilderExt;
@@ -97,7 +104,7 @@ pub(super) fn run(source: &Path, mode: &str, id: &str) -> Result<(), LifecycleEr
                 return Err(fault("trial_key_not_fresh"));
             }
         }
-        "--restart-replay" => {
+        TrialMode::Replay => {
             if fs::canonicalize(&root)? != root || !fs::symlink_metadata(&root)?.is_dir() {
                 return Err(fault("trial_profile_mismatch"));
             }
@@ -107,7 +114,6 @@ pub(super) fn run(source: &Path, mode: &str, id: &str) -> Result<(), LifecycleEr
                 return Err(fault("trial_profile_mismatch"));
             }
         }
-        _ => return Err(fault("invalid_restart_operation")),
     }
     let _instance = cryptexd::instance::try_acquire_instance(&root)?;
     let device = if store.create {
@@ -125,5 +131,5 @@ pub(super) fn run(source: &Path, mode: &str, id: &str) -> Result<(), LifecycleEr
         &json!({"pid":std::process::id(), "brain_id":id,
           "device_id":device.as_str(), "signing_key_id":key.signing_key_id}),
     )?;
-    session(source, &root, &device, &store, !store.create)
+    session(source, &root, &device, &store, mode)
 }

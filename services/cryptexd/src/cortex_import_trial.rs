@@ -23,6 +23,13 @@ use std::{
 const DEV: SecureStoreEnvironment = SecureStoreEnvironment::Dev;
 const MAX_APPROVAL: u64 = 8192;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TrialMode {
+    Capture,
+    ExitBeforeReply,
+    Replay,
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct Approval {
@@ -62,7 +69,7 @@ fn capture(
     root: &Path,
     store: &impl SecureStore,
     bytes: &[u8],
-    replay_only: bool,
+    mode: TrialMode,
 ) -> Result<Value, LifecycleError> {
     let Ok(approval) = serde_json::from_slice::<Approval>(bytes) else {
         return Ok(json!({"status":"rejected","issue":"invalid_approval"}));
@@ -76,12 +83,14 @@ fn capture(
         Ok(payload) => payload,
         Err(issue) => return Ok(json!({"status":"rejected","issue":issue})),
     };
-    if !bind(root, &approval, replay_only).map_err(|_| fault("approval_storage_failed"))? {
+    if !bind(root, &approval, mode == TrialMode::Replay)
+        .map_err(|_| fault("approval_storage_failed"))?
+    {
         return Ok(json!({"status":"rejected","issue":"approval_conflict"}));
     }
     // A replay of a completed trial must not allocate a new record if the
     // original receipt disappeared between processes.
-    if replay_only
+    if mode == TrialMode::Replay
         && !matches!(
             cryptexd::capture::resolve_capture(store, DEV, root, &approval.capture_id),
             CaptureOutcome::Committed(_)
@@ -96,6 +105,11 @@ fn capture(
     };
     Ok(
         match capture_memory_note(store, DEV, root, request, &CanonicalWriterConfig::default()) {
+            // Terminate the disposable daemon after durable commit, before
+            // serializing the caller's receipt or running session cleanup.
+            CaptureOutcome::Committed(_) if mode == TrialMode::ExitBeforeReply => {
+                std::process::exit(86)
+            }
             CaptureOutcome::Committed(commit) => json!({
                 "status":"committed", "approval":approval, "event_id":commit.event_id,
                 "brain_id":commit.brain_id, "content_hash":commit.content_hash
@@ -134,7 +148,7 @@ pub(super) fn run(args: &[String]) -> Result<(), LifecycleError> {
     let store = FakeSecureStore::new();
     let _instance = cryptexd::instance::try_acquire_instance(root)?;
     let device = initialize(root, &store, random_uuid_v4()?)?;
-    session(Path::new(source), root, &device, &store, false)
+    session(Path::new(source), root, &device, &store, TrialMode::Capture)
 }
 
 fn trial_temp(source: &Path) -> Result<std::path::PathBuf, LifecycleError> {
@@ -167,7 +181,7 @@ fn session(
     root: &Path,
     device: &DeviceId,
     store: &impl SecureStore,
-    replay_only: bool,
+    mode: TrialMode,
 ) -> Result<(), LifecycleError> {
     let mut input = io::stdin().lock();
     let mut output = io::stdout().lock();
@@ -183,10 +197,7 @@ fn session(
         if line.len() as u64 > MAX_APPROVAL {
             return Err(LifecycleError::Usage("approval_too_large".into()));
         }
-        emit(
-            &mut output,
-            &capture(source, root, store, &line, replay_only)?,
-        )?;
+        emit(&mut output, &capture(source, root, store, &line, mode)?)?;
     }
 
     // Reopen the on-disk packs through the daemon's signature and chain verifier.
