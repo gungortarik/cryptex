@@ -1,5 +1,9 @@
 # 34 — Current Implementation Handoff
 
+## M15 reviewed capture across a daemon restart
+
+At `8e5d56f`, the [Windows and macOS CI run](https://github.com/gungortarik/cryptex/actions/runs/45066583859) passed all seven reviewed capture cases on each platform using synthetic sources and temporary profiles. After the first daemon exited, a second process reopened the enrolled signing key through the native credential store. Retrying the approval returned the same receipt and one signed restricted note. The source snapshot and canonical pack bytes matched the originals. A changed classification was refused, a missing receipt returned an uncertain result with one note on disk, and a missing key prevented replay. The macOS job uses an unlocked disposable Keychain in the runner's login context. This covers an orderly exit. The next recovery case is interruption after a commit but before the caller receives the receipt.
+
 ## M15 first reviewed daemon capture
 
 At `ae862a1` the feature-gated `cryptexd` trial recorded the first synthetic Cortex note through the normal capture service. [Windows and macOS CI](https://github.com/gungortarik/cryptex/actions/runs/45064930721) passed four end-to-end cases each. All four classifications survived signed pack readback with the original UTF-8 digest. The same approval returned the same event twice with one record on disk. A stale digest or invalid decision produced zero notes, and an attempted path or classification substitution left the original restricted note intact. The trial used a fresh temporary Brain and an in-memory signing-key store. Disk readback took place in the same daemon session. The next recovery check is to repeat the approval after a process restart with the disposable profile and its signing identity retained.
