@@ -2,6 +2,81 @@ use super::*;
 const LOCAL: &str = "U2SYIGU-YWZX757-2WPZGCR-DHD7MLH-ZKV7HLJ-EYO6CXE-K3DU3DU-SDFXYAE";
 const REMOTE: &str = "XAAPCAD-GA4SF4J-BNQL3FS-T456WKV-FGLXUKO-CDWHVDW-EYWNRIG-SM5GUAZ";
 
+#[test]
+fn closed_worker_cannot_leave_a_restricted_peer_in_settings() {
+    // Exercise both orderings without sleeping. A restriction can invalidate
+    // the guard during the identity read, or after the transport has stopped.
+    for restrict_before_close in [true, false] {
+        let root = crate::test_temp::exclusive_temp_dir("settings-restriction-generation");
+        let admission = RuntimeAdmission::detached_for_tests(&root);
+        let exclusive = || {
+            admission
+                .exclusive(&root, Instant::now() + Duration::from_secs(1), false)
+                .unwrap()
+        };
+        let snapshot = exclusive();
+        let guard = snapshot.transport_guard(&root).unwrap();
+        snapshot.finish(None);
+        let mut controller = Controller {
+            root: root.clone(),
+            admission: admission.clone(),
+            store: Arc::new(crate::FakeSecureStore::default()),
+            environment: SecureStoreEnvironment::Dev,
+            // With no enrolled location, the rescan must withhold the old list.
+            location: None,
+            registry: Default::default(),
+            settings: None,
+            preferences: Preferences::default(),
+            worker: None,
+            guard: Some(guard),
+            reader: Arc::new(Mutex::new(None)),
+            view: View {
+                revision: "7".into(),
+                paused: true,
+                listen_address: None,
+                local_transport_port: None,
+                devices: vec![Device {
+                    device_id: "other".into(),
+                    transport_id: REMOTE.into(),
+                    endpoint: None,
+                }],
+                state: State::Paused,
+                error: None,
+            },
+            cleanup_failed: false,
+            exporter: Default::default(),
+            next_export: Instant::now(),
+            #[cfg(windows)]
+            incoming: None,
+            #[cfg(windows)]
+            next_incoming: Instant::now(),
+            #[cfg(windows)]
+            identity_only: false,
+            stop: Arc::new(AtomicBool::new(false)),
+            recovery_owner: None,
+        };
+        assert!(controller.guard.as_ref().unwrap().check().is_ok());
+        if restrict_before_close {
+            exclusive().finish(None);
+        }
+        controller.reconcile_transport_observation(Err(Error::Start));
+        if !restrict_before_close {
+            assert_eq!(controller.view.error, Some(Error::Start));
+            assert_eq!(controller.view.devices.len(), 1);
+            exclusive().finish(None);
+            controller.check_generation();
+        }
+        assert!(
+            controller.view.devices.is_empty(),
+            "revoked roster survived worker shutdown"
+        );
+        assert_eq!(controller.view.state, State::NotEnrolled);
+        assert_eq!(controller.view.revision, "7");
+        drop(controller);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
 #[cfg(windows)]
 #[test]
 fn normal_windows_locator_is_read_only_pinned_and_refuses_incomplete_enrollment() {

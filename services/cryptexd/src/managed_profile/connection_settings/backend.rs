@@ -433,6 +433,9 @@ struct Controller {
     settings: Option<SettingsStore>,
     preferences: Preferences,
     worker: Option<Worker>,
+    // Also identifies the generation of the displayed roster after a clean
+    // transport stop. An identity-read failure must not detach that roster
+    // from later changes to canonical device authority.
     guard: Option<TransportGuard>,
     reader: Arc<Mutex<Option<Reader>>>,
     view: View,
@@ -480,6 +483,7 @@ impl Controller {
             let result = worker.close_for_reconcile().map_err(|_| Error::Shutdown);
             if result.is_err() {
                 self.cleanup_failed = true;
+                self.view.devices.clear();
                 // An unresolved child must not release the device instance
                 // exclusion and permit another owner in this process lifetime.
                 if let Some(guard) = self.guard.take() {
@@ -488,7 +492,6 @@ impl Controller {
             }
             result?;
         }
-        self.guard = None;
         Ok(())
     }
     fn in_maintenance(&self) -> bool {
@@ -565,16 +568,13 @@ impl Controller {
                 self.environment,
             );
         }
-        let stale = self.guard.as_ref().is_some_and(|g| g.check().is_err());
-        if stale || self.view.error == Some(Error::Held) {
-            let _ = self.apply(None, &Interest::new());
-        } else if self.worker.is_some()
-            && let Err(cause) = self.monitor_identity()
-        {
-            let error = self.close().err().unwrap_or(cause);
-            self.view.state = State::Attention;
-            self.view.error = Some(error);
-        }
+        // The identity read may overlap a restriction. Inspect the guard after
+        // the read so its revocation takes precedence over a transport error.
+        let observation = self
+            .worker
+            .as_ref()
+            .map_or(Ok(()), |_| self.monitor_identity());
+        self.reconcile_transport_observation(observation);
         if self.view.state == State::ReadyLocally
             && self.view.error.is_none()
             && Instant::now() >= self.next_export
@@ -624,6 +624,19 @@ impl Controller {
         }
         #[cfg(windows)]
         self.check_incoming();
+    }
+    fn reconcile_transport_observation(&mut self, observation: Result<(), Error>) {
+        let stale = self
+            .guard
+            .as_ref()
+            .is_some_and(|guard| guard.check().is_err());
+        if stale || self.view.error == Some(Error::Held) {
+            self.view.devices.clear();
+            let _ = self.apply(None, &Interest::new());
+        } else if let Err(cause) = observation {
+            self.view.error = Some(self.close().err().unwrap_or(cause));
+            self.view.state = State::Attention;
+        }
     }
     fn monitor_identity(&self) -> Result<(), Error> {
         let reader = self.reader.lock().ok().and_then(|reader| reader.clone());
@@ -718,6 +731,10 @@ impl Controller {
             permit.finish(None);
             return Err(error);
         }
+        // Exclusive admission invalidated the previous snapshot. Publish rows
+        // again only when the new scan has verified the current bindings.
+        self.guard = None;
+        self.view.devices.clear();
         let result = (|| {
             self.registry
                 .invalidate_all()
@@ -822,6 +839,13 @@ impl Controller {
                 self.preferences = preferences;
             }
             let endpoints = self.preferences.endpoints(&peers);
+            // Associate the roster with its verified generation before any
+            // later policy or worker startup failure can expose these rows.
+            self.guard = Some(
+                permit
+                    .transport_guard(&self.root)
+                    .map_err(|_| Error::Held)?,
+            );
             self.view = View {
                 revision: self.preferences.revision.to_string(),
                 paused: self.preferences.paused,
@@ -855,13 +879,6 @@ impl Controller {
             if Instant::now() >= scan_deadline {
                 return Err(Error::Unavailable);
             }
-            // Retain exclusion before handing off to native startup, including
-            // cancellation or namespace failure immediately after it returns.
-            self.guard = Some(
-                permit
-                    .transport_guard(&self.root)
-                    .map_err(|_| Error::Held)?,
-            );
             #[cfg(windows)]
             let worker = Worker::start_exchange(
                 location.profile.clone(),
