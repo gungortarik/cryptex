@@ -47,6 +47,9 @@ pub(super) fn probe() -> Result<(), String> {
         return Err("update probes require the installed sidecar".into());
     }
     let runtime = default_runtime_root_path()?;
+    let _session = cryptex_updater::Layout::current()
+        .and_then(|layout| layout.probe_session())
+        .map_err(|e| e.to_string())?;
     let observe = || cryptexd::instance::observe_instance(&runtime).map_err(|e| e.to_string());
     if observe()?.lock_held {
         return Err("quit the running Desktop and daemon before updating".into());

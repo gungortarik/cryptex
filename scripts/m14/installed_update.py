@@ -10,8 +10,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import uuid
+import tarfile
 import time
+import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
 APP = ROOT / "apps/desktop"
@@ -108,7 +109,7 @@ def install(package, destination):
 
 
 def exercise(packages, work, runtime, env):
-    user_root = Path(os.environ["LOCALAPPDATA"]) if WINDOWS else Path.home() / "Applications"
+    user_root = Path(os.environ["LOCALAPPDATA"]) / "Programs" if WINDOWS else Path.home() / "Applications"
     user_root.mkdir(parents=True, exist_ok=True)
     active = user_root / ("Cryptex" if WINDOWS else "Cryptex.app")
     pending = active.with_name(active.name + ".pending")
@@ -134,7 +135,8 @@ def exercise(packages, work, runtime, env):
     tool = work / ("cryptex-updater" + SUFFIX)
     shutil.copy2(packages[0][1].parent.parent / tool.name, tool)
     receipts = []
-    for index, (source, hashes) in enumerate(images):
+    previous = active.with_name(active.name + ".previous")
+    for index, source in enumerate((images[0][0], images[1][0], images[1][0])):
         if WINDOWS:
             shutil.copytree(source, pending)
         else:
@@ -142,18 +144,28 @@ def exercise(packages, work, runtime, env):
         receipt = runtime / "m14-update-result.json"
         receipt.unlink(missing_ok=True)
         approved = run(tool, "fingerprint", source, text=True, capture_output=True).stdout.strip()
-        wrong = subprocess.run([tool, "apply", "0" * 64], env=env, capture_output=True, timeout=30)
-        if wrong.returncode == 0 or b"approved digest" not in wrong.stderr:
-            raise RuntimeError("Updater accepted a different staged image or failed at the wrong boundary")
+        if index == 2:
+            # Simulate losing the coordinator immediately after package selection.
+            # The restarted updater must recover the last confirmed version.
+            state = (Path(os.environ["LOCALAPPDATA"]) if WINDOWS else Path.home() / "Library/Application Support") / "Cryptex-Updater"
+            working = run(tool, "fingerprint", active, text=True, capture_output=True).stdout.strip()
+            with (state / "package-transition.json").open("x", encoding="utf-8") as stream:
+                json.dump({"working": working, "staged": approved}, stream)
+            active.rename(previous)
+            pending.rename(active)
+        else:
+            wrong = subprocess.run([tool, "apply", "0" * 64], env=env, capture_output=True, timeout=30)
+            if wrong.returncode == 0 or b"approved digest" not in wrong.stderr:
+                raise RuntimeError("Unexpected outcome for an unapproved staged image")
         process = run(tool, "apply", approved, env=env, text=True, stdout=subprocess.PIPE, timeout=150)
         report = json.loads(process.stdout)
-        expected = [(1, 1), (2, 2)] if index == 0 else [(2, 2), (2, 1), (2, 2)]
+        expected = ([(1, 1), (2, 2)], [(2, 2), (2, 1), (2, 2)], [(2, 2), (2, 2)])[index]
         checks = report["checks"]
         if [(c["desktop_protocol"], c["daemon_protocol"]) for c in checks] != expected:
             raise RuntimeError(f"Unexpected IPC handshake sequence: {checks}")
         if [c["status"] for c in checks] != ["incompatible" if a != b else "connected" for a, b in expected]:
             raise RuntimeError("Unexpected update decision evidence")
-        if report["outcome"] != ("updated" if index == 0 else "rolled_back"):
+        if report["outcome"] != ("updated", "rolled_back", "recovered")[index]:
             raise RuntimeError(f"Unexpected updater outcome: {report}")
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
@@ -196,6 +208,8 @@ def main():
         run("cargo", "build", "--locked", "-p", "cryptex-updater")
         target = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")).resolve()
         shutil.copy2(target / "debug" / ("cryptex-updater" + SUFFIX), packages_dir)
+        with tarfile.open(packages_dir / "cryptex-local-updater.tar.gz", "w:gz") as archive:
+            archive.add(packages_dir / ("cryptex-updater" + SUFFIX), arcname="cryptex-updater" + SUFFIX)
         packages = build_packages(packages_dir)
         for _, artifact, daemon_hash in packages:
             (artifact.parent / "daemon.sha256").write_text(daemon_hash, encoding="ascii")

@@ -36,7 +36,11 @@ impl Layout {
         };
         let (parent, state, name) = if cfg!(windows) {
             let local = base("LOCALAPPDATA")?;
-            (local.clone(), local.join("Cryptex-Updater"), "Cryptex")
+            (
+                local.join("Programs"),
+                local.join("Cryptex-Updater"),
+                "Cryptex",
+            )
         } else if cfg!(target_os = "macos") {
             let home = base("HOME")?;
             (
@@ -89,10 +93,33 @@ impl Layout {
         self.lock_file("update.lock")?
             .try_lock_shared()
             .map_err(|_| io::Error::other("Cryptex update in progress"))?;
-        if self.previous.try_exists()? {
+        if self.previous.try_exists()? || self.intent().try_exists()? {
             return Err(io::Error::other("unfinished package update"));
         }
         Ok(Some(session))
+    }
+
+    pub fn probe_session(&self) -> io::Result<File> {
+        let exe = env::current_exe()?.canonicalize()?;
+        if ![&self.active, &self.pending, &self.previous]
+            .iter()
+            .any(|image| desktop(image).canonicalize().is_ok_and(|path| path == exe))
+        {
+            return Err(io::Error::other("probe requires the installed Desktop"));
+        }
+        let session = self.lock_file("desktop.lock")?;
+        session
+            .try_lock()
+            .map_err(|_| io::Error::other("Desktop is running"))?;
+        match self.lock_file("update.lock")?.try_lock_shared() {
+            Err(std::fs::TryLockError::WouldBlock) => Ok(session),
+            Err(std::fs::TryLockError::Error(e)) => Err(e),
+            Ok(()) => Err(io::Error::other("no package transaction is running")),
+        }
+    }
+
+    pub fn intent(&self) -> PathBuf {
+        self.state.join("package-transition.json")
     }
 }
 

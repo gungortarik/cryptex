@@ -115,14 +115,103 @@ fn vacant(path: &Path) -> io::Result<bool> {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Intent {
+    working: String,
+    staged: String,
+}
+
+impl Intent {
+    fn save(&self, file: &Path) -> io::Result<()> {
+        let temp = tempfile::NamedTempFile::new_in(
+            file.parent()
+                .ok_or_else(|| error("missing updater state directory"))?,
+        )?;
+        serde_json::to_writer(temp.as_file(), self)?;
+        temp.as_file().sync_all()?;
+        temp.persist_noclobber(file)?;
+        Ok(())
+    }
+
+    fn restore(&self, layout: &Layout) -> io::Result<Vec<Health>> {
+        // Find both recorded images before moving anything. A crash may have
+        // happened between any two renames, including during an earlier retry.
+        let mut working = None;
+        let mut staged = None;
+        for path in [&layout.active, &layout.previous, &layout.pending] {
+            if vacant(path)? {
+                continue;
+            }
+            let hash = package_digest(path)?;
+            if hash == self.working && working.is_none() {
+                working = Some(path);
+            } else if hash == self.staged && staged.is_none() {
+                staged = Some(path);
+            } else {
+                return Err(error("unexpected image during recovery"));
+            }
+        }
+        let old = working.ok_or_else(|| error("working image missing during recovery"))?;
+        let new = staged.ok_or_else(|| error("staged image missing during recovery"))?;
+        let verified = probe(old)?;
+        if verified.status != "connected" {
+            return Err(error("retained Desktop could not reconnect"));
+        }
+        if old == &layout.pending && new == &layout.active {
+            fs::rename(old, &layout.previous)?;
+        } else if !((old == &layout.active && new == &layout.pending)
+            || (old == &layout.previous && (new == &layout.active || new == &layout.pending)))
+        {
+            return Err(error("unexpected package positions during recovery"));
+        }
+        if new == &layout.active {
+            fs::rename(new, &layout.pending)?;
+        }
+        if old != &layout.active {
+            fs::rename(&layout.previous, &layout.active)?;
+        }
+        let restored = probe(&layout.active)?;
+        if restored.status != "connected" || restored.desktop_protocol != verified.desktop_protocol
+        {
+            return Err(error("recovered Desktop could not reconnect"));
+        }
+        Ok(vec![verified, restored])
+    }
+}
+
+fn reopen(layout: &Layout, lock: fs::File, outcome: &str, checks: Vec<Health>) -> io::Result<()> {
+    drop(lock);
+    let reopened = Command::new(desktop(&layout.active))
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    println!(
+        "{}",
+        serde_json::json!({"outcome":outcome,"checks":checks,"reopened_pid":reopened.id()})
+    );
+    Ok(())
+}
+
 fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
     let transaction = layout.begin_update()?;
+    let journal = layout.intent();
+    if !vacant(&journal)? {
+        let intent: Intent = serde_json::from_reader(fs::File::open(&journal)?.take(1024))?;
+        let checks = intent.restore(layout)?;
+        fs::remove_file(journal)?;
+        return reopen(layout, transaction, "recovered", checks);
+    }
     if !vacant(&layout.previous)? {
         return Err(error("an unfinished update retains the previous package"));
     }
     let original = package_digest(&layout.active)?;
     if package_digest(&layout.pending)? != approved {
         return Err(error("staged package differs from the approved digest"));
+    }
+    if original == approved {
+        return Err(error("working and staged packages are identical"));
     }
     if env::current_exe()?
         .canonicalize()?
@@ -136,6 +225,11 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
     if before.status != "connected" {
         return Err(error("current Desktop does not have a working daemon"));
     }
+    Intent {
+        working: original.clone(),
+        staged: approved.to_owned(),
+    }
+    .save(&journal)?;
     fs::rename(&layout.active, &layout.previous)?;
     if let Err(cause) = fs::rename(&layout.pending, &layout.active) {
         fs::rename(&layout.previous, &layout.active)?;
@@ -163,17 +257,8 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
         fs::rename(&layout.previous, &layout.pending)?;
         "updated"
     };
-    drop(transaction);
-    let reopened = Command::new(desktop(&layout.active))
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()?;
-    println!(
-        "{}",
-        serde_json::json!({"outcome":outcome,"checks":checks,"reopened_pid":reopened.id()})
-    );
-    Ok(())
+    fs::remove_file(journal)?;
+    reopen(layout, transaction, outcome, checks)
 }
 
 fn main() -> io::Result<()> {

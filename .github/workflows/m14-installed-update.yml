@@ -55,7 +55,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: cryptex-local-updater-${{ runner.os }}
-          path: ${{ runner.temp }}/m14-packages/cryptex-updater*
+          path: ${{ runner.temp }}/m14-packages/cryptex-local-updater.tar.gz
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
