@@ -1,5 +1,9 @@
 # 34 — Current Implementation Handoff
 
+## M15 offline source review for multiple imported notes
+
+At `8d009d7`, [Windows and macOS CI](https://github.com/gungortarik/cryptex/actions/runs/45081399084) passed all eleven capture tests on both platforms. Two synthetic notes with distinct classifications were imported into the same temporary Brain. After the daemon exited and the source directory was disconnected, a new process matched each signed source receipt to its verified event, text digest and classification. Replay kept two events. Changed, swapped, missing and extra receipts failed review with zero report bytes. The [batch command and report](milestones/M15_CORTEX_FRESH_REINGESTION.md#reviewing-the-origin-of-multiple-notes) are feature-gated. An outstanding recovery case is interruption after a batch note commits and before its signed source receipt is published. Automatic recovery for that interval and final cutover remain open.
+
 ## M15 pre-import duplicate and conflict review
 
 At `932b5f4`, `--review-notes` groups exact byte duplicates and flags possible conflicts between different texts with the same leading Markdown title. The disposable daemon presents the same report before first capture of a grouped item and checks the selected source, classification and current review digest. A changed sibling invalidates the choice. An incomplete scan allows no new capture. In [Windows and macOS CI](https://github.com/gungortarik/cryptex/actions/runs/45077337328) all nine capture tests passed on each platform. The inventory suite passed fifteen tests on macOS and fourteen applicable tests on Windows. Synthetic fixtures verified overlapping groups, repeated review, zero writes on stale or missing approval, and a single signed restricted note after explicit selection. This covers the first Markdown mapping in temporary profiles. Review of provenance across multiple imported notes and final cutover remain open.
