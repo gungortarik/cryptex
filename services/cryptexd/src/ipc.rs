@@ -594,6 +594,25 @@ pub struct HealthResponse {
     pub daemon_pid: u32,
 }
 
+/// An explicitly rejected, request-correlated health negotiation.
+#[derive(Debug)]
+pub struct HealthProtocolMismatch {
+    pub daemon_pid: u32,
+    pub daemon_protocol: u32,
+}
+
+impl std::fmt::Display for HealthProtocolMismatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "daemon health protocol {} is incompatible with {}",
+            self.daemon_protocol, PROTOCOL_VERSION
+        )
+    }
+}
+
+impl std::error::Error for HealthProtocolMismatch {}
+
 /// Bind the daemon endpoint and serve the narrow health operation on a worker.
 /// The worker exits with the daemon process. The caller must already hold the
 /// daemon's single-instance lock before binding this stable endpoint.
@@ -1114,6 +1133,20 @@ pub fn health_ping(role: &str, timeout: Duration) -> io::Result<HealthResponse> 
     };
     let frame = exchange(&mut stream, &request, MAX_RESPONSE_BYTES)?;
     let response: HealthResponse = serde_json::from_slice(&frame)?;
+    if response.request_id.as_deref() == Some(&request_id)
+        && response.protocol_version != PROTOCOL_VERSION
+        && !response.accepted
+        && response.operation.is_none()
+        && response.error.as_deref() == Some("incompatible_protocol_version")
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            HealthProtocolMismatch {
+                daemon_pid: response.daemon_pid,
+                daemon_protocol: response.protocol_version,
+            },
+        ));
+    }
     if response.protocol_version != PROTOCOL_VERSION
         || response.request_id.as_deref() != Some(&request_id)
         || (response.accepted && response.operation.as_deref() != Some("health.pong"))

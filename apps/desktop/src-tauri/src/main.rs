@@ -33,6 +33,8 @@ mod development_launch;
 #[cfg(feature = "m8-device-recovery-check")]
 mod device_recovery;
 mod frontend_build_mode;
+#[cfg(feature = "m14-installed-update-check")]
+mod installed_update_check;
 #[cfg(feature = "m14-login-check")]
 mod login_check;
 mod pilot_runtime;
@@ -2367,7 +2369,7 @@ fn stop_supervised_daemon(state: &ProbeState) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(not(debug_assertions))]
+#[cfg(any(not(debug_assertions), feature = "m14-installed-update-check"))]
 fn start_daemon_for_desktop_launch(state: &ProbeState) -> Result<u32, String> {
     let runtime = runtime_root_path()?;
     fs::create_dir_all(&runtime).map_err(|error| error.to_string())?;
@@ -2987,6 +2989,11 @@ fn local_signed_startup_check() -> Option<Result<(), String>> {
 mod installed_search;
 
 fn main() {
+    #[cfg(feature = "m14-installed-update-check")]
+    if let Err(error) = installed_update_check::admit() {
+        eprintln!("Update rehearsal refused: {error}");
+        std::process::exit(2);
+    }
     #[cfg(feature = "m14-login-check")]
     if let Err(error) = login_check::record_attempt() {
         eprintln!("Login test refused: {error}");
@@ -3191,7 +3198,7 @@ fn main() {
             build_tray(app.handle())?;
             #[cfg(all(debug_assertions, feature = "m13-shell-check"))]
             start_supervised_sidecar(&probe_state, p0_2_default_cryptexd()?)?;
-            #[cfg(not(debug_assertions))]
+            #[cfg(any(not(debug_assertions), feature = "m14-installed-update-check"))]
             if let Err(error) = start_daemon_for_desktop_launch(&probe_state)
                 && let Ok(root) = runtime_root_path()
             {
@@ -3221,6 +3228,8 @@ fn main() {
             }
             #[cfg(feature = "m14-login-check")]
             login_check::observe(app.handle())?;
+            #[cfg(feature = "m14-installed-update-check")]
+            installed_update_check::observe(app.handle().clone());
             spawn_control_file_watcher(app.handle().clone(), probe_state.clone());
             Ok(())
         })

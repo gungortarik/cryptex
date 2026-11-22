@@ -1,0 +1,45 @@
+name: M14 installed update and rollback
+on:
+  workflow_dispatch:
+  push:
+    branches: ['codex/m14-login-startup']
+    paths:
+      - '.github/workflows/m14-installed-update.yml'
+      - 'scripts/m14/installed_update.py'
+      - 'apps/desktop/src-tauri/**'
+      - 'services/cryptexd/src/ipc.rs'
+      - 'services/cryptexd/src/compat.rs'
+permissions:
+  contents: read
+jobs:
+  update:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    env:
+      CARGO_PROFILE_DEV_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pnpm install --frozen-lockfile
+      - run: cargo fmt --all -- --check
+      - name: Install, replace, reject an incompatible daemon and restore the previous package
+        run: python -B scripts/m14/installed_update.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: m14-installed-update-${{ runner.os }}
+          path: ${{ runner.temp }}/m14-installed-update.json
+          if-no-files-found: error
