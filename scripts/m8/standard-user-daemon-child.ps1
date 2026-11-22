@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$Payload)
+param([Parameter(Mandatory=$true)][string]$Payload,[switch]$ObserveConsoleLogin)
 # Parent runs PowerShell7; this credential child is Windows PowerShell5.1.
 # Do not inherit incompatible PS7 module paths into native PS5.1 autoload.
 $env:PSModulePath="$PSHOME\Modules"
@@ -9,7 +9,7 @@ $p=Get-Content -LiteralPath $Payload -Raw | ConvertFrom-Json
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
 $principal=[Security.Principal.WindowsPrincipal]::new($identity)
 if($identity.User.Value -ne $p.sid -or $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Standard-user token required.'}
-$env:TEMP=Join-Path $p.scratch 'private-temp'
+$env:TEMP=Join-Path $p.scratch $(if($ObserveConsoleLogin){'login-temp'}else{'private-temp'})
 $env:TMP=$env:TEMP
 New-Item -ItemType Directory -Path $env:TEMP | Out-Null
 $owner=(Get-Acl -LiteralPath $env:TEMP).GetOwner([Security.Principal.SecurityIdentifier]).Value
@@ -46,7 +46,14 @@ if($releaseSmoke -or ($p.PSObject.Properties['m14_update_packages'] -and $p.m14_
     $env:USERNAME=$p.user_name
     $env:RUNNER_TEMP=$p.scratch
     if($releaseSmoke) {
-        & $p.python -B (Join-Path $p.workspace 'scripts/m14/release_smoke.py')
+        $observer=Join-Path $p.workspace 'scripts/m14/windows_console_login.py'
+        if($ObserveConsoleLogin) {
+            & $p.python -B $observer observe
+        } else {
+            & $p.python -B (Join-Path $p.workspace 'scripts/m14/release_smoke.py')
+            if($LASTEXITCODE -ne 0){throw 'Installed release smoke failed.'}
+            & $p.python -B $observer arm
+        }
     } else {
         & $p.python -B (Join-Path $p.workspace 'scripts/m14/installed_update.py') exercise $p.m14_update_packages
     }

@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/m14-release-smoke.yml'
       - 'scripts/m14/release_smoke.py'
+      - 'scripts/m14/windows_console_login.py'
       - 'scripts/m14/installed_update.py'
       - 'scripts/m8/*standard-user*.ps1'
       - 'apps/desktop/src-tauri/**'
@@ -48,6 +49,12 @@ jobs:
       - name: Smoke test in the disposable Mac account
         if: runner.os == 'macOS'
         run: python -B scripts/m14/release_smoke.py
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: m14-windows-console-login
+          path: ${{ runner.temp }}/m14-windows-console-login.json
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: m14-release-smoke-${{ runner.os }}

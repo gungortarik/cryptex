@@ -79,16 +79,23 @@ try {
     $stdout=Join-Path $scratch 'stdout.log'; $stderr=Join-Path $scratch 'stderr.log'
     $bootstrap=Join-Path $PSScriptRoot 'standard-user-daemon-child.ps1'
     $credential=[Management.Automation.PSCredential]::new(('.\'+$userName),$password)
-    $child=Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
-        -ArgumentList ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -Payload "{1}"' -f $bootstrap,$payload) `
+    $phases=if($M14ReleaseSmoke){'prepare','observe'}else{'suite'}
+    foreach($phase in $phases) {
+      $arguments='-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -Payload "{1}"' -f $bootstrap,$payload
+      if($phase -eq 'observe'){$arguments+=' -ObserveConsoleLogin'}
+      $child=Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
+        -ArgumentList $arguments `
         -Credential $credential -LoadUserProfile -WindowStyle Hidden -PassThru `
         -Environment @{GITHUB_ACTIONS='true';RUNNER_ENVIRONMENT='github-hosted';RUNNER_OS='Windows'} `
         -WorkingDirectory $manifest -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-    if(-not $child.WaitForExit(1200000)){throw 'Standard-user daemon tests timed out.'}
-    $child.WaitForExit()
-    Get-Content -LiteralPath $stdout
-    Get-Content -LiteralPath $stderr
-    if($child.ExitCode -ne 0){throw 'Standard-user daemon tests failed.'}
+      if(-not $child.WaitForExit(1200000)){throw 'Standard-user daemon tests timed out.'}
+      $child.WaitForExit()
+      Get-Content -LiteralPath $stdout
+      Get-Content -LiteralPath $stderr
+      if($child.ExitCode -ne 0){throw 'Standard-user daemon tests failed.'}
+      $child.Dispose()
+      $child=$null
+    }
     $report=Get-Content -LiteralPath (Join-Path $scratch 'result.json') -Raw | ConvertFrom-Json
     if($report.sid -ne $user.SID.Value -or $report.elevated -or -not $report.passed -or $report.suites -ne $expectedSuites){throw 'Missing standard-user proof.'}
     if($M13DesktopShell) {
@@ -102,6 +109,7 @@ try {
     }
     if($M14ReleaseSmoke) {
         [IO.File]::Copy((Join-Path $scratch 'm14-release-smoke.json'),(Join-Path $env:RUNNER_TEMP 'm14-release-smoke.json'),$false)
+        [IO.File]::Copy((Join-Path $scratch 'm14-windows-console-login.json'),(Join-Path $env:RUNNER_TEMP 'm14-windows-console-login.json'),$false)
     }
     if($M11CrossBackup -eq 'prepare') {
         foreach($member in @('private/content.zip','public/selection.json')) {
