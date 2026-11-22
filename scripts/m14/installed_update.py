@@ -179,6 +179,19 @@ def interrupt_after_selection(tool, approved, working, active, runtime, journal,
             "busy_recovery_refused": True, "journal_and_images_verified": True}
 
 
+def verify_note(daemon, runtime):
+    events = runtime / "canonical/events"
+    packs = sorted(path for path in events.rglob("*") if path.suffix in (".seg", ".open"))
+    segment, = [path for path in packs if path.suffix == ".seg"]
+    descriptor = runtime / "signed-probe.json"
+    verified = run(daemon, "pilot-fixture", "verify-signed-transfer-v1", "--segment", segment,
+                   "--descriptor", descriptor, "--confirm-isolated-pilot", capture_output=True, timeout=30)
+    report = json.loads(verified.stdout)
+    if report["outcome"] != "signature_verified" or report["event_count"] != 1:
+        raise RuntimeError("Expected one verified synthetic note")
+    return {path.relative_to(runtime).as_posix(): digest(path) for path in [*packs, descriptor]}
+
+
 def exercise(packages, work, runtime, env):
     user_root = Path(os.environ["LOCALAPPDATA"]) / "Programs" if WINDOWS else Path.home() / "Applications"
     user_root.mkdir(parents=True, exist_ok=True)
@@ -203,6 +216,19 @@ def exercise(packages, work, runtime, env):
         (initial_dir / packages[0][1].name).rename(active)
     desktop = active / ("cryptex-desktop.exe" if WINDOWS else "Contents/MacOS/" + desktop.name)
     daemon = desktop.with_name("cryptexd" + SUFFIX)
+    (runtime / "pilot-runtime.marker").write_bytes(b"m0-native-desktop-runtime-v1\n")
+    create = [daemon, "pilot-fixture", "signed-transfer-v1", "--runtime-root", runtime, "--confirm-isolated-pilot"]
+    if WINDOWS:
+        run(*create, timeout=45)
+    else:
+        sys.path.insert(0, str(ROOT / "scripts/m8"))
+        from mac_ci_credential_keychain import CredentialKeychain
+        from mac_identity_preflight import run_bounded
+
+        with CredentialKeychain(work, run_bounded) as scope:
+            scope.fence.checked(create, "create_m14_signed_note", 45)
+    original_note = verify_note(daemon, runtime)
+    (runtime / "m14-update-owner").write_text(env["CRYPTEX_FILE_FIXTURE_SOCKET"], encoding="utf-8")
     tool = work / ("cryptex-updater" + SUFFIX)
     shutil.copy2(packages[0][1].parent.parent / tool.name, tool)
     receipts = []
@@ -220,6 +246,8 @@ def exercise(packages, work, runtime, env):
         if index == 2:
             working = run(tool, "fingerprint", active, text=True, capture_output=True).stdout.strip()
             interruption = interrupt_after_selection(tool, approved, working, active, runtime, journal, env)
+            if verify_note(daemon, runtime) != original_note:
+                raise RuntimeError("Interrupted selection changed canonical note data")
         else:
             wrong = subprocess.run([tool, "apply", "0" * 64], env=env, capture_output=True, timeout=30)
             if wrong.returncode == 0 or b"approved digest" not in wrong.stderr:
@@ -250,7 +278,9 @@ def exercise(packages, work, runtime, env):
         # The GUI writes its receipt just before exiting in the disposable build.
         # Wait for the native session lock via the process handle below.
         wait_for_desktop_exit(reopened["desktop_pid"])
-        transaction = {"updater": report, "reopened": reopened}
+        if verify_note(daemon, runtime) != original_note:
+            raise RuntimeError("Installed package transaction changed canonical note data")
+        transaction = {"updater": report, "reopened": reopened, "canonical_note_verified": True}
         if index == 2:
             transaction["interruption"] = interruption
         receipts.append(transaction)
@@ -289,7 +319,6 @@ def main():
     runtime = base / "Cryptex-Dev/p0-2/compare/mode-b-desktop"
     runtime.mkdir(parents=True, exist_ok=False)
     token = str(uuid.uuid4())
-    (runtime / "m14-update-owner").write_text(token, encoding="utf-8")
     with tempfile.TemporaryDirectory(dir=os.environ["RUNNER_TEMP"], prefix="cryptex-m14-update-") as directory:
         work = Path(directory)
         report = exercise(packages, work, runtime, dict(os.environ, CRYPTEX_FILE_FIXTURE_SOCKET=token))
