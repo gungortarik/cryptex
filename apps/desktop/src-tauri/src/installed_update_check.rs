@@ -70,9 +70,12 @@ pub(super) fn observe(app: AppHandle) {
             {
                 return Err("daemon lock remained held".into());
             }
-            let file = fs::File::create_new(root.join("m14-update-result.json"))
+            let mut pending = tempfile::NamedTempFile::new_in(&root).map_err(|e| e.to_string())?;
+            serde_json::to_writer(pending.as_file_mut(), &receipt).map_err(|e| e.to_string())?;
+            pending
+                .persist_noclobber(root.join("m14-update-result.json"))
                 .map_err(|e| e.to_string())?;
-            serde_json::to_writer(file, &receipt).map_err(|e| e.to_string())
+            Ok(())
         });
         if let Err(error) = result {
             eprintln!("Installed update observation failed: {error}");
