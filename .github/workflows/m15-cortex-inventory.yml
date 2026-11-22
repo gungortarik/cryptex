@@ -1,0 +1,30 @@
+name: M15 read-only Cortex inventory
+on:
+  push:
+    paths:
+      - 'tools/cortex-inventory/**'
+      - '.github/workflows/m15-cortex-inventory.yml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inventory:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: cargo fmt -p cryptex-cortex-inventory -- --check
+      - run: cargo clippy --locked -p cryptex-cortex-inventory -- -D warnings
+      - run: cargo build --locked -p cryptex-cortex-inventory
+      - name: Inventory a disposable legacy source from a temporary profile
+        env:
+          CRYPTEX_INVENTORY_BIN: target/debug/cryptex-cortex-inventory${{ runner.os == 'Windows' && '.exe' || '' }}
+        run: python -B tools/cortex-inventory/test_cli.py -v

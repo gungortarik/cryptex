@@ -12,6 +12,7 @@ members = [
   "tools/m0-ipc-spike",
   "tools/m0-storage-bench",
   "tools/m0-lifecycle-compare",
+  "tools/cortex-inventory",
 ]
 
 [workspace.package]
