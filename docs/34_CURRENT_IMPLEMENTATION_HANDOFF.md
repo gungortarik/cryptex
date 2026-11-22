@@ -1,5 +1,11 @@
 # 34 — Current Implementation Handoff
 
+## M14 Windows console observation
+
+At `9a5035d` the installed Windows release ran its registered background command in a fresh standard user's second logon. A WinEvent observer was armed before launch, detected the deliberate console in its calibration step, and recorded zero console window shows and zero console process starts through ten seconds after the installed Desktop connected to its daemon. The test also verified removal of the startup entry. [Native test and Windows receipt](https://github.com/gungortarik/cryptex/actions/runs/45040536680)
+
+The CI harness started the registered command in the new logon. To measure Windows Explorer dispatching that entry itself, the same run produces a one-click package for the temporary `cryptexm14` account. Its receipt identifies the activation as `interactive-windows-sign-in` and verifies that the observer was already armed when the app started. The real VM sign-in measurement is pending.
+
 ## M14 installed release packages
 
 At `7c886ed` CI built the ordinary release NSIS installer and macOS app without rehearsal features. In a fresh Windows standard account and the disposable macOS 26 runner account, the locally installed Desktop started its packaged daemon. Closing the window to the background and restoring it preserved both PIDs. Harness shutdown released the daemon lock. Windows verified the GUI subsystem and the entire installed executable against the release binary with Tauri's NSIS stamp. macOS verified the bundle identifier, macOS 26 minimum and copied payload. [Native package receipts](https://github.com/gungortarik/cryptex/actions/runs/45037033065)
