@@ -1,0 +1,8 @@
+{
+  "platform": "darwin",
+  "check": "new-login",
+  "launches": 1,
+  "startup_entry_removed": true,
+  "distinct_login_session": true,
+  "observation_seconds": 60
+}

@@ -1,5 +1,9 @@
 # 34 — Current Implementation Handoff
 
+## M14 candidate review
+
+The [platform acceptance review](../evidence/m14/platform-closeout-review.md) records the Windows and Mac tests for candidate `18b9b04`, including verification of a signed note through update, rollback and interrupted recovery. Read the Mac restricted-device regression and the supervisor and recovery findings before approving closure. M14 remains open.
+
 ## M14 Windows console observation
 
 The Windows 11 VM passed the installed release's console-free sign-in check in the temporary account. The observer from `cc47d75` was armed 5,281.8934 ms before the installed Desktop from `9a5035d` started. It verified the Desktop and daemon in the new logon and observed zero console window shows and zero console process-start events through ten seconds after readiness. Calibration detected a window in the default terminal and a known client's start in the classic console. The test removed the startup entry and observer task. The Desktop hash matches the package manifest. [Real sign-in receipt](../evidence/m14/windows-interactive-login-9a5035d-v2.json)
