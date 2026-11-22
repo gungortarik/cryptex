@@ -2456,6 +2456,9 @@ fn show_main_window(app: &AppHandle, source: &str, state: &ProbeState) -> Result
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "main window missing".to_string())?;
+    if window.is_minimized().map_err(|e| e.to_string())? {
+        window.unminimize().map_err(|e| e.to_string())?;
+    }
     window.show().map_err(|e| e.to_string())?;
     window.set_focus().map_err(|e| e.to_string())?;
     if let Ok(root) = runtime_root_path() {

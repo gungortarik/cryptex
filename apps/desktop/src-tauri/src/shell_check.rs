@@ -143,6 +143,17 @@ fn check(app: &AppHandle) -> Result<()> {
     )? {
         return Err("search field unavailable before close".into());
     }
+    let original_daemon = super::check_local_service()?.daemon_pid;
+    window.minimize()?;
+    until("native window minimized", || Ok(window.is_minimized()?))?;
+    super::show_main_window(
+        app,
+        "m14_minimized_reopen",
+        &app.state::<super::ProbeState>(),
+    )?;
+    until("restored minimized window", || {
+        Ok(!window.is_minimized()? && window.is_visible()?)
+    })?;
     window.close()?;
     until("close to tray", || Ok(!window.is_visible()?))?;
     super::show_main_window(app, "m13_rehearsal", &app.state::<super::ProbeState>())?;
@@ -153,6 +164,9 @@ fn check(app: &AppHandle) -> Result<()> {
                 "document.querySelector('#memory-search')?.value === 'shell-reopen'",
             )?)
     })?;
+    if super::check_local_service()?.daemon_pid != original_daemon {
+        return Err("restoring the window replaced the running engine".into());
+    }
     check_engine(app, &window)?;
     Ok(())
 }
