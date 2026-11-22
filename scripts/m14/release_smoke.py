@@ -12,6 +12,15 @@ import time
 from installed_update import ROOT, SUFFIX, WINDOWS, digest, run
 
 
+def expected_nsis_desktop(raw):
+    # Tauri patches the bundle-type marker while assembling the installer
+    # and restores the original release executable after packaging.
+    marker = b"__TAURI_BUNDLE_TYPE_VAR_UNK"
+    if raw.count(marker) != 1:
+        raise RuntimeError("Review the release binary's Tauri bundle-type marker")
+    return raw.replace(marker, b"__TAURI_BUNDLE_TYPE_VAR_NSS")
+
+
 def install(release, base):
     if WINDOWS:
         target = base / "Programs/Cryptex"
@@ -31,8 +40,9 @@ def install(release, base):
             exe.seek(header + 24 + 68)
             if struct.unpack("<H", exe.read(2))[0] != 2:
                 raise RuntimeError("Installed Desktop must use the Windows GUI subsystem")
-        if digest(desktop) != digest(release / desktop.name):
-            raise RuntimeError("Installed Desktop differs from release binary")
+        expected = expected_nsis_desktop((release / desktop.name).read_bytes())
+        if desktop.read_bytes() != expected:
+            raise RuntimeError("Installed Desktop differs from the expected NSIS payload")
         staged, = (ROOT / "apps/desktop/src-tauri/binaries").glob("cryptexd-*.exe")
     else:
         bundle = release / "bundle/macos/Cryptex.app"
