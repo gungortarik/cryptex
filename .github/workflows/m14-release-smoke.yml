@@ -1,0 +1,55 @@
+name: M14 installed release package smoke
+on:
+  workflow_dispatch:
+  push:
+    branches: ['codex/m14-login-startup']
+    paths:
+      - '.github/workflows/m14-release-smoke.yml'
+      - 'scripts/m14/release_smoke.py'
+      - 'scripts/m14/installed_update.py'
+      - 'scripts/m8/*standard-user*.ps1'
+      - 'apps/desktop/src-tauri/**'
+      - 'apps/desktop/scripts/prepare-cryptexd-sidecar.mjs'
+permissions:
+  contents: read
+jobs:
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            bundle: nsis
+          - os: macos-26
+            bundle: app
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '26.0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cryptex/desktop tauri:package --bundles ${{ matrix.bundle }}
+      - name: Smoke test in the temporary Windows standard account
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -M14ReleaseSmoke
+      - name: Smoke test in the disposable Mac account
+        if: runner.os == 'macOS'
+        run: python -B scripts/m14/release_smoke.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: m14-release-smoke-${{ runner.os }}
+          path: ${{ runner.temp }}/m14-release-smoke.json
+          if-no-files-found: error

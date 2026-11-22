@@ -41,11 +41,16 @@ $env:USERPROFILE=$profile
 $env:LOCALAPPDATA=Join-Path $profile 'AppData\Local'
 $env:APPDATA=Join-Path $profile 'AppData\Roaming'
 $env:CARGO_MANIFEST_DIR=$p.manifest
-if($p.PSObject.Properties['m14_update_packages'] -and $p.m14_update_packages) {
+$releaseSmoke=$p.PSObject.Properties['m14_release_smoke'] -and $p.m14_release_smoke
+if($releaseSmoke -or ($p.PSObject.Properties['m14_update_packages'] -and $p.m14_update_packages)) {
     $env:USERNAME=$p.user_name
     $env:RUNNER_TEMP=$p.scratch
-    & $p.python -B (Join-Path $p.workspace 'scripts/m14/installed_update.py') exercise $p.m14_update_packages
-    if($LASTEXITCODE -ne 0){throw 'Installed update and rollback test failed.'}
+    if($releaseSmoke) {
+        & $p.python -B (Join-Path $p.workspace 'scripts/m14/release_smoke.py')
+    } else {
+        & $p.python -B (Join-Path $p.workspace 'scripts/m14/installed_update.py') exercise $p.m14_update_packages
+    }
+    if($LASTEXITCODE -ne 0){throw 'M14 installed package test failed.'}
     @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=1} | ConvertTo-Json |
         Set-Content -LiteralPath (Join-Path $p.scratch 'result.json') -Encoding UTF8
     exit 0

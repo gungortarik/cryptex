@@ -1,7 +1,7 @@
-param([string]$M14UpdatePackages,[switch]$M13DesktopShell,[switch]$DesktopStartupOnly,[switch]$DesktopSessionOnly,[switch]$TransportPolicyOnly,[switch]$LanSetupOnly,[switch]$LanCutoffOnly,[string]$LanArtifact,[switch]$ExchangeNativeOnly,[string]$ExchangePackage,[switch]$LocalVerificationOnly,[string]$M9HistoricalDaemon,[switch]$M9AttachmentBrowser,[ValidateSet('prepare','restore')][string]$M11CrossBackup)
+param([switch]$M14ReleaseSmoke,[string]$M14UpdatePackages,[switch]$M13DesktopShell,[switch]$DesktopStartupOnly,[switch]$DesktopSessionOnly,[switch]$TransportPolicyOnly,[switch]$LanSetupOnly,[switch]$LanCutoffOnly,[string]$LanArtifact,[switch]$ExchangeNativeOnly,[string]$ExchangePackage,[switch]$LocalVerificationOnly,[string]$M9HistoricalDaemon,[switch]$M9AttachmentBrowser,[ValidateSet('prepare','restore')][string]$M11CrossBackup)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
-if(([int][bool]$M14UpdatePackages+[int][bool]$M13DesktopShell+[int][bool]$DesktopStartupOnly+[int][bool]$DesktopSessionOnly+[int][bool]$TransportPolicyOnly+[int][bool]$LanSetupOnly+[int][bool]$LanCutoffOnly+[int][bool]$ExchangeNativeOnly+[int][bool]$LocalVerificationOnly+[int][bool]$M9HistoricalDaemon+[int][bool]$M9AttachmentBrowser+[int][bool]$M11CrossBackup) -gt 1){throw 'Choose one scoped suite.'}
+if(([int][bool]$M14ReleaseSmoke+[int][bool]$M14UpdatePackages+[int][bool]$M13DesktopShell+[int][bool]$DesktopStartupOnly+[int][bool]$DesktopSessionOnly+[int][bool]$TransportPolicyOnly+[int][bool]$LanSetupOnly+[int][bool]$LanCutoffOnly+[int][bool]$ExchangeNativeOnly+[int][bool]$LocalVerificationOnly+[int][bool]$M9HistoricalDaemon+[int][bool]$M9AttachmentBrowser+[int][bool]$M11CrossBackup) -gt 1){throw 'Choose one scoped suite.'}
 if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows') {
     throw 'Disposable GitHub-hosted Windows runner required.'
 }
@@ -10,8 +10,8 @@ $manifest=Join-Path $workspace 'services\cryptexd'
 $python=if($M9HistoricalDaemon -or $M13DesktopShell){(Get-Command python -CommandType Application | Select-Object -First 1).Source}else{$null}
 $browserNode=if($M9AttachmentBrowser -or $M13DesktopShell){(Get-Command node -CommandType Application | Select-Object -First 1).Source}else{$null}
 if($ExchangeNativeOnly -or $M9HistoricalDaemon -or $M13DesktopShell){$ExchangePackage=(Resolve-Path -LiteralPath $ExchangePackage).Path}
-if($M14UpdatePackages) {
-    $M14UpdatePackages=(Resolve-Path -LiteralPath $M14UpdatePackages).Path
+if($M14UpdatePackages -or $M14ReleaseSmoke) {
+    if($M14UpdatePackages){$M14UpdatePackages=(Resolve-Path -LiteralPath $M14UpdatePackages).Path}
     $python=(Get-Command python -CommandType Application | Select-Object -First 1).Source
     $executables=@(); $expectedSuites=1
 } elseif($LanSetupOnly -or $LanCutoffOnly) {
@@ -74,7 +74,7 @@ try {
         }
     }
     $payload=Join-Path $scratch 'tests.json'
-    @{schema=1;m14_update_packages=$M14UpdatePackages;m13_desktop_shell=[bool]$M13DesktopShell;m13_browser_node=$(if($M13DesktopShell){$browserNode});m11_cross_backup=$M11CrossBackup;m9_attachment_browser_node=$browserNode;m9_historical_daemon=$M9HistoricalDaemon;lan_cutoff_only=[bool]$LanCutoffOnly;local_verification_only=[bool]$LocalVerificationOnly;sid=$user.SID.Value;user_name=$userName;scratch=$scratch;manifest=$manifest;executables=$executables;desktop_startup_only=[bool]$DesktopStartupOnly;desktop_session_only=[bool]$DesktopSessionOnly;transport_policy_only=[bool]$TransportPolicyOnly;lan_setup_only=[bool]$LanSetupOnly;lan_artifact=$LanArtifact;exchange_native_only=[bool]$ExchangeNativeOnly;exchange_package=$ExchangePackage;python=$python;workspace=$workspace} |
+    @{schema=1;m14_release_smoke=[bool]$M14ReleaseSmoke;m14_update_packages=$M14UpdatePackages;m13_desktop_shell=[bool]$M13DesktopShell;m13_browser_node=$(if($M13DesktopShell){$browserNode});m11_cross_backup=$M11CrossBackup;m9_attachment_browser_node=$browserNode;m9_historical_daemon=$M9HistoricalDaemon;lan_cutoff_only=[bool]$LanCutoffOnly;local_verification_only=[bool]$LocalVerificationOnly;sid=$user.SID.Value;user_name=$userName;scratch=$scratch;manifest=$manifest;executables=$executables;desktop_startup_only=[bool]$DesktopStartupOnly;desktop_session_only=[bool]$DesktopSessionOnly;transport_policy_only=[bool]$TransportPolicyOnly;lan_setup_only=[bool]$LanSetupOnly;lan_artifact=$LanArtifact;exchange_native_only=[bool]$ExchangeNativeOnly;exchange_package=$ExchangePackage;python=$python;workspace=$workspace} |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $payload -Encoding UTF8
     $stdout=Join-Path $scratch 'stdout.log'; $stderr=Join-Path $scratch 'stderr.log'
     $bootstrap=Join-Path $PSScriptRoot 'standard-user-daemon-child.ps1'
@@ -99,6 +99,9 @@ try {
     }
     if($M14UpdatePackages) {
         [IO.File]::Copy((Join-Path $scratch 'm14-installed-update.json'),(Join-Path $env:RUNNER_TEMP 'm14-installed-update.json'),$false)
+    }
+    if($M14ReleaseSmoke) {
+        [IO.File]::Copy((Join-Path $scratch 'm14-release-smoke.json'),(Join-Path $env:RUNNER_TEMP 'm14-release-smoke.json'),$false)
     }
     if($M11CrossBackup -eq 'prepare') {
         foreach($member in @('private/content.zip','public/selection.json')) {
