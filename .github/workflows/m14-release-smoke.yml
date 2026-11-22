@@ -8,6 +8,8 @@ on:
       - 'scripts/m14/release_smoke.py'
       - 'scripts/m14/windows_console_login.py'
       - 'scripts/m14/windows_login_handoff.py'
+      - 'scripts/m14/windows_observer_task.py'
+      - 'scripts/m14/test_windows*.py'
       - 'scripts/m14/package_windows_console_login.py'
       - 'scripts/m14/installed_update.py'
       - 'scripts/m8/*standard-user*.ps1'
@@ -42,6 +44,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Verify Windows login measurement and failure paths
+        if: runner.os == 'Windows'
+        run: python -B -m unittest discover -s scripts/m14 -v
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @cryptex/desktop tauri:package --bundles ${{ matrix.bundle }}
       - name: Smoke test in the temporary Windows standard account

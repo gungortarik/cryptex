@@ -191,6 +191,7 @@ def observe(desktop, runtime, session, *, windows_logon):
                     observer.calibrate()
                     return {"desktop_pid": pair[0], "daemon_pid": pair[1], "console_show_events": 0,
                             "console_process_events": 0, "positive_control_seen": True,
+                            "observer_lead_ms": (creation_time(pair[0]) - armed_at) / 10_000,
                             "observer_armed_before_launch": True, "observation_after_readiness_seconds": 10}
             time.sleep(.02)
         raise TimeoutError("Did not observe the installed Desktop become ready")

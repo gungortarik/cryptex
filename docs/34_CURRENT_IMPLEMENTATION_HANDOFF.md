@@ -2,6 +2,8 @@
 
 ## M14 Windows console observation
 
+The follow-up VM package uses a Task Scheduler logon trigger without a delay, scoped to the temporary user's interactive token. Before enabling the per-user Cryptex Run entry it starts the observer on demand and requires a successful console calibration in the preparation session. Windows dispatches the two components independently on the next actual sign-in. The observer checks real process creation time against its hook installation and reports the lead time only for a fully covered launch. The measured build on the VM is still `9a5035d`. The second interactive receipt is pending.
+
 At `9a5035d` the installed Windows release ran its registered background command in a fresh standard user's second logon. A WinEvent observer was armed before launch, detected the deliberate console in its calibration step, and recorded zero console window shows and zero console process starts through ten seconds after the installed Desktop connected to its daemon. The test also verified removal of the startup entry. [Native test and Windows receipt](https://github.com/gungortarik/cryptex/actions/runs/45040536680)
 
 The CI harness started the registered command in the new logon. On the Windows 11 VM the temporary account subsequently ran the one-click interactive sign-in test from the same build. The receipt reported `Observer missed the beginning of Desktop startup`, `startup_entry_removed: true` and `passed: false`. It contains no console event counts or calibration result. Whether a console appeared at sign-in remains unknown.

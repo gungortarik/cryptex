@@ -6,9 +6,11 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+import uuid
 import winreg
 
-from windows_console_login import FLAG, RUN, check_entry, identity, observe, registration
+from windows_console_login import ConsoleObserver, FLAG, RUN, check_entry, identity, observe, registration
+from windows_observer_task import observer_task
 
 HERE = Path(__file__).resolve().parent
 BASE = Path(os.environ["LOCALAPPDATA"])
@@ -16,18 +18,11 @@ DESKTOP = BASE / "Programs/Cryptex/cryptex-desktop.exe"
 RUNTIME = BASE / "Cryptex-Dev/runtime/p0-2"
 STATE = BASE / "Cryptex-M14-Console-Login"
 RESULT = HERE / "M14-KONSOL-SONUC.json"
-ONCE = RUN + "Once"
-NAME = "CryptexM14ConsoleObserver"
 
 
 def hash_file(path):
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
-
-
-def watcher():
-    return subprocess.list2cmdline([str(Path(sys.executable).with_name("pythonw.exe")),
-                                    str(Path(__file__).resolve()), "observe"])
 
 
 def remove_owned(key_name, name, expected):
@@ -66,9 +61,8 @@ def installed(build, *, allow_install):
         raise RuntimeError("Kurulu Cryptex surumu bu paketle eslesmiyor.")
 
 
-def cleanup(entry):
-    remove_owned(RUN, "Cryptex", entry)
-    remove_owned(ONCE, NAME, watcher())
+def task(operation, token):
+    observer_task(operation, token, Path(__file__))
 
 
 def main():
@@ -78,14 +72,20 @@ def main():
     build = json.loads((HERE / "package.json").read_bytes())
     entry = f'"{DESKTOP}" {FLAG}'
     arm = STATE / "armed.json"
-    if sys.argv[1:] == ["observe"]:
+    if len(sys.argv) == 3 and sys.argv[1] == "observe":
+        token = sys.argv[2]
         prior = json.loads(arm.read_bytes())
-        if prior != {"session": prior["session"], "source": build["source"], "folder": str(HERE)}:
+        if prior != {"session": prior["session"], "source": build["source"], "folder": str(HERE), "token": token}:
             raise RuntimeError("Hazirlik kaydi bu pakete ait degil.")
-        report = {"platform": "win32", "activation": "interactive-windows-sign-in", "source": build["source"]}
+        if session == prior["session"]:
+            # Only the on-demand preflight can run before the real sign-in.
+            with ConsoleObserver() as observer:
+                observer.calibrate()
+            (STATE / (token + ".ready")).touch(exist_ok=False)
+            return
+        report = {"platform": "win32", "activation": "interactive-windows-sign-in", "source": build["source"],
+                  "observer": "per-user-logon-trigger", "distinct_logon": True}
         try:
-            if session == prior["session"]:
-                raise RuntimeError("Yeni oturum gerekli.")
             check_entry(registration(), DESKTOP)
             report.update(observe(DESKTOP, RUNTIME, session, windows_logon=True))
             installed(build, allow_install=False)
@@ -93,11 +93,17 @@ def main():
         except Exception as error:
             report["error"] = str(error)
         try:
-            cleanup(entry)
+            remove_owned(RUN, "Cryptex", entry)
             report["startup_entry_removed"] = registration() is None
         except Exception as error:
             report["cleanup_error"] = str(error)
-        report["passed"] = report.get("startup_entry_removed", False) and "error" not in report and "cleanup_error" not in report
+        try:
+            task("remove", token)
+            report["observer_task_removed"] = True
+        except Exception as error:
+            report["observer_cleanup_error"] = str(error)
+        report["passed"] = (report.get("startup_entry_removed", False) and report.get("observer_task_removed", False)
+                            and "error" not in report and "cleanup_error" not in report)
         pending = RESULT.with_suffix(".tmp")
         pending.write_text(json.dumps(report, indent=2), encoding="utf-8")
         pending.replace(RESULT)
@@ -109,31 +115,52 @@ def main():
         print(RESULT, flush=True)
         return
     if arm.exists():
-        if json.loads(arm.read_bytes())["session"] == session:
+        state = json.loads(arm.read_bytes())
+        if state.get("folder") != str(HERE) or state.get("source") != build["source"] or not state.get("token"):
+            raise RuntimeError("Onceki paketin hazirlik kaydi var. Bu olcum baslatilmadi.")
+        if state["session"] == session and registration() == entry:
             print("Hazir. Windows oturumunu kapatip cryptexm14 hesabina yeniden girin.")
         else:
             print("Olcum devam ediyor. Yaklasik iki dakika sonra bu klasorde sonucu kontrol edin.")
         return
     if registration() is not None:
         raise RuntimeError("Hesabin mevcut Cryptex baslangic kaydi korunuyor.")
-    installed(build, allow_install=True)
+    installed(build, allow_install=(HERE / "Cryptex-setup.exe").is_file())
     STATE.mkdir(exist_ok=True)
+    token = uuid.uuid4().hex
+    marker = STATE / (token + ".ready")
     with arm.open("x", encoding="utf-8") as out:
-        json.dump({"source": build["source"], "session": session, "folder": str(HERE)}, out)
+        json.dump({"source": build["source"], "session": session, "folder": str(HERE), "token": token}, out)
     try:
-        add_new(ONCE, NAME, watcher())
+        task("create", token)
         try:
+            task("preflight", token)
+            deadline = time.monotonic() + 30
+            while not marker.exists():
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("Olcum araci gecici hesapta kalibrasyonu tamamlayamadi.")
+                time.sleep(.1)
             add_new(RUN, "Cryptex", entry)
         except Exception:
-            remove_owned(ONCE, NAME, watcher())
+            task("remove", token)
             raise
     except Exception:
         arm.unlink()
         raise
+    finally:
+        marker.unlink(missing_ok=True)
     print("HAZIR. Oturumu kapatip cryptexm14 hesabina tekrar girin.")
     print("Iki dakika dokunmadan bekleyin. Olcumden sonra kisa bir kalibrasyon penceresi acilir.")
     print("Sonuc dosyasi: " + str(RESULT))
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as error:
+        if len(sys.argv) == 1:
+            diagnostic = HERE / "M14-HAZIRLIK-HATA.json"
+            diagnostic.write_text(json.dumps({"stage": "prepare", "error": str(error)}, indent=2),
+                                  encoding="utf-8")
+            print("Hazirlik tamamlanamadi. Oturumu kapatmayin. Sonuc: " + str(diagnostic))
+        raise
