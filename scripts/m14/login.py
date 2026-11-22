@@ -58,7 +58,7 @@ def prepare(binary, hosted):
     return entry
 
 
-def verify(real_login):
+def verify(real_login, current_session=None):
     until = time.monotonic() + 160
     while not (STATE / "disabled").exists():
         if time.monotonic() >= until:
@@ -67,14 +67,20 @@ def verify(real_login):
     armed = (STATE / "armed-session").read_text().strip()
     ready = (STATE / "ready-session").read_text().strip()
     attempts = [p.read_text().strip() for p in STATE.glob("launch-*")]
-    if not ready or not armed or attempts != [ready]:
-        raise RuntimeError(f"Expected one launch in the observed session, saw {len(attempts)}")
+    if not ready or not armed or any(not session for session in attempts):
+        raise RuntimeError("Incomplete login session evidence")
+    if real_login and ready != current_session:
+        raise RuntimeError("The observed startup belongs to another login session")
+    observed = attempts.count(ready)
+    if observed != 1:
+        raise RuntimeError(f"Expected one launch in the observed session, saw {observed}")
     if real_login and armed == ready:
         raise RuntimeError("A fresh login session is required")
     if registration() is not None:
         raise RuntimeError("The native startup entry still exists")
     result = {"platform": sys.platform, "check": "new-login" if real_login else "registered-launch",
-              "launches": len(attempts), "startup_entry_removed": True,
+              "launches": observed, "other_session_launches": len(attempts) - observed,
+              "startup_entry_removed": True,
               "distinct_login_session": ready != armed, "observation_seconds": 60}
     (STATE / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     return result
@@ -113,7 +119,7 @@ def main():
             print("Test hazir. Gecici kullanicidan cikis yapip tekrar girin, sonra KONTROL dosyasini acin.")
             return
         try:
-            result = verify(real_login=True)
+            result = verify(real_login=True, current_session=current)
         finally:
             disarm_owned(binary)
         report = Path(__file__).with_name(f"M14-OTURUM-SONUC-{sys.platform}.json")
