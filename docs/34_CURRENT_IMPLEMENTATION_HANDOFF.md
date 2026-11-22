@@ -1,5 +1,9 @@
 # 34 — Current Implementation Handoff
 
+## M14 closed
+
+The owner reviewed candidate `c5926f9` and approved M14 closure on November 22, 2026 after the required Windows and macOS checks passed. The [final acceptance record](../evidence/m14/platform-closeout-review.md#final-candidate) covers startup, window behavior, display and keyboard checks, packaged service selection, and recovery of a working installation with its signed note intact. Package and updater tests used disposable accounts. Publisher signing and release distribution belong to M17. The next milestone in the master plan is M15.
+
 ## M14 candidate review
 
 The [platform acceptance review](../evidence/m14/platform-closeout-review.md) records the Windows and Mac tests for candidate `18b9b04`, including verification of a signed note through update, rollback and interrupted recovery. The [restricted-device list correction](../evidence/m14/platform-closeout-review.md#restricted-device-list-after-a-transport-error) at `c6e2fc6` follows that review. The [bundled service selection check](../evidence/m14/platform-closeout-review.md#bundled-service-selection) verifies refusal of an external executable on installed Windows and macOS packages. The [update probe timeout rehearsal](../evidence/m14/platform-closeout-review.md#automatic-rollback-after-a-hung-update-probe) at `f2298b0` verified automatic rollback and reconnection on both platforms.

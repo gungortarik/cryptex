@@ -16,7 +16,7 @@ The package and updater tests use disposable accounts. The scope covers local st
 
 In the [first full CI attempt](https://github.com/gungortarik/cryptex/actions/runs/45058740658/attempts/1), the Windows runner lost access to its workspace during release compilation (OS error 433). The same error prevented checkout and pnpm post-job actions from reading their own files. The [Windows rerun](https://github.com/gungortarik/cryptex/actions/runs/45058740658/attempts/2) passed on a fresh runner at the same revision.
 
-The technical acceptance checks passed on November 22, 2026. Fourteen local Windows test-harness checks also passed. The remaining gate is the owner's review of the candidate diff above.
+The technical acceptance checks passed on November 22, 2026. Fourteen local Windows test-harness checks also passed. After reviewing the candidate diff and the Windows and macOS results recorded at `b69b031`, the owner explicitly approved `c5926f9` for M14 closure on November 22, 2026. M14 is closed for the verified scope above.
 
 ## Initial review and follow-up
 
