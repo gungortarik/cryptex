@@ -1,5 +1,11 @@
 # 34 — Current Implementation Handoff
 
+## M14 display scaling, appearance and keyboard navigation
+
+At `c93a49c` the [desktop shell run](https://github.com/gungortarik/cryptex/actions/runs/45032548525) exercised the native WebView in a disposable Windows standard account and macOS runner account. At 100%, 150% and 200% WebView zoom in both light and dark appearance, the CSS viewport reflowed to the expected width. The navigation and search controls stayed within it and the page had no horizontal overflow.
+
+In the same accounts a browser-driven check loaded the built renderer with fixture IPC and sent keyboard input through Chromium. It checked visible forward focus through primary navigation, Enter to open Timeline, Cmd/Ctrl+K to focus Search, Tab and Shift+Tab between the field and submit button, and Enter to retrieve a fixture note. Both platforms produced six screenshots and a JSON report at a constant 960 × 720 device-pixel budget. The density values were emulated. Physical monitor changes and assistive-technology sessions remain outside this evidence.
+
 ## M14 recovery after terminating the updater
 
 At `4f95f52` the [native interruption run](https://github.com/gungortarik/cryptex/actions/runs/45030835980) terminated the running updater on Windows and macOS after it had selected the incompatible package. The disposable Desktop held its protocol rejection before returning it. The updater wrote its own journal and moved both packages. While the surviving probe held its session lock, a second updater refused to change the installation. After the probe exited, the next invocation restored the working package and reopened Desktop `0.14.2`. The GUI connected to the protocol 2 daemon and both executable hashes matched the working upgrade.
