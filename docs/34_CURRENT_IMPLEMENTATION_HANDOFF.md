@@ -1,5 +1,9 @@
 # 34 — Current Implementation Handoff
 
+## M15 read-only Cortex inventory
+
+At `27bc74b`, the [inventory CLI](milestones/M15_CORTEX_FRESH_REINGESTION.md#first-step-read-only-source-inventory) produced a deterministic metadata listing for a synthetic legacy directory. The [native Windows and macOS checks](https://github.com/gungortarik/cryptex/actions/runs/45063607269) used temporary user-profile directories and a fixture containing a SQLite database and a read-only note. Both runs verified unchanged source bytes and modification times, an empty target profile, and reviewable results for missing, inaccessible, indirect and over-depth entries. The POSIX run also checked a named pipe. The next step is to define and review the first legacy category mapping, then exercise extraction on synthetic content before any canonical import.
+
 ## M14 closed
 
 The owner reviewed candidate `c5926f9` and approved M14 closure on November 22, 2026 after the required Windows and macOS checks passed. The [final acceptance record](../evidence/m14/platform-closeout-review.md#final-candidate) covers startup, window behavior, display and keyboard checks, packaged service selection, and recovery of a working installation with its signed note intact. Package and updater tests used disposable accounts. Publisher signing and release distribution belong to M17. The next milestone in the master plan is M15.
