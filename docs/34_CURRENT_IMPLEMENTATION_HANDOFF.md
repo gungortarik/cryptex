@@ -1,5 +1,11 @@
 # 34 — Current Implementation Handoff
 
+## M14 recovery after terminating the updater
+
+At `4f95f52` the [native interruption run](https://github.com/gungortarik/cryptex/actions/runs/45030835980) terminated the running updater on Windows and macOS after it had selected the incompatible package. The disposable Desktop held its protocol rejection before returning it. The updater wrote its own journal and moved both packages. While the surviving probe held its session lock, a second updater refused to change the installation. After the probe exited, the next invocation restored the working package and reopened Desktop `0.14.2`. The GUI connected to the protocol 2 daemon and both executable hashes matched the working upgrade.
+
+This exercises abrupt process exit at one selection boundary. Physical power loss remains outside this evidence. The next platform polish checks cover display scaling, light and dark appearance, and keyboard accessibility.
+
 ## M14 local package updater
 
 The [native updater run](https://github.com/gungortarik/cryptex/actions/runs/44992690019) at `2ba12e9` exercised `cryptex-updater apply` on Windows under a temporary standard account and on macOS 26 under the disposable runner account. Both installed Desktops reconnected after the compatible upgrade to `0.14.2`. For the incompatible `0.14.3` package the updater observed the protocol 2/1 rejection, restored the preceding working image and launched `0.14.2` at its original path. The independently observed GUI PID matched the updater's launch receipt and its daemon answered on protocol 2. Both executable hashes matched the working pair.
