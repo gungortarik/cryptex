@@ -1132,8 +1132,14 @@ pub fn health_ping(role: &str, timeout: Duration) -> io::Result<HealthResponse> 
         vault: None,
     };
     let frame = exchange(&mut stream, &request, MAX_RESPONSE_BYTES)?;
-    let response: HealthResponse = serde_json::from_slice(&frame)?;
-    if response.request_id.as_deref() == Some(&request_id)
+    validate_health_response(&request_id, serde_json::from_slice(&frame)?)
+}
+
+fn validate_health_response(
+    request_id: &str,
+    response: HealthResponse,
+) -> io::Result<HealthResponse> {
+    if response.request_id.as_deref() == Some(request_id)
         && response.protocol_version != PROTOCOL_VERSION
         && !response.accepted
         && response.operation.is_none()
@@ -1148,7 +1154,7 @@ pub fn health_ping(role: &str, timeout: Duration) -> io::Result<HealthResponse> 
         ));
     }
     if response.protocol_version != PROTOCOL_VERSION
-        || response.request_id.as_deref() != Some(&request_id)
+        || response.request_id.as_deref() != Some(request_id)
         || (response.accepted && response.operation.as_deref() != Some("health.pong"))
     {
         return Err(invalid_data("IPC response did not match the request"));
@@ -8980,6 +8986,34 @@ pub(crate) mod tests {
             Some("unauthorized_client_process")
         );
         assert!(enrollment.device_id.is_none());
+    }
+
+    #[test]
+    fn health_protocol_mismatch_requires_an_explicit_correlated_rejection() {
+        let mut reply = rejected(
+            Some("update-health".into()),
+            "incompatible_protocol_version",
+        );
+        reply.protocol_version = PROTOCOL_VERSION + 1;
+        let mismatch = |r| {
+            validate_health_response("update-health", r)
+                .unwrap_err()
+                .get_ref()
+                .and_then(|cause| cause.downcast_ref::<HealthProtocolMismatch>())
+                .map(|v| (v.daemon_pid, v.daemon_protocol))
+        };
+        assert_eq!(
+            mismatch(reply.clone()),
+            Some((process::id(), PROTOCOL_VERSION + 1))
+        );
+        let mut unrelated = reply.clone();
+        unrelated.request_id = Some("earlier-request".into());
+        assert_eq!(mismatch(unrelated), None);
+        let mut accepted = reply.clone();
+        accepted.accepted = true;
+        assert_eq!(mismatch(accepted), None);
+        reply.error = Some("unauthorized_client_role".into());
+        assert_eq!(mismatch(reply), None);
     }
 
     #[test]

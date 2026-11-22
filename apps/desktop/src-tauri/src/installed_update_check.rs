@@ -6,10 +6,18 @@ use tauri::{AppHandle, Manager};
 
 pub(super) fn admit() -> Result<(), String> {
     let user = env::var(if cfg!(windows) { "USERNAME" } else { "USER" }).unwrap_or_default();
+    let user = user.to_ascii_lowercase();
+    let disposable = if cfg!(windows) {
+        user.strip_prefix("cpxci").is_some_and(|suffix| {
+            suffix.len() == 12 && suffix.bytes().all(|b| b.is_ascii_hexdigit())
+        })
+    } else {
+        user == "runner"
+    };
     let token = env::var("CRYPTEX_FILE_FIXTURE_SOCKET").map_err(|_| "missing rehearsal socket")?;
     if env::var("RUNNER_ENVIRONMENT").as_deref() != Ok("github-hosted")
         || env::var("GITHUB_ACTIONS").as_deref() != Ok("true")
-        || !matches!(user.to_ascii_lowercase().as_str(), "runner" | "runneradmin")
+        || !disposable
         || env::args_os().len() != 1
         || env::var_os("CRYPTEXD_BIN").is_some()
         || token.is_empty()

@@ -2655,7 +2655,7 @@ fn daemon_hold_command(cryptexd: &str, runtime: &Path) -> Result<std::process::C
         .args(pilot_runtime::daemon_transport_args(runtime))
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    #[cfg(feature = "m13-shell-check")]
+    #[cfg(any(feature = "m13-shell-check", feature = "m14-installed-update-check"))]
     command.stderr(Stdio::inherit());
     #[cfg(all(windows, feature = "m8-device-recovery-check"))]
     {

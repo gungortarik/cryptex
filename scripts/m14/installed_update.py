@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
@@ -58,6 +59,7 @@ def build_packages(work):
                 shutil.copy2(work / "baseline-daemon", sidecar)
             config = {"productName": PRODUCT, "version": version, "identifier": "com.cryptex.m14.update-check",
                       "bundle": {"active": True, "externalBin": ["binaries/cryptexd"],
+                                 "macOS": {"minimumSystemVersion": "26.0"},
                                  "windows": {"nsis": {"installMode": "currentUser"}}}}
             config_file = work / "update.conf.json"
             config_file.write_text(json.dumps(config), encoding="utf-8")
@@ -68,7 +70,7 @@ def build_packages(work):
             dest.mkdir()
             if WINDOWS:
                 installer, = (target / "bundle/nsis").glob(f"*_{version}_*-setup.exe")
-                package = dest / installer.name
+                package = dest / "setup.exe"
                 shutil.copy2(installer, package)
             else:
                 package = dest / (PRODUCT + ".app")
@@ -108,14 +110,16 @@ def trial(package, destination, runtime, env):
     desktop, fingerprints = install(package, destination)
     result = runtime / "m14-update-result.json"
     result.unlink(missing_ok=True)
-    with subprocess.Popen([desktop], env=env) as child:
+    with subprocess.Popen([desktop], env=env, cwd=destination) as child:
         try:
             code = child.wait(timeout=75)
         except subprocess.TimeoutExpired:
             child.kill()
             raise
     if code:
-        raise RuntimeError(f"Installed Desktop {package[0]} exited with {code}")
+        error = runtime / "start.error"
+        detail = error.read_text(encoding="utf-8") if error.is_file() else "no startup diagnostic"
+        raise RuntimeError(f"Installed Desktop {package[0]} exited with {code}: {detail}")
     reply = json.loads(result.read_bytes())
     if reply["version"] != package[0] or reply["desktop_pid"] != child.pid or reply["daemon_pid"] <= 0:
         raise RuntimeError(f"Unexpected installed identity: {reply}")
@@ -167,8 +171,24 @@ def exercise(packages, work, runtime, env):
 
 def main():
     if (os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("RUNNER_ENVIRONMENT") != "github-hosted"
-            or sys.platform not in ("win32", "darwin") or getpass.getuser().lower() not in ("runneradmin", "runner")):
+            or sys.platform not in ("win32", "darwin")):
         raise RuntimeError("Use an ephemeral GitHub-hosted native runner")
+    action, packages_dir = sys.argv[1:]
+    packages_dir = Path(packages_dir).resolve()
+    if action == "build" and getpass.getuser().lower() in ("runneradmin", "runner"):
+        packages_dir.mkdir()
+        packages = build_packages(packages_dir)
+        for _, artifact, daemon_hash in packages:
+            (artifact.parent / "daemon.sha256").write_text(daemon_hash, encoding="ascii")
+        return
+    user = os.environ.get("USERNAME" if WINDOWS else "USER", "").lower()
+    if action != "exercise" or not (re.fullmatch(r"cpxci[0-9a-f]{12}", user) if WINDOWS else user == "runner"):
+        raise RuntimeError("Use the disposable exercise account")
+    packages = []
+    for version in ("0.14.1", "0.14.2", "0.14.3"):
+        folder = packages_dir / version
+        packages.append((version, folder / ("setup.exe" if WINDOWS else PRODUCT + ".app"),
+                         (folder / "daemon.sha256").read_text(encoding="ascii")))
     base = Path(os.environ["LOCALAPPDATA"]) if WINDOWS else Path.home() / "Library/Application Support"
     runtime = base / "Cryptex-Dev/p0-2/compare/mode-b-desktop"
     runtime.mkdir(parents=True, exist_ok=False)
@@ -176,7 +196,7 @@ def main():
     (runtime / "m14-update-owner").write_text(token, encoding="utf-8")
     with tempfile.TemporaryDirectory(dir=os.environ["RUNNER_TEMP"], prefix="cryptex-m14-update-") as directory:
         work = Path(directory)
-        report = exercise(build_packages(work), work, runtime, dict(os.environ, CRYPTEX_FILE_FIXTURE_SOCKET=token))
+        report = exercise(packages, work, runtime, dict(os.environ, CRYPTEX_FILE_FIXTURE_SOCKET=token))
         print(json.dumps(report), flush=True)
         (Path(os.environ["RUNNER_TEMP"]) / "m14-installed-update.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
 

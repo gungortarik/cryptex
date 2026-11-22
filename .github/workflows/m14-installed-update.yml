@@ -9,6 +9,7 @@ on:
       - 'apps/desktop/src-tauri/**'
       - 'services/cryptexd/src/ipc.rs'
       - 'services/cryptexd/src/compat.rs'
+      - 'scripts/m8/*standard-user*.ps1'
 permissions:
   contents: read
 jobs:
@@ -16,11 +17,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        os: [windows-latest, macos-26]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 35
     env:
       CARGO_PROFILE_DEV_DEBUG: '0'
+      MACOSX_DEPLOYMENT_TARGET: '26.0'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,8 +38,19 @@ jobs:
           python-version: '3.12'
       - run: pnpm install --frozen-lockfile
       - run: cargo fmt --all -- --check
-      - name: Install, replace, reject an incompatible daemon and restore the previous package
-        run: python -B scripts/m14/installed_update.py
+      - name: Build the three native installers
+        run: python -B scripts/m14/installed_update.py build "${{ runner.temp }}/m14-packages"
+      - name: Exercise installed update and rollback in the disposable Mac account
+        if: runner.os == 'macOS'
+        run: python -B scripts/m14/installed_update.py exercise "${{ runner.temp }}/m14-packages"
+      - name: Exercise installed update and rollback as a temporary Windows standard user
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -M14UpdatePackages "$env:RUNNER_TEMP/m14-packages"
+      - name: Verify that unrelated IPC failures cannot qualify as a protocol rejection
+        run: cargo test --locked -p cryptexd --lib health_protocol_mismatch_requires_an_explicit_correlated_rejection
+      - name: Lint the installed update observer and desktop client
+        run: cargo clippy --locked -p cryptex-desktop --features m14-installed-update-check -- -D warnings
       - uses: actions/upload-artifact@v4
         with:
           name: m14-installed-update-${{ runner.os }}
