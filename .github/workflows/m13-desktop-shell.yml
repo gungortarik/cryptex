@@ -8,6 +8,8 @@ on:
       - 'apps/desktop/src-tauri/src/shell_shortcut_check.js'
       - 'scripts/m13/check-shell.py'
       - 'apps/desktop/scripts/connection-screen.test.mjs'
+      - 'apps/desktop/scripts/desktop-view-fixture.mjs'
+      - 'apps/desktop/scripts/display-keyboard.mjs'
       - 'apps/desktop/src/App.tsx'
       - 'apps/desktop/src/EngineControls.tsx'
       - 'apps/desktop/src-tauri/Cargo.toml'
@@ -59,6 +61,11 @@ jobs:
       - name: Exercise the native window and embedded WebView in a disposable profile
         if: runner.os == 'macOS'
         run: python scripts/m13/check-shell.py
+      - name: Check display density and keyboard traversal in the disposable Mac account
+        if: runner.os == 'macOS'
+        run: node apps/desktop/scripts/display-keyboard.mjs
+        env:
+          CRYPTEX_M14_DISPLAY_DIR: ${{ runner.temp }}/m14-display
       - name: Prepare the pinned transport for the two-device maintenance check
         if: runner.os == 'Windows'
         run: python scripts/m8/prepare_native_test_package.py
@@ -66,6 +73,11 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -M13DesktopShell -ExchangePackage "$env:RUNNER_TEMP/exchange-package"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: m14-display-${{ runner.os }}
+          path: ${{ runner.temp }}/m14-display/
+          if-no-files-found: error
       - name: Verify Mac owner controls, local capture and guarded search during maintenance
         if: runner.os == 'macOS'
         shell: bash

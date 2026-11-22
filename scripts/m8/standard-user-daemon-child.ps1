@@ -104,6 +104,9 @@ if($p.PSObject.Properties['m13_desktop_shell'] -and $p.m13_desktop_shell) {
     $env:CARGO_TARGET_DIR=Join-Path $p.workspace 'target'
     & $p.python 'scripts/m13/check-shell.py'
     if($LASTEXITCODE -ne 0){throw 'Native desktop shell rehearsal failed.'}
+    $env:CRYPTEX_M14_DISPLAY_DIR=Join-Path $p.scratch 'm14-display'
+    & $p.m13_browser_node 'apps/desktop/scripts/display-keyboard.mjs'
+    if($LASTEXITCODE -ne 0){throw 'Display density or keyboard navigation check failed.'}
     @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=2} | ConvertTo-Json |
         Set-Content -LiteralPath (Join-Path $p.scratch 'result.json') -Encoding UTF8
     exit 0

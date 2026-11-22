@@ -26,6 +26,55 @@ fn webview_matches(window: &WebviewWindow, expression: &str) -> Result<bool> {
     Ok(rx.recv_timeout(Duration::from_secs(5))? == "true")
 }
 
+fn check_scaled_appearance(window: &WebviewWindow) -> Result<()> {
+    let (tx, rx) = mpsc::channel();
+    window.eval_with_callback("window.innerWidth", move |value| {
+        let _ = tx.send(value);
+    })?;
+    let initial_width: f64 = rx.recv_timeout(Duration::from_secs(5))?.parse()?;
+    for (theme, dark, background) in [
+        (Theme::Light, false, "rgb(246, 245, 241)"),
+        (Theme::Dark, true, "rgb(29, 29, 28)"),
+    ] {
+        window.set_theme(Some(theme))?;
+        for zoom in [1.0, 1.5, 2.0] {
+            window.set_zoom(zoom)?;
+            let expected_width = initial_width / zoom;
+            let expression = format!(
+                r#"(() => {{
+                const width = document.documentElement.clientWidth;
+                const controls = document.querySelectorAll('.side-rail a, .side-rail button, #memory-search, .search-button');
+                return Math.abs(innerWidth - {expected_width}) <= 2
+                    && matchMedia('(prefers-color-scheme: dark)').matches === {dark}
+                    && getComputedStyle(document.documentElement).backgroundColor === '{background}'
+                    && document.documentElement.scrollWidth <= width + 1
+                    && controls.length >= 4 && [...controls].every(el => {{
+                        const r = el.getBoundingClientRect();
+                        return r.width > 0 && r.height > 0 && r.left >= -1 && r.right <= width + 1;
+                    }});
+            }})()"#
+            );
+            if let Err(cause) = until(
+                &format!("{theme:?} at {zoom}x (expected viewport {expected_width})"),
+                || webview_matches(window, &expression),
+            ) {
+                let (tx, rx) = mpsc::channel();
+                window.eval_with_callback(
+                    "({ width: innerWidth, client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth, density: devicePixelRatio, dark: matchMedia('(prefers-color-scheme: dark)').matches, outside: [...document.querySelectorAll('.side-rail a, .side-rail button, #memory-search, .search-button')].filter(el => el.getBoundingClientRect().right > document.documentElement.clientWidth + 1).map(el => el.tagName) })",
+                    move |value| { let _ = tx.send(value); },
+                )?;
+                return Err(
+                    format!("{cause}: {}", rx.recv_timeout(Duration::from_secs(5))?).into(),
+                );
+            }
+            println!("M14 native layout {theme:?} {zoom}x");
+        }
+    }
+    window.set_zoom(1.0)?;
+    window.set_theme(None)?;
+    Ok(())
+}
+
 fn check_engine(app: &AppHandle, window: &WebviewWindow) -> Result<()> {
     let state = app.state::<super::ProbeState>();
     let runtime = super::pilot_runtime::root().ok_or("missing temporary engine profile")?;
@@ -98,19 +147,7 @@ fn check(app: &AppHandle) -> Result<()> {
             "Boolean(document.querySelector('#memory-search') && getComputedStyle(document.body).fontFamily.split(',')[0].trim() === 'system-ui')",
         )
     })?;
-    for (theme, dark, background) in [
-        (Theme::Light, false, "rgb(246, 245, 241)"),
-        (Theme::Dark, true, "rgb(29, 29, 28)"),
-    ] {
-        window.set_theme(Some(theme))?;
-        let expression = format!(
-            "matchMedia('(prefers-color-scheme: dark)').matches === {dark} && getComputedStyle(document.documentElement).backgroundColor === '{background}'"
-        );
-        until(&format!("{theme:?} appearance"), || {
-            webview_matches(&window, &expression)
-        })?;
-    }
-    window.set_theme(None)?;
+    check_scaled_appearance(&window)?;
     if !webview_matches(&window, include_str!("shell_shortcut_check.js"))? {
         return Err("global Search intercepted a modal keypress".into());
     }
