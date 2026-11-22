@@ -1328,6 +1328,8 @@ mod tests {
         let marker = plan.marker(&plan.peer, false);
         let hit = ipc::DesktopSearchHit {
             attachment_link_count: None,
+            can_attach_file: false,
+            can_review_purge: false,
             event_id: plan.run.clone(),
             brain_id: plan.brain.clone(),
             device_id: plan.peer.clone(),
