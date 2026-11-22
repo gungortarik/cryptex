@@ -62,6 +62,12 @@ Run `cryptex-cortex-inventory --review-notes SOURCE_DIRECTORY` against a stable 
 
 Exit code 0 means the scan finished with no candidates. Exit code 2 means there are groups to review or files that could not be checked. Inspect the listed originals to decide which file to keep. To capture a member of a group in the disposable daemon, include the current report's `review_sha256` alongside that file's path, digest, classification and capture ID in the approval. This selects one file for this trial. The daemon recomputes the review before writing. An outdated choice returns the current report. An incomplete scan reports the affected paths and issues and withholds the review digest.
 
+### Reviewing the origin of multiple notes
+
+On Windows and macOS, `cryptexd cortex-import-disposable SOURCE_DIRECTORY --batch-create TRIAL_UUID` accepts separate reviewed approvals in a fresh temporary profile. For each committed note the daemon signs a local source receipt with its enrolled event-signing key. The receipt binds the Brain, device, event ID and event content hash to the approved relative source path, original byte digest, classification, capture ID and optional review digest. A repeated approval returns the same note. A second capture ID for a previously selected path or byte digest is refused within the batch.
+
+In the same temporary directory and login account, run `cryptexd cortex-import-disposable --provenance TRIAL_UUID` after the original export is disconnected. The report verifies the signed event chain, every source receipt signature, the content and classification of each matched note, and the number of receipts. It emits local source metadata only after the whole batch verifies. Missing, altered, misplaced or extra receipts fail the review. A process interruption between note commit and source-receipt publication can leave incomplete evidence and is reported at review. This batch rehearsal does not resume writes into an existing batch. Use `--remove-trial-key TRIAL_UUID` with the same disposable command for credential cleanup when the trial is finished.
+
 ## Completion gate
 
 M15 is complete only when scope items and relevant recovery/privacy/failure tests pass, required CI is green, Definition of Done is satisfied and human review is complete.

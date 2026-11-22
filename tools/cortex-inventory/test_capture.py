@@ -160,12 +160,15 @@ class ReviewedCaptureTest(unittest.TestCase):
             # securityd resolves the runner's selected default Keychain through
             # its login home. The daemon's trial profile still lives in TMPDIR.
             env["HOME"] = os.environ["HOME"]
-        run = subprocess.run([DAEMON, "cortex-import-disposable", self.source, mode, trial_id],
+        source_args = [] if mode in ("--provenance", "--remove-trial-key") else [self.source]
+        run = subprocess.run([DAEMON, "cortex-import-disposable", *source_args, mode, trial_id],
                              input=b"".join(json.dumps(d).encode() + b"\n" for d in decisions),
                              capture_output=True, cwd=self.profile, env=env, timeout=90)
         self.assertNotIn(b"private body marker", run.stdout + run.stderr)
         if expected_exit is None:
             self.assertNotEqual(run.returncode, 0)
+            if mode == "--provenance":
+                self.assertEqual(run.stdout, b"")
             return run.stderr
         self.assertEqual(run.returncode, expected_exit, run.stderr)
         return [json.loads(line) for line in run.stdout.splitlines()]
@@ -183,6 +186,55 @@ class ReviewedCaptureTest(unittest.TestCase):
         self.assertEqual(note["classification"], "restricted")
         self.assertEqual(note["text_sha256"], hashlib.sha256(self.text).hexdigest())
         return trial_id, session, receipt, report
+
+    def test_batch_provenance_reopens_without_cortex(self):
+        trial_id = str(uuid.uuid4())
+        self.addCleanup(self.run_phase, "--remove-trial-key", trial_id)
+        other_text = b"# Travel\nsecond private body marker"
+        (self.notes / "travel.md").write_bytes(other_text)
+        other = dict(self.approval, capture_id=str(uuid.uuid4()), source_path="Notes/travel.md",
+                     source_sha256=hashlib.sha256(other_text).hexdigest(), classification="internal")
+        before = snapshot(self.source)
+        header, first, second, retry, refusal, readback = self.run_phase(
+            "--batch-create", trial_id, self.approval, other, self.approval,
+            dict(self.approval, capture_id=str(uuid.uuid4())))
+        self.assertEqual(refusal, {"status": "rejected", "issue": "approval_conflict"})
+        self.assertEqual(retry, first)
+        self.assertNotEqual(first["event_id"], second["event_id"])
+        self.assertEqual(len(readback["verified_notes"]), 2)
+        self.assertEqual(snapshot(self.source), before)
+        self.source.rename(self.source.with_name("disconnected-export"))
+        root = self.temp / f"cryptex-m15-restart-{trial_id}"
+        packs = canonical_packs(root)
+        report, = self.run_phase("--provenance", trial_id)
+        self.assertEqual(report, {"schema": "cryptex.cortex.provenance.v1", "sources": [
+            {"schema": "cryptex.m15.disposable-source.v1", "event_id": commit["event_id"],
+             "brain_id": trial_id, "device_id": header["device_id"], "content_hash": commit["content_hash"],
+             "approval": decision} for commit, decision in ((first, self.approval), (second, other))]})
+        self.assertEqual(canonical_packs(root), packs)
+
+    def test_batch_provenance_rejects_altered_missing_and_swapped_receipts(self):
+        trial_id = str(uuid.uuid4())
+        self.addCleanup(self.run_phase, "--remove-trial-key", trial_id)
+        text = b"another synthetic note"
+        (self.notes / "b.md").write_bytes(text)
+        other = dict(self.approval, capture_id=str(uuid.uuid4()), source_path="Notes/b.md",
+                     source_sha256=hashlib.sha256(text).hexdigest())
+        _, first, second, _ = self.run_phase("--batch-create", trial_id, self.approval, other)
+        directory = self.temp / f"cryptex-m15-restart-{trial_id}" / "cortex-source-receipts"
+        path = directory / (first["event_id"] + ".json")
+        original = path.read_bytes()
+        altered = json.loads(original)
+        altered["source"]["approval"]["source_path"] = "Notes/substituted.md"
+        path.write_text(json.dumps(altered), encoding="utf-8")
+        self.assertIn(b"source_receipt_signature", self.run_phase("--provenance", trial_id, expected_exit=None))
+        path.write_bytes((directory / (second["event_id"] + ".json")).read_bytes())
+        self.assertIn(b"source_receipt_mismatch", self.run_phase("--provenance", trial_id, expected_exit=None))
+        path.unlink()
+        self.assertIn(b"source_receipt_missing", self.run_phase("--provenance", trial_id, expected_exit=None))
+        path.write_bytes(original)
+        (directory / "orphan.json").write_bytes(original)
+        self.assertIn(b"source_receipt_inventory_mismatch", self.run_phase("--provenance", trial_id, expected_exit=None))
 
     def test_restart_replays_one_signed_note(self):
         source_before = snapshot(self.source)

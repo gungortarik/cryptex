@@ -1,5 +1,8 @@
 //! Restart fixture: one native credential per disposable Brain, outside product labels.
-use super::{DEV, LifecycleError, TrialMode, emit, fault, initialize, session, trial_temp};
+use super::{
+    DEV, LifecycleError, TrialMode, emit, fault, initialize, provenance, session, temp_root,
+    trial_temp,
+};
 use cryptex_core::{DeviceId, validate::parse_uuid_str};
 #[cfg(target_os = "macos")]
 use cryptexd::MacosKeychainStore as NativeStore;
@@ -55,12 +58,18 @@ impl SecureStore for TrialKey<'_> {
     }
 }
 
-pub(super) fn run(source: &Path, mode: &str, id: &str) -> Result<(), LifecycleError> {
+pub(super) fn run(source: Option<&Path>, mode: &str, id: &str) -> Result<(), LifecycleError> {
     parse_uuid_str(id).map_err(|_| fault("invalid_trial_id"))?;
-    let root = trial_temp(source)?.join(format!("cryptex-m15-restart-{id}"));
-    let source_directory = fs::canonicalize(source)?;
-    if source_directory.starts_with(&root) || root.starts_with(&source_directory) {
-        return Err(fault("source_and_trial_profile_overlap"));
+    let temp = match source {
+        Some(source) => trial_temp(source)?,
+        None => temp_root()?,
+    };
+    let root = temp.join(format!("cryptex-m15-restart-{id}"));
+    if let Some(source) = source {
+        let source_directory = fs::canonicalize(source)?;
+        if source_directory.starts_with(&root) || root.starts_with(&source_directory) {
+            return Err(fault("source_and_trial_profile_overlap"));
+        }
     }
     #[cfg(target_os = "macos")]
     let _noninteractive =
@@ -80,7 +89,9 @@ pub(super) fn run(source: &Path, mode: &str, id: &str) -> Result<(), LifecycleEr
     let mode = match mode {
         "--restart-create" => TrialMode::Capture,
         "--exit-before-reply" => TrialMode::ExitBeforeReply,
+        "--provenance" if source.is_none() => TrialMode::Replay,
         "--restart-replay" => TrialMode::Replay,
+        "--batch-create" => TrialMode::Batch,
         _ => return Err(fault("invalid_restart_operation")),
     };
     let store = TrialKey {
@@ -89,7 +100,7 @@ pub(super) fn run(source: &Path, mode: &str, id: &str) -> Result<(), LifecycleEr
         create: mode != TrialMode::Replay,
     };
     match mode {
-        TrialMode::Capture | TrialMode::ExitBeforeReply => {
+        TrialMode::Capture | TrialMode::ExitBeforeReply | TrialMode::Batch => {
             #[cfg(unix)]
             {
                 use std::os::unix::fs::DirBuilderExt;
@@ -123,9 +134,13 @@ pub(super) fn run(source: &Path, mode: &str, id: &str) -> Result<(), LifecycleEr
             .map_err(|_| fault("trial_device_missing"))?;
         DeviceId::new(local.device_id).map_err(|_| fault("trial_device_failed"))?
     };
-    let (key, _) =
+    let (key, public) =
         cryptexd::event_signing_key::load_existing_event_verifying_key(&store, DEV, &root, &device)
             .map_err(|_| fault("trial_key_unavailable"))?;
+    let Some(source) = source else {
+        let report = provenance::report(&root, &device, &store, &public)?;
+        return emit(&mut io::stdout().lock(), &report).map_err(Into::into);
+    };
     emit(
         &mut io::stdout().lock(),
         &json!({"pid":std::process::id(), "brain_id":id,

@@ -1,6 +1,7 @@
-//! Feature-gated, one-note rehearsal. The daemon allocates the only writable profile.
+//! Feature-gated import rehearsals. The daemon allocates the writable trial profiles.
 use super::{LifecycleError, random_uuid_v4};
 use cryptexd::secure_store::SecureStore;
+mod provenance;
 #[cfg(any(windows, target_os = "macos"))]
 mod restart;
 use cryptex_core::{BrainIdentity, DeviceId, validate::parse_uuid_str};
@@ -28,9 +29,10 @@ enum TrialMode {
     Capture,
     ExitBeforeReply,
     Replay,
+    Batch,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct Approval {
     capture_id: String,
@@ -76,6 +78,7 @@ fn capture(
     store: &impl SecureStore,
     bytes: &[u8],
     mode: TrialMode,
+    mut batch: Option<&mut provenance::Batch>,
 ) -> Result<Value, LifecycleError> {
     let Ok(approval) = serde_json::from_slice::<Approval>(bytes) else {
         return Ok(json!({"status":"rejected","issue":"invalid_approval"}));
@@ -90,7 +93,10 @@ fn capture(
         Err(issue) => return Ok(json!({"status":"rejected","issue":issue})),
     };
     let path = root.join("cortex-note-approval.json");
-    let saved = check_saved(&path, &approval).map_err(|_| fault("approval_storage_failed"))?;
+    let saved = match &batch {
+        Some(batch) => batch.check(&approval),
+        None => check_saved(&path, &approval).map_err(|_| fault("approval_storage_failed"))?,
+    };
     if saved == Some(false) {
         return Ok(json!({"status":"rejected","issue":"approval_conflict"}));
     }
@@ -102,7 +108,9 @@ fn capture(
             cryptexd::capture::resolve_capture(store, DEV, root, &approval.capture_id),
             CaptureOutcome::Committed(_)
         );
-    if mode == TrialMode::Replay && !previously_committed {
+    if (mode == TrialMode::Replay || (batch.is_some() && saved == Some(true)))
+        && !previously_committed
+    {
         return Ok(json!({"status":"uncertain","issue":"prior_commit_unverified"}));
     }
     if !previously_committed {
@@ -114,10 +122,12 @@ fn capture(
         {
             return Ok(json!({"status":"needs_review","review":review}));
         }
-        if saved.is_none()
-            && !bind(root, &path, &approval).map_err(|_| fault("approval_storage_failed"))?
-        {
-            return Ok(json!({"status":"rejected","issue":"approval_conflict"}));
+        if saved.is_none() {
+            if let Some(batch) = batch.as_mut() {
+                batch.reserve(&approval);
+            } else if !bind(root, &path, &approval).map_err(|_| fault("approval_storage_failed"))? {
+                return Ok(json!({"status":"rejected","issue":"approval_conflict"}));
+            }
         }
     }
     let request = CaptureRequest {
@@ -132,10 +142,15 @@ fn capture(
             CaptureOutcome::Committed(_) if mode == TrialMode::ExitBeforeReply => {
                 std::process::exit(86)
             }
-            CaptureOutcome::Committed(commit) => json!({
+            CaptureOutcome::Committed(commit) => {
+                if let Some(batch) = batch {
+                    batch.record(root, &approval, &commit)?;
+                }
+                json!({
                 "status":"committed", "approval":approval, "event_id":commit.event_id,
                 "brain_id":commit.brain_id, "content_hash":commit.content_hash
-            }),
+                })
+            }
             CaptureOutcome::Rejected { code, .. } => {
                 json!({"status":"rejected","issue":format!("{code:?}")})
             }
@@ -154,8 +169,14 @@ fn emit(output: &mut impl Write, value: &Value) -> io::Result<()> {
 
 pub(super) fn run(args: &[String]) -> Result<(), LifecycleError> {
     #[cfg(any(windows, target_os = "macos"))]
+    if let [flag, id] = args
+        && matches!(flag.as_str(), "--provenance" | "--remove-trial-key")
+    {
+        return restart::run(None, flag, id);
+    }
+    #[cfg(any(windows, target_os = "macos"))]
     if let [source, mode, trial_id] = args {
-        return restart::run(Path::new(source), mode, trial_id);
+        return restart::run(Some(Path::new(source)), mode, trial_id);
     }
     let [source] = args else {
         return Err(LifecycleError::Usage(
@@ -174,11 +195,16 @@ pub(super) fn run(args: &[String]) -> Result<(), LifecycleError> {
 }
 
 fn trial_temp(source: &Path) -> Result<std::path::PathBuf, LifecycleError> {
-    let temp = fs::canonicalize(std::env::temp_dir())?;
-    cryptexd::paths::assert_outside_repository(&temp)?;
+    let temp = temp_root()?;
     if temp.starts_with(fs::canonicalize(source)?) {
         return Err(fault("temporary_profile_would_modify_source"));
     }
+    Ok(temp)
+}
+
+fn temp_root() -> Result<std::path::PathBuf, LifecycleError> {
+    let temp = fs::canonicalize(std::env::temp_dir())?;
+    cryptexd::paths::assert_outside_repository(&temp)?;
     Ok(temp)
 }
 
@@ -207,6 +233,11 @@ fn session(
 ) -> Result<(), LifecycleError> {
     let mut input = io::stdin().lock();
     let mut output = io::stdout().lock();
+    let mut batch = if mode == TrialMode::Batch {
+        Some(provenance::Batch::create(root, device, store)?)
+    } else {
+        None
+    };
     loop {
         let mut line = Vec::new();
         if (&mut input)
@@ -219,7 +250,10 @@ fn session(
         if line.len() as u64 > MAX_APPROVAL {
             return Err(LifecycleError::Usage("approval_too_large".into()));
         }
-        emit(&mut output, &capture(source, root, store, &line, mode)?)?;
+        emit(
+            &mut output,
+            &capture(source, root, store, &line, mode, batch.as_mut())?,
+        )?;
     }
 
     // Reopen the on-disk packs through the daemon's signature and chain verifier.
