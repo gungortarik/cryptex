@@ -1,0 +1,139 @@
+//! Local review of a single plain Markdown note from the synthetic Cortex Notes category.
+use super::{Issue, MAX_ENTRIES, indirect, source_directory, write_report};
+use cap_fs_ext::{DirExt, FollowSymlinks, MetadataExt, OpenOptionsFollowExt};
+use cap_std::fs::{Dir, Metadata, OpenOptions};
+use cryptex_events::{EventType, MAX_MEMORY_NOTE_TEXT_BYTES, MemoryNotePayload};
+use serde::Serialize;
+use sha2::{Digest, Sha256};
+use std::{io::Read, path::Path, process::ExitCode};
+
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+enum ReviewIssue {
+    UnmappedCategory,
+    Source(Issue),
+    MultipleLinks,
+    NotRegularFile,
+    EmptyText,
+    InvalidText,
+    TooLarge,
+    SourceChanged,
+}
+
+impl From<std::io::Error> for ReviewIssue {
+    fn from(error: std::io::Error) -> Self {
+        Self::Source(error.into())
+    }
+}
+
+#[derive(Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+enum Preview<'a> {
+    Mapped {
+        source_path: &'a str,
+        source_category: &'static str,
+        source_sha256: String,
+        text_bytes: usize,
+        event_type: EventType,
+        classification_required: bool,
+    },
+    NeedsReview {
+        issue: ReviewIssue,
+    },
+}
+
+// Match the actual inventory spelling even on case-insensitive volumes.
+fn exact_metadata(parent: &Dir, name: &str) -> Result<Metadata, ReviewIssue> {
+    for (index, entry) in parent.entries()?.enumerate() {
+        if index >= MAX_ENTRIES {
+            return Err(ReviewIssue::Source(Issue::EntryLimit));
+        }
+        if entry?.file_name() == std::ffi::OsStr::new(name) {
+            let meta = parent.symlink_metadata(name)?;
+            if indirect(&meta) {
+                return Err(ReviewIssue::Source(Issue::LinkOrReparsePoint));
+            }
+            return Ok(meta);
+        }
+    }
+    Err(ReviewIssue::Source(Issue::Disappeared))
+}
+
+fn map<'a>(source: &Path, path: &'a str) -> Result<Preview<'a>, ReviewIssue> {
+    let name = path
+        .strip_prefix("Notes/")
+        .ok_or(ReviewIssue::UnmappedCategory)?;
+    if name.contains(['/', '\\', ':'])
+        || !Path::new(name)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+    {
+        return Err(ReviewIssue::UnmappedCategory);
+    }
+    let root = source_directory(source).map_err(ReviewIssue::Source)?;
+    if !exact_metadata(&root, "Notes")?.is_dir() {
+        return Err(ReviewIssue::Source(Issue::NotDirectory));
+    }
+    let folder = root.open_dir_nofollow("Notes")?;
+    if !exact_metadata(&folder, name)?.is_file() {
+        return Err(ReviewIssue::NotRegularFile);
+    }
+    let mut options = OpenOptions::new();
+    options.read(true).follow(FollowSymlinks::No);
+    #[cfg(unix)]
+    {
+        use cap_std::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NONBLOCK);
+    }
+    let mut file = folder.open_with(name, &options)?;
+    let before = file.metadata()?;
+    if indirect(&before) || !before.is_file() {
+        return Err(ReviewIssue::NotRegularFile);
+    }
+    if before.nlink() != 1 {
+        return Err(ReviewIssue::MultipleLinks);
+    }
+    if before.len() > MAX_MEMORY_NOTE_TEXT_BYTES as u64 {
+        return Err(ReviewIssue::TooLarge);
+    }
+    let mut bytes = Vec::new();
+    (&mut file)
+        .take(MAX_MEMORY_NOTE_TEXT_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > MAX_MEMORY_NOTE_TEXT_BYTES {
+        return Err(ReviewIssue::TooLarge);
+    }
+    let after = file.metadata()?;
+    if before.len() != bytes.len() as u64
+        || after.len() != before.len()
+        || before.modified()? != after.modified()?
+        || after.nlink() != 1
+    {
+        return Err(ReviewIssue::SourceChanged);
+    }
+    let text = String::from_utf8(bytes).map_err(|_| ReviewIssue::InvalidText)?;
+    if text.contains('\0') {
+        return Err(ReviewIssue::InvalidText);
+    }
+    if text.trim().is_empty() {
+        return Err(ReviewIssue::EmptyText);
+    }
+    let payload = MemoryNotePayload::new(text).map_err(|_| ReviewIssue::TooLarge)?;
+    Ok(Preview::Mapped {
+        source_category: "markdown_note",
+        source_path: path,
+        event_type: EventType::MemoryNote,
+        source_sha256: format!("{:x}", Sha256::digest(payload.text.as_bytes())),
+        text_bytes: payload.text.len(),
+        classification_required: true,
+    })
+}
+
+pub(super) fn preview(source: &Path, path: Option<&str>) -> ExitCode {
+    let result = path
+        .ok_or(ReviewIssue::Source(Issue::NonUtf8Name))
+        .and_then(|path| map(source, path));
+    let mapped = result.is_ok();
+    let output = result.unwrap_or_else(|issue| Preview::NeedsReview { issue });
+    write_report(&output, mapped)
+}

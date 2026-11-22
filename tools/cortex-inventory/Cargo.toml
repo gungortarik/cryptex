@@ -6,7 +6,12 @@ license.workspace = true
 publish = false
 
 [dependencies]
+cryptex-events = { path = "../../crates/events" }
+sha2.workspace = true
 cap-fs-ext = "=4.0.3"
 cap-std = "=4.0.3"
 serde.workspace = true
 serde_json.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

@@ -1,4 +1,5 @@
-//! Read only directory metadata from an explicitly selected legacy source.
+//! Inventory a legacy source or preview the mapping of one explicitly selected note.
+mod note_mapping;
 use cap_fs_ext::DirExt;
 use cap_std::fs::{Dir, Metadata};
 use serde::Serialize;
@@ -161,7 +162,7 @@ impl Inventory {
     }
 }
 
-fn inventory(source: &Path) -> Result<Inventory, Issue> {
+fn source_directory(source: &Path) -> Result<Dir, Issue> {
     let path = std::path::absolute(source)?;
     let dir = if let (Some(parent), Some(name)) = (path.parent(), path.file_name()) {
         let parent = Dir::open_ambient_dir(parent, cap_std::ambient_authority())?;
@@ -176,6 +177,11 @@ fn inventory(source: &Path) -> Result<Inventory, Issue> {
     } else {
         Dir::open_ambient_dir(path, cap_std::ambient_authority())?
     };
+    Ok(dir)
+}
+
+fn inventory(source: &Path) -> Result<Inventory, Issue> {
+    let dir = source_directory(source)?;
     let mut report = Inventory::default();
     report.visit(&dir, "", 0)?;
     report.entries.sort_by(|a, b| a.path.cmp(&b.path));
@@ -185,13 +191,8 @@ fn inventory(source: &Path) -> Result<Inventory, Issue> {
     Ok(report)
 }
 
-fn main() -> ExitCode {
-    let mut args = env::args_os().skip(1);
-    let (Some(source), None) = (args.next(), args.next()) else {
-        eprintln!("Usage: cryptex-cortex-inventory SOURCE_DIRECTORY");
-        return ExitCode::FAILURE;
-    };
-    let inventory = match inventory(Path::new(&source)) {
+fn list(source: &Path) -> ExitCode {
+    let inventory = match inventory(source) {
         Ok(report) => report,
         Err(issue) => {
             let mut failure = Inventory::default();
@@ -205,7 +206,11 @@ fn main() -> ExitCode {
         complete,
         inventory,
     };
-    if serde_json::to_writer(io::stdout().lock(), &output).is_err() {
+    write_report(&output, complete)
+}
+
+fn write_report(output: &impl Serialize, complete: bool) -> ExitCode {
+    if serde_json::to_writer(io::stdout().lock(), output).is_err() {
         eprintln!("Could not write inventory report");
         return ExitCode::FAILURE;
     }
@@ -213,5 +218,21 @@ fn main() -> ExitCode {
         ExitCode::SUCCESS
     } else {
         ExitCode::from(2)
+    }
+}
+
+fn main() -> ExitCode {
+    let args: Vec<_> = env::args_os().skip(1).take(4).collect();
+    match args.as_slice() {
+        [source] => list(Path::new(source)),
+        [flag, source, item] if flag == "--preview-note" => {
+            note_mapping::preview(Path::new(source), item.to_str())
+        }
+        _ => {
+            eprintln!(
+                "Usage: cryptex-cortex-inventory [--preview-note] SOURCE_DIRECTORY [INVENTORY_PATH]"
+            );
+            ExitCode::FAILURE
+        }
     }
 }

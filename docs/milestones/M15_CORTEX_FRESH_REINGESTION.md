@@ -38,6 +38,14 @@ Run `cargo run --locked -p cryptex-cortex-inventory -- SOURCE_DIRECTORY` to insp
 
 Exit status 0 indicates a complete listing. Status 2 signals findings such as inaccessible directories, indirect or special entries, or a name that cannot be represented in UTF-8. A finding uses the containing directory when the item's name is unavailable. An empty path refers to the selected root. The traversal reports a depth limit beyond 64 nested directories. Above 100,000 visited entries it returns a root-level limit finding and discards the partial list. Use a stable source snapshot when comparing inventories across runs.
 
+### First category mapping for synthetic sources
+
+An explicitly selected free-text Markdown note directly inside the synthetic export's `Notes/` directory maps to the existing Cryptex v1 `memory.note` payload. One source file contributes its complete UTF-8 text to one note. Markdown headings, front matter, links, line endings and whitespace within that text are preserved. The source convention comes from the inventory fixture and awaits comparison with a reviewed real export.
+
+Use `cargo run --locked -p cryptex-cortex-inventory -- --preview-note SOURCE_DIRECTORY Notes/example.md`. Supply the exact relative spelling from the inventory. The extension accepts any ASCII case. The preview validates the text with the production `MemoryNotePayload` constructor and returns the source path, SHA-256 of the exact text bytes, byte count and target event type for local review. Classification requires a separate owner decision. Source text cannot grant publication or select a classification. The preview omits the body and performs no canonical write.
+
+Unmapped paths, unreadable or indirect items, multiply linked files, whitespace-only text, invalid UTF-8, embedded NUL and text above the event byte limit return a review finding (exit 2). Use a stable source snapshot. A later import must bind the reviewed content and classification to the supported daemon write path.
+
 ### Milestone verification
 
 M15 must verify relevant inventory/import failure behavior, provenance, dedup/conflict review, interrupted import/retry behavior and acceptance/cutover against the real target Cryptex model.

@@ -32,23 +32,102 @@ class InventoryTest(unittest.TestCase):
         self.profile = self.base / "profile"
         self.profile.mkdir()
 
-    def scan(self, source=None, *, expected=0):
+    def invoke(self, *args, expected=0):
         environment = os.environ.copy()
         for key in ("HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "XDG_DATA_HOME",
                     "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"):
             environment[key] = str(self.profile)
-        run = subprocess.run([BINARY, source or self.source], cwd=self.profile, env=environment,
+        run = subprocess.run([BINARY, *args], cwd=self.profile, env=environment,
                              capture_output=True, timeout=30)
         self.assertEqual(run.returncode, expected, (run.stderr, run.stdout))
         self.assertEqual(run.stderr, b"")
         self.assertNotIn(b"private body marker", run.stdout)
-        data = json.loads(run.stdout)
+        self.assertEqual(list(self.profile.iterdir()), [])
+        return json.loads(run.stdout)
+
+    def scan(self, source=None, *, expected=0):
+        data = self.invoke(source or self.source, expected=expected)
         self.assertTrue(all(not Path(row["path"]).is_absolute()
                             for row in data["entries"] + data["findings"]))
         self.assertEqual(data["schema"], "cryptex.cortex.inventory.v1")
         self.assertIs(data["complete"], expected == 0)
-        self.assertEqual(list(self.profile.iterdir()), [])
         return data
+
+    def preview(self, path, expected=0):
+        return self.invoke("--preview-note", self.source, path, expected=expected)
+
+    def test_note_mapping_preserves_text_and_requires_classification(self):
+        notes = self.source / "Notes"
+        notes.mkdir()
+        path = "Notes/example.MD"
+        text = "---\r\nclassification: public\r\n---\r\n# Başlık\r\nprivate body marker ![[target]]\r\n"
+        raw = text.encode()
+        (self.source / path).write_bytes(raw)
+        before = snapshot(self.source)
+        result = self.preview(path)
+        self.assertEqual(result, {
+            "status": "mapped", "source_category": "markdown_note", "source_path": path,
+            "event_type": "memory.note", "classification_required": True,
+            "source_sha256": hashlib.sha256(raw).hexdigest(), "text_bytes": len(raw),
+        })
+        self.assertEqual(self.preview(path), result)
+        self.assertEqual(snapshot(self.source), before)
+
+    def test_ambiguous_or_unselected_paths(self):
+        for path in ("other.md", "Archive/note.md", "Notes/note.txt", "Notes/../other.md",
+                     "Notes/nested/note.md", "Notes/C:note.md", "Notes/..\\other.md"):
+            with self.subTest(path=path):
+                self.assertEqual(self.preview(path, 2),
+                                 {"status": "needs_review", "issue": "unmapped_category"})
+
+    def test_note_payload_limits_and_invalid_text(self):
+        (self.source / "Notes").mkdir()
+        path = "Notes/item.md"
+        file = self.source / path
+        at_limit = "ğ".encode() * 262144
+        file.write_bytes(at_limit)
+        self.assertEqual(self.preview(path)["source_sha256"], hashlib.sha256(at_limit).hexdigest())
+        for content, issue in [(b"", "empty_text"), (b" \t\r\n", "empty_text"), (b"\xff", "invalid_text"),
+                               (b"x\x00y", "invalid_text"), (at_limit + b"!", "too_large")]:
+            with self.subTest(issue=issue):
+                file.write_bytes(content)
+                self.assertEqual(self.preview(path, 2), {"status": "needs_review", "issue": issue})
+
+    def test_preview_requires_exact_source_item(self):
+        notes = self.source / "Notes"
+        notes.mkdir()
+        (notes / "Case.md").write_text("synthetic")
+        for path in ("Notes/case.md", "Notes/missing.md"):
+            self.assertEqual(self.preview(path, 2)["issue"], {"source": "disappeared"})
+        (notes / "dir.md").mkdir()
+        self.assertEqual(self.preview("Notes/dir.md", 2)["issue"], "not_regular_file")
+        os.link(notes / "Case.md", self.base / "alias")
+        self.assertEqual(self.preview("Notes/Case.md", 2)["issue"], "multiple_links")
+
+    def test_preview_rejects_indirect_notes_directory(self):
+        outside = self.base / "outside"
+        outside.mkdir()
+        (outside / "note.md").write_bytes(b"private body marker")
+        if os.name == "nt":
+            subprocess.run(["cmd", "/d", "/c", "mklink", "/J", "Notes", "..\\outside"],
+                           cwd=self.source, check=True, capture_output=True)
+        else:
+            (self.source / "Notes").symlink_to(outside, target_is_directory=True)
+        self.assertEqual(self.preview("Notes/note.md", 2)["issue"], {"source": "link_or_reparse_point"})
+
+    def test_note_body_read_denied(self):
+        (self.source / "Notes").mkdir()
+        path = "Notes/denied.md"
+        file = self.source / path
+        file.write_bytes(b"private body marker")
+        if os.name == "nt":
+            subprocess.run(["icacls", file, "/deny", "*S-1-1-0:(RD)"], check=True, capture_output=True)
+            self.addCleanup(subprocess.run, ["icacls", file, "/remove:d", "*S-1-1-0"],
+                            check=True, capture_output=True)
+        else:
+            file.chmod(0)
+            self.addCleanup(file.chmod, 0o600)
+        self.assertEqual(self.preview(path, 2)["issue"], {"source": "access_denied"})
 
     def test_read_only_repeatable_inventory(self):
         notes = self.source / "Notes"
