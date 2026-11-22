@@ -53,19 +53,17 @@ fn runtime_root_path() -> Result<PathBuf, String> {
     default_runtime_root_path()
 }
 
-fn daemon_override() -> Option<PathBuf> {
-    if pilot_runtime::root().is_some() {
-        None
-    } else {
-        std::env::var_os("CRYPTEXD_BIN").map(PathBuf::from)
-    }
+fn installed_daemon() -> Result<PathBuf, String> {
+    resolve_cryptexd_binary(
+        std::env::var_os("CRYPTEXD_BIN").map(PathBuf::from),
+        &std::env::current_exe().map_err(|error| error.to_string())?,
+    )
 }
 
 #[derive(Clone)]
 struct ProbeState {
     child: Arc<Mutex<Option<Child>>>,
     runtime_root: Arc<Mutex<Option<PathBuf>>>,
-    cryptexd_bin: Arc<Mutex<Option<PathBuf>>>,
     restart_attempts: Arc<Mutex<u8>>,
     restart_not_before: Arc<Mutex<Instant>>,
     pending_exit_code: Arc<Mutex<Option<i32>>>,
@@ -84,7 +82,6 @@ impl Default for ProbeState {
         Self {
             child: Arc::new(Mutex::new(None)),
             runtime_root: Arc::new(Mutex::new(None)),
-            cryptexd_bin: Arc::new(Mutex::new(None)),
             restart_attempts: Arc::new(Mutex::new(0)),
             restart_not_before: Arc::new(Mutex::new(Instant::now())),
             pending_exit_code: Arc::new(Mutex::new(None)),
@@ -168,12 +165,7 @@ fn default_runtime_root_path() -> Result<PathBuf, String> {
 
 #[tauri::command]
 fn p0_2_default_cryptexd() -> Result<String, String> {
-    let override_path = daemon_override();
-    resolve_cryptexd_binary(
-        override_path,
-        &std::env::current_exe().map_err(|e| e.to_string())?,
-    )
-    .map(|path| path.display().to_string())
+    installed_daemon().map(|path| path.display().to_string())
 }
 
 #[cfg(windows)]
@@ -225,16 +217,6 @@ fn resolve_cryptexd_binary(
     override_path: Option<PathBuf>,
     desktop_executable: &Path,
 ) -> Result<PathBuf, String> {
-    if let Some(path) = override_path {
-        if path.is_file() {
-            return Ok(path);
-        }
-        return Err(format!(
-            "CRYPTEXD_BIN points to a missing file: {}",
-            path.display()
-        ));
-    }
-
     let filename = if cfg!(target_os = "windows") {
         "cryptexd.exe"
     } else {
@@ -244,13 +226,8 @@ fn resolve_cryptexd_binary(
         .parent()
         .ok_or_else(|| "Desktop executable has no parent directory".to_string())?
         .join(filename);
-    if sibling.is_file() {
-        return Ok(sibling);
-    }
-    Err(format!(
-        "cryptexd sidecar is missing beside Desktop: {}",
-        sibling.display()
-    ))
+    let requested = override_path.as_deref().unwrap_or(&sibling);
+    validate_sidecar_request(requested, &sibling)
 }
 
 #[tauri::command]
@@ -259,50 +236,63 @@ fn p0_2_start_daemon(state: State<'_, ProbeState>, cryptexd: String) -> Result<u
 }
 
 fn start_supervised_sidecar(state: &ProbeState, cryptexd: String) -> Result<u32, String> {
-    let expected = resolve_cryptexd_binary(
-        daemon_override(),
-        &std::env::current_exe().map_err(|error| error.to_string())?,
-    )?;
-    let cryptexd = validate_sidecar_request(Path::new(&cryptexd), expected)?;
-    {
-        let existing = state.child.lock().map_err(|e| e.to_string())?;
-        if existing.is_some() {
-            return Err("probe daemon already supervised by this Desktop process".into());
-        }
-    }
+    start_requested_sidecar(state, Some(Path::new(&cryptexd)), "daemon_started")
+}
 
-    let runtime = PathBuf::from(p0_2_runtime_root()?);
-    let (pid, child) = start_daemon_inner(&cryptexd.display().to_string(), &runtime)?;
+fn start_requested_sidecar(
+    state: &ProbeState,
+    requested: Option<&Path>,
+    note: &str,
+) -> Result<u32, String> {
+    let bin = installed_daemon()?;
+    if let Some(path) = requested {
+        validate_sidecar_request(path, &bin)?;
+    }
+    let runtime = runtime_root_path()?;
+    let mut slot = state.child.lock().map_err(|e| e.to_string())?;
+    if slot.is_some() {
+        return Err("probe daemon already supervised by this Desktop process".into());
+    }
+    let (pid, child) = start_daemon_inner(&bin, &runtime)?;
+    *slot = Some(child);
+    drop(slot);
     *state.runtime_root.lock().map_err(|e| e.to_string())? = Some(runtime.clone());
-    *state.cryptexd_bin.lock().map_err(|e| e.to_string())? = Some(cryptexd);
-    *state.child.lock().map_err(|e| e.to_string())? = Some(child);
     *state.supervised_pid.lock().map_err(|e| e.to_string())? = Some(pid);
     *state.restart_attempts.lock().map_err(|e| e.to_string())? = 0;
     *state.restart_not_before.lock().map_err(|e| e.to_string())? = Instant::now();
     *state.pending_exit_code.lock().map_err(|e| e.to_string())? = None;
     write_supervisor_state(&runtime, "active", Some(pid), true)?;
-    write_snapshot(&runtime, "daemon_started", true, Ok(Some(pid)))?;
+    write_snapshot(&runtime, note, true, Ok(Some(pid)))?;
     Ok(pid)
 }
 
-// The renderer may select no executable. Resolve authority in the backend and
-// validate its displayed path before any runtime creation or process launch.
-fn validate_sidecar_request(requested: &Path, expected: PathBuf) -> Result<PathBuf, String> {
+// Environment, renderer and control-file paths can only name the bundled sibling.
+// Always return the backend-derived path for execution.
+fn validate_sidecar_request(requested: &Path, expected: &Path) -> Result<PathBuf, String> {
     if !requested.is_absolute() || !expected.is_absolute() {
         return Err("SIDECAR_REQUEST_INVALID".into());
     }
-    for path in [requested, expected.as_path()] {
+    for path in [expected, requested] {
         let metadata = fs::symlink_metadata(path).map_err(|_| "SIDECAR_REQUEST_INVALID")?;
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::MetadataExt;
+            const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+            if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+                return Err("SIDECAR_REQUEST_INVALID".into());
+            }
+        }
         if !metadata.is_file() || metadata.file_type().is_symlink() {
             return Err("SIDECAR_REQUEST_INVALID".into());
         }
     }
-    if fs::canonicalize(requested).map_err(|_| "SIDECAR_REQUEST_INVALID")?
-        != fs::canonicalize(&expected).map_err(|_| "SIDECAR_REQUEST_INVALID")?
+    if requested != expected
+        && fs::canonicalize(requested).map_err(|_| "SIDECAR_REQUEST_INVALID")?
+            != fs::canonicalize(expected).map_err(|_| "SIDECAR_REQUEST_INVALID")?
     {
         return Err("SIDECAR_REQUEST_MISMATCH".into());
     }
-    Ok(expected)
+    Ok(expected.to_path_buf())
 }
 
 #[tauri::command]
@@ -313,7 +303,7 @@ fn p0_2_daemon_status(state: State<'_, ProbeState>) -> Result<String, String> {
         .map_err(|e| e.to_string())?
         .clone()
         .unwrap_or(runtime_root_path()?);
-    let bin = daemon_binary(&state).ok_or_else(|| "cryptexd path unknown".to_string())?;
+    let bin = installed_daemon()?;
     query_daemon_status(&bin, &runtime)
 }
 
@@ -2371,7 +2361,7 @@ fn stop_supervised_daemon(state: &ProbeState) -> Result<(), String> {
     }
 
     if let Some(runtime) = &runtime {
-        let bin = daemon_binary(state).ok_or_else(|| "cryptexd path unknown".to_string())?;
+        let bin = installed_daemon()?;
         let deadline = Instant::now() + Duration::from_secs(3);
         loop {
             let status = query_daemon_status(&bin, runtime)?;
@@ -2391,26 +2381,19 @@ fn stop_supervised_daemon(state: &ProbeState) -> Result<(), String> {
 fn start_daemon_for_desktop_launch(state: &ProbeState) -> Result<u32, String> {
     let runtime = runtime_root_path()?;
     fs::create_dir_all(&runtime).map_err(|error| error.to_string())?;
-    let executable = std::env::current_exe().map_err(|error| error.to_string())?;
-    let bin = resolve_cryptexd_binary(daemon_override(), &executable)?;
+    let bin = installed_daemon()?;
 
     let status = query_daemon_status(&bin, &runtime)
         .map_err(|error| format!("failed to inspect existing daemon before startup: {error}"))?;
     if let Some(pid) = parse_live_daemon_pid(&status)? {
         *state.runtime_root.lock().map_err(|e| e.to_string())? = Some(runtime.clone());
-        *state.cryptexd_bin.lock().map_err(|e| e.to_string())? = Some(bin);
         *state.supervised_pid.lock().map_err(|e| e.to_string())? = Some(pid);
         write_supervisor_state(&runtime, "attached_to_existing_daemon", Some(pid), true)?;
         return Ok(pid);
     }
 
-    let (pid, child) = start_daemon_inner(
-        bin.to_str()
-            .ok_or_else(|| "cryptexd path is not valid UTF-8".to_string())?,
-        &runtime,
-    )?;
+    let (pid, child) = start_daemon_inner(&bin, &runtime)?;
     *state.runtime_root.lock().map_err(|e| e.to_string())? = Some(runtime.clone());
-    *state.cryptexd_bin.lock().map_err(|e| e.to_string())? = Some(bin);
     *state.child.lock().map_err(|e| e.to_string())? = Some(child);
     *state.supervised_pid.lock().map_err(|e| e.to_string())? = Some(pid);
     write_supervisor_state(&runtime, "active", Some(pid), true)?;
@@ -2580,15 +2563,6 @@ fn write_snapshot(
     Ok(path)
 }
 
-fn daemon_binary(state: &ProbeState) -> Option<PathBuf> {
-    state
-        .cryptexd_bin
-        .lock()
-        .ok()
-        .and_then(|bin| bin.clone())
-        .or_else(|| std::env::var_os("CRYPTEXD_BIN").map(PathBuf::from))
-}
-
 fn query_daemon_status(cryptexd: &Path, runtime: &Path) -> Result<String, String> {
     let output = background_process::command(cryptexd)
         .args([
@@ -2606,7 +2580,15 @@ fn query_daemon_status(cryptexd: &Path, runtime: &Path) -> Result<String, String
 }
 
 fn current_daemon_pid(runtime: &Path, state: &ProbeState) -> Result<Option<u32>, String> {
-    let bin = daemon_binary(state).ok_or_else(|| "cryptexd path unknown".to_string())?;
+    if state
+        .runtime_root
+        .lock()
+        .map_err(|error| error.to_string())?
+        .is_none()
+    {
+        return Err("daemon has not been supervised".into());
+    }
+    let bin = installed_daemon()?;
     let status = query_daemon_status(&bin, runtime)?;
     parse_live_daemon_pid(&status)
 }
@@ -2625,7 +2607,7 @@ fn parse_live_daemon_pid(status: &str) -> Result<Option<u32>, String> {
         .map_err(|_| "lifecycle status returned an invalid live pid".to_string())
 }
 
-fn start_daemon_inner(cryptexd: &str, runtime: &Path) -> Result<(u32, Child), String> {
+fn start_daemon_inner(cryptexd: &Path, runtime: &Path) -> Result<(u32, Child), String> {
     fs::create_dir_all(runtime).map_err(|e| e.to_string())?;
     let ready = runtime.join("ready");
     let stop = runtime.join("stop");
@@ -2655,7 +2637,7 @@ fn start_daemon_inner(cryptexd: &str, runtime: &Path) -> Result<(u32, Child), St
 
 /// Shared actual lifecycle command for ordinary launch and the default-off
 /// signed startup check. Neither construction nor readiness is authentication.
-fn daemon_hold_command(cryptexd: &str, runtime: &Path) -> Result<std::process::Command, String> {
+fn daemon_hold_command(cryptexd: &Path, runtime: &Path) -> Result<std::process::Command, String> {
     let ready = runtime.join("ready");
     let stop = runtime.join("stop");
     let mut command = background_process::command(cryptexd);
@@ -2767,12 +2749,7 @@ fn restart_exited_daemon(state: &ProbeState, runtime: &Path) -> Result<(), Strin
         *attempts += 1;
         *attempts
     };
-    let bin = daemon_binary(state).ok_or_else(|| "cryptexd path unknown".to_string())?;
-    match start_daemon_inner(
-        bin.to_str()
-            .ok_or_else(|| "cryptexd path is not valid UTF-8".to_string())?,
-        runtime,
-    ) {
+    match installed_daemon().and_then(|bin| start_daemon_inner(&bin, runtime)) {
         Ok((pid, child)) => {
             *state.child.lock().map_err(|e| e.to_string())? = Some(child);
             *state.supervised_pid.lock().map_err(|e| e.to_string())? = Some(pid);
@@ -2810,65 +2787,20 @@ fn spawn_control_file_watcher(app: AppHandle, state: ProbeState) {
 
             let start = root.join("start.request");
             if start.exists() {
-                let request_body = fs::read_to_string(&start).unwrap_or_default();
+                let body =
+                    fs::read_to_string(&start).map_err(|_| "SIDECAR_REQUEST_INVALID".to_string());
                 let _ = fs::remove_file(&start);
-                let already = state.child.lock().ok().is_some_and(|g| g.is_some());
-                if !already {
-                    let bin = if pilot_runtime::root().is_some() {
-                        p0_2_default_cryptexd().ok()
+                let result = body.and_then(|body| {
+                    let path = body.trim_end_matches(['\r', '\n']);
+                    let requested = if path.is_empty() && pilot_runtime::root().is_some() {
+                        None
                     } else {
-                        request_body
-                            .lines()
-                            .map(str::trim)
-                            .find(|line| !line.is_empty())
-                            .map(str::to_string)
-                            .or_else(|| std::env::var("CRYPTEXD_BIN").ok())
+                        Some(Path::new(path))
                     };
-                    match bin {
-                        Some(bin) => match start_daemon_inner(&bin, &root) {
-                            Ok((pid, child)) => {
-                                if let Ok(mut guard) = state.child.lock() {
-                                    *guard = Some(child);
-                                }
-                                if let Ok(mut guard) = state.supervised_pid.lock() {
-                                    *guard = Some(pid);
-                                }
-                                if let Ok(mut guard) = state.runtime_root.lock() {
-                                    *guard = Some(root.clone());
-                                }
-                                if let Ok(mut guard) = state.cryptexd_bin.lock() {
-                                    *guard = Some(PathBuf::from(&bin));
-                                }
-                                let _ = write_supervisor_state(&root, "active", Some(pid), true);
-                                let _ = write_snapshot(
-                                    &root,
-                                    "daemon_started_via_request_file",
-                                    true,
-                                    Ok(Some(pid)),
-                                );
-                            }
-                            Err(error) => {
-                                let _ = fs::write(
-                                    root.join("start.error"),
-                                    format!(
-                                        "{error}
-"
-                                    ),
-                                );
-                            }
-                        },
-                        None => {
-                            let _ = fs::write(
-                                root.join("start.error"),
-                                "cryptexd path missing in start.request and CRYPTEXD_BIN unset\n",
-                            );
-                        }
-                    }
-                } else {
-                    let _ = fs::write(
-                        root.join("start.error"),
-                        "probe daemon already supervised by this Desktop process\n",
-                    );
+                    start_requested_sidecar(&state, requested, "daemon_started_via_request_file")
+                });
+                if let Err(error) = result {
+                    let _ = fs::write(root.join("start.error"), format!("{error}\n"));
                 }
             }
 
@@ -2975,10 +2907,7 @@ fn local_signed_startup_check() -> Option<Result<(), String>> {
             let prepared =
                 Prepared::current_desktop(Duration::from_secs(10)).map_err(|e| e.to_string())?;
             let daemon = prepared.daemon_path();
-            let mut command = daemon_hold_command(
-                daemon.to_str().ok_or("local_signed_startup_path")?,
-                &runtime,
-            )?;
+            let mut command = daemon_hold_command(&daemon, &runtime)?;
             // Feature-only synthetic runtime: preserve fixed child gate error
             // codes so negative fixtures prove their actual refusal stage.
             command.stderr(Stdio::inherit());
@@ -3344,18 +3273,24 @@ mod sidecar_resolution_tests {
     }
 
     #[test]
-    fn explicit_sidecar_override_is_validated_and_takes_precedence() {
+    fn environment_selection_can_only_name_the_bundled_service() {
         let root = unique_root();
         let desktop = root.join("desktop");
-        let override_path = root.join("custom-cryptexd");
-        fs::write(&override_path, b"fixture").expect("override fixture");
+        let sibling = root.join(sidecar_name());
+        let other = root.join("other").join(sidecar_name());
+        fs::create_dir(other.parent().unwrap()).unwrap();
+        fs::write(&other, b"fixture").unwrap();
+        assert!(resolve_cryptexd_binary(Some(other.clone()), &desktop).is_err());
+        fs::write(&sibling, b"fixture").unwrap();
         assert_eq!(
-            resolve_cryptexd_binary(Some(override_path.clone()), &desktop)
-                .expect("explicit override"),
-            override_path
+            resolve_cryptexd_binary(Some(other), &desktop).unwrap_err(),
+            "SIDECAR_REQUEST_MISMATCH"
         );
-        assert!(resolve_cryptexd_binary(Some(root.join("missing")), &desktop).is_err());
-        let _ = fs::remove_dir_all(root);
+        assert_eq!(
+            resolve_cryptexd_binary(Some(sibling.clone()), &desktop).unwrap(),
+            sibling
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -3366,45 +3301,24 @@ mod sidecar_resolution_tests {
         fs::write(&expected, b"fixture").unwrap();
         fs::write(&other, b"fixture").unwrap();
         assert_eq!(
-            validate_sidecar_request(&expected, expected.clone()).unwrap(),
+            validate_sidecar_request(&expected, &expected).unwrap(),
             expected
         );
         assert_eq!(
-            validate_sidecar_request(&other, expected.clone()).unwrap_err(),
+            validate_sidecar_request(&other, &expected).unwrap_err(),
             "SIDECAR_REQUEST_MISMATCH"
         );
         assert_eq!(
-            validate_sidecar_request(std::path::Path::new("relative"), expected.clone())
-                .unwrap_err(),
+            validate_sidecar_request(std::path::Path::new("relative"), &expected).unwrap_err(),
             "SIDECAR_REQUEST_INVALID"
         );
         assert_eq!(
-            validate_sidecar_request(&root, expected.clone()).unwrap_err(),
+            validate_sidecar_request(&root, &expected).unwrap_err(),
             "SIDECAR_REQUEST_INVALID"
         );
         assert_eq!(
-            validate_sidecar_request(&root.join("missing"), expected).unwrap_err(),
+            validate_sidecar_request(&root.join("missing"), &expected).unwrap_err(),
             "SIDECAR_REQUEST_INVALID"
-        );
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn renderer_cannot_replace_backend_developer_override() {
-        let root = unique_root();
-        let desktop = root.join("desktop");
-        let sibling = root.join(sidecar_name());
-        let developer = root.join("backend-override");
-        fs::write(&sibling, b"fixture").unwrap();
-        fs::write(&developer, b"fixture").unwrap();
-        let expected = resolve_cryptexd_binary(Some(developer.clone()), &desktop).unwrap();
-        assert_eq!(
-            validate_sidecar_request(&sibling, expected.clone()).unwrap_err(),
-            "SIDECAR_REQUEST_MISMATCH"
-        );
-        assert_eq!(
-            validate_sidecar_request(&developer, expected).unwrap(),
-            developer
         );
         fs::remove_dir_all(root).unwrap();
     }
@@ -3423,12 +3337,12 @@ mod sidecar_resolution_tests {
         std::fs::hard_link(&expected, &linked).unwrap();
         #[cfg(unix)]
         assert_eq!(
-            validate_sidecar_request(&linked, expected).unwrap_err(),
+            validate_sidecar_request(&linked, &expected).unwrap_err(),
             "SIDECAR_REQUEST_INVALID"
         );
         #[cfg(windows)]
         assert_eq!(
-            validate_sidecar_request(&linked, expected).unwrap_err(),
+            validate_sidecar_request(&linked, &expected).unwrap_err(),
             "SIDECAR_REQUEST_MISMATCH"
         );
         fs::remove_dir_all(root).unwrap();
