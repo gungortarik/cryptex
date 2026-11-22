@@ -131,6 +131,23 @@ class ConsoleObserver:
         self.starts.clear()
 
 
+def current_startup(pair, desktop, session, armed_at):
+    # A previous logon's last snapshot can survive until Desktop writes a new one.
+    try:
+        if identity(pair[0]) != (desktop, session):
+            return False
+        started_at = creation_time(pair[0])
+        if started_at <= armed_at:
+            late_ms = (armed_at - started_at) / 10_000
+            raise RuntimeError(f"Observer missed the beginning of Desktop startup: "
+                               f"verified current-logon Desktop started {late_ms:.1f} ms before coverage")
+        return identity(pair[1]) == (desktop.with_name("cryptexd.exe"), session)
+    except OSError as error:
+        if error.winerror in (87, 1168):  # OpenProcess on an expired PID
+            return False
+        raise
+
+
 def observe(desktop, runtime, session, *, windows_logon):
     snapshot = runtime / "gui-proof.snapshot"
     with ConsoleObserver() as observer:
@@ -156,8 +173,9 @@ def observe(desktop, runtime, session, *, windows_logon):
             if body.endswith("\n") and fields.get("note") == "desktop_launched" and fields.get("daemon_pid_observation") == "live":
                 pair = (int(fields["desktop_pid"]), int(fields["daemon_pid"]))
                 if stable_since is None:
-                    if creation_time(pair[0]) <= armed_at:
-                        raise RuntimeError("Observer missed the beginning of Desktop startup")
+                    if not current_startup(pair, desktop, session, armed_at):
+                        time.sleep(.02)
+                        continue
                     if launched is not None and pair[0] != launched.pid:
                         raise RuntimeError("Unexpected registered Desktop process")
                     pids = pair

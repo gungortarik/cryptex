@@ -4,7 +4,9 @@
 
 At `9a5035d` the installed Windows release ran its registered background command in a fresh standard user's second logon. A WinEvent observer was armed before launch, detected the deliberate console in its calibration step, and recorded zero console window shows and zero console process starts through ten seconds after the installed Desktop connected to its daemon. The test also verified removal of the startup entry. [Native test and Windows receipt](https://github.com/gungortarik/cryptex/actions/runs/45040536680)
 
-The CI harness started the registered command in the new logon. To measure Windows Explorer dispatching that entry itself, the same run produces a one-click package for the temporary `cryptexm14` account. Its receipt identifies the activation as `interactive-windows-sign-in` and verifies that the observer was already armed when the app started. The real VM sign-in measurement is pending.
+The CI harness started the registered command in the new logon. On the Windows 11 VM the temporary account subsequently ran the one-click interactive sign-in test from the same build. The receipt reported `Observer missed the beginning of Desktop startup`, `startup_entry_removed: true` and `passed: false`. It contains no console event counts or calibration result. Whether a console appeared at sign-in remains unknown.
+
+That verifier checked snapshot PID timing before image and logon identity. The original receipt cannot distinguish a late observer from a stale or reused snapshot PID. The updated verifier checks the Desktop image and logon first, ignores obsolete snapshots and reports the timing difference for a verified late start. Windows unit tests cover both timing outcomes and daemon identity. The next real-login test still needs an observer ready before Explorer dispatches the startup command. [Original VM receipt](../evidence/m14/windows-interactive-login-9a5035d.json)
 
 ## M14 installed release packages
 

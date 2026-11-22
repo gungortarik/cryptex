@@ -1,0 +1,8 @@
+{
+  "platform": "win32",
+  "activation": "interactive-windows-sign-in",
+  "source": "9a5035d16ffa80d18a0dd44421c5289099ddadec",
+  "error": "Observer missed the beginning of Desktop startup",
+  "startup_entry_removed": true,
+  "passed": false
+}
