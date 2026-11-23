@@ -134,11 +134,11 @@ fn signed_pack_projection_recovers_at_scale() {
         drop(db);
         let (db, opened) = open_projection_db(root).unwrap();
         assert_eq!(opened, ProjectionOpenKind::OpenedExisting);
-        let total: u64 = db
+        let total: i64 = db
             .connection()
             .query_row("SELECT COUNT(*) FROM events", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(total, count);
+        assert_eq!(total, i64::try_from(count).unwrap());
         let checkpoint = read_device_checkpoint(db.connection(), device.as_str())
             .unwrap()
             .unwrap();
