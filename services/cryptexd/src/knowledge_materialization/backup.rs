@@ -10,6 +10,7 @@ use tempfile::NamedTempFile;
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
 mod codec;
+pub(super) mod cortex;
 pub(crate) mod first_device;
 pub(crate) use codec::public_recipient;
 mod manual;
@@ -398,6 +399,13 @@ fn prepare_selected(
             bytes.as_slice(),
         )?;
     }
+    let evidence = cortex::verified_members(root, &identity.brain_id, &snapshot)?;
+    let cortex_decision_sha256 = evidence
+        .get(crate::cortex_evidence::DECISION_FILE)
+        .map(|bytes| Sha256::digest(bytes).into());
+    for (name, bytes) in evidence {
+        append(&mut archive, &name, bytes.as_slice())?;
+    }
     for digest in blob_digests(&snapshot)? {
         let hash = sha2::digest::Output::<Sha256>::from(digest);
         let file =
@@ -415,6 +423,7 @@ fn prepare_selected(
         generation,
         history_sha256: recovered_search::history_digest(&snapshot),
         brain_identity_sha256: Sha256::digest(bytes).into(),
+        cortex_decision_sha256,
     };
     let inventory = crate::backup_inventory::sign(root, store, env, payload.path(), &checkpoint)?;
     Ok((

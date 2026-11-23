@@ -319,6 +319,12 @@ This document does not select:
 
 These require the feature-specific spike, M11 implementation evidence and applicable accepted ADR/specification updates.
 
+### Accepted Cortex import evidence
+
+For an accepted M15 batch, the daemon puts the original signed source receipts and the signed owner decision inside the same encrypted generation as the notes. The signed v3 inventory covers their exact member names and bytes. The separately retained recovery selection pins the decision digest. Reconstructing the generation checks the signatures against the authenticated event history and recomputes the reviewed selection from the restored notes. Source paths remain inside the encrypted payload.
+
+An ordinary generation continues to use the v2 inventory. The current reader accepts existing ordinary and legacy signed backups. Readers predating the Cortex extension must be upgraded to restore a v3 generation. An unfinished batch, a cancelled decision, or evidence that no longer matches the notes prevents publication of that import profile's backup.
+
 ## 19. Source basis
 
 This document consolidates existing backup/recovery requirements from:

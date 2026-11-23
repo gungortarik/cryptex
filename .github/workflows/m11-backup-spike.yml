@@ -8,6 +8,8 @@ on:
       - 'services/cryptexd/src/knowledge_materialization/backup/**'
       - 'services/cryptexd/backup-codec/**'
       - 'services/cryptexd/src/backup_inventory.rs'
+      - 'services/cryptexd/src/cortex_evidence.rs'
+      - 'services/cryptexd/src/knowledge_materialization/m15_backup_evidence.rs'
       - 'Cargo.lock'
       - 'services/cryptexd/src/backup_scheduler/**'
       - 'services/cryptexd/src/backup_scheduler.rs'
@@ -44,6 +46,8 @@ on:
       - 'services/cryptexd/src/knowledge_materialization/backup/**'
       - 'services/cryptexd/backup-codec/**'
       - 'services/cryptexd/src/backup_inventory.rs'
+      - 'services/cryptexd/src/cortex_evidence.rs'
+      - 'services/cryptexd/src/knowledge_materialization/m15_backup_evidence.rs'
       - 'Cargo.lock'
       - 'services/cryptexd/src/backup_scheduler/**'
       - 'services/cryptexd/src/backup_scheduler.rs'
@@ -155,6 +159,8 @@ jobs:
           features=()
           if [[ "$RUNNER_OS" == macOS ]]; then features=(--features m8-local-startup-check); fi
           cargo clippy --locked -p cryptexd --lib --tests "${features[@]}" -- -D warnings
+          cargo test --locked -p cryptexd --lib "${features[@]}" ordinary_and_cortex_backup_inventories_roundtrip | tee "$RUNNER_TEMP/m15-inventories.txt"
+          grep -F '1 passed; 0 failed' "$RUNNER_TEMP/m15-inventories.txt" >> "$GITHUB_STEP_SUMMARY"
           if [[ "$RUNNER_OS" == macOS ]]; then
             cargo test --locked -p cryptexd --lib "${features[@]}" knowledge_materialization::backup::restore::reconstructed_plaintext_staging_is_owner_only -- --exact | tee "$RUNNER_TEMP/m11-staging-permissions.txt"
             grep -F '1 passed; 0 failed' "$RUNNER_TEMP/m11-staging-permissions.txt" >> "$GITHUB_STEP_SUMMARY"
@@ -212,6 +218,7 @@ jobs:
           grep -Fx 'm11_installed_writer=passed consent=required assignment=reopened copied_target=held' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_recipient_enrollment=passed wrong_brain=held decline=kept offline_restart=restored modified_certificate=held' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_installed_export=passed cancelled=true overlap=held written=true restored=true' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
+          grep -Fx 'm15_encrypted_provenance=passed manual=true scheduled=true source_absent=true altered_or_missing=denied' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_installed_verify=passed source_absent=true wrong_unlock=held wrong_checkpoint=held damaged=held cancelled=true' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_separate_files=passed archived_bytes=identical replacement=independent both_notes=restored missing=held swapped=held source=lost' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_installed_codec=passed public_recipient=true restored_with_daemon_signature=true' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"

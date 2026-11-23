@@ -12,13 +12,13 @@ mod restart;
 mod selection;
 use cryptex_core::{BrainIdentity, DeviceId, validate::parse_uuid_str};
 use cryptex_cortex_inventory::{review_notes, reviewed_payload};
-use cryptex_events::{Classification, ContentHashHex, EventPayload};
+use cryptex_events::{ContentHashHex, EventPayload};
+use cryptexd::cortex_evidence::Approval;
 use cryptexd::{
     FakeSecureStore, SecureStoreEnvironment,
     canonical_writer::{CanonicalWriterConfig, load_verified_events},
     capture::{CaptureOutcome, CaptureRequest, capture_memory_note},
 };
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
@@ -37,17 +37,6 @@ enum TrialMode {
     Replay,
     Batch,
     BatchExitBeforeSourceReceipt,
-}
-
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-struct Approval {
-    capture_id: String,
-    source_path: String,
-    source_sha256: String,
-    classification: Classification,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    review_sha256: Option<String>,
 }
 
 fn fault(code: &str) -> LifecycleError {

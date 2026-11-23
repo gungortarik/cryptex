@@ -271,6 +271,14 @@ pub(crate) fn verify_backup_reconstruction(
         return Err(Error::Checkpoint);
     }
     let snapshot = super::backup::snapshot(root, expected.brain_id, expected.writer)?;
+    let evidence = super::backup::cortex::verified_members(root, expected.brain_id, &snapshot)?;
+    if evidence
+        .get(crate::cortex_evidence::DECISION_FILE)
+        .map(|bytes| Sha256::digest(bytes).into())
+        != expected.cortex_decision_sha256
+    {
+        return Err(Error::CortexEvidence);
+    }
     if history_digest(&snapshot) != expected.history_sha256 {
         return Err(Error::Checkpoint);
     }

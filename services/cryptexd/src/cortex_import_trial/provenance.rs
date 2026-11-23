@@ -20,29 +20,10 @@ use std::{
     path::Path,
 };
 
-const DIRECTORY: &str = "cortex-source-receipts";
-const SCHEMA: &str = "cryptex.m15.disposable-source.v1";
+pub(super) use cryptexd::cortex_evidence::Source;
+use cryptexd::cortex_evidence::{DIRECTORY, MAX_RECEIPT, Receipt, SCHEMA};
 const PENDING: &str = "cortex-pending-source.json";
 const INTENT_SCHEMA: &str = "cryptex.m15.disposable-source-intent.v1";
-const MAX_RECEIPT: u64 = 32 * 1024;
-
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct Source {
-    schema: String,
-    brain_id: String,
-    device_id: String,
-    pub(super) event_id: String,
-    pub(super) content_hash: String,
-    pub(super) approval: Approval,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Receipt<T> {
-    source: T,
-    signature: SignatureHex,
-}
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -145,19 +126,6 @@ impl Batch {
             self.pending_capture = None;
         }
         Ok(())
-    }
-}
-
-impl Source {
-    fn from_commit(approval: &Approval, commit: &CaptureCommit) -> Self {
-        Self {
-            schema: SCHEMA.into(),
-            brain_id: commit.brain_id.clone(),
-            device_id: commit.device_id.clone(),
-            event_id: commit.event_id.clone(),
-            content_hash: commit.content_hash.clone(),
-            approval: approval.clone(),
-        }
     }
 }
 

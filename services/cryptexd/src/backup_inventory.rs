@@ -12,7 +12,6 @@ use std::fs::File;
 use std::io::{self, Read, Seek};
 use std::path::Path;
 
-const DOMAIN: &[u8] = b"cryptex/backup/inventory/v2\0";
 const IDENTITY: &str = "identity/brain_identity.json";
 pub const MAX_INVENTORY_BYTES: usize = 4 * 1024 * 1024;
 
@@ -22,6 +21,7 @@ pub struct Checkpoint<'a> {
     pub generation: u64,
     pub history_sha256: [u8; 32],
     pub brain_identity_sha256: [u8; 32],
+    pub cortex_decision_sha256: Option<[u8; 32]>,
 }
 
 /// Public selection saved independently of the encrypted backup. Its trust
@@ -36,6 +36,8 @@ pub struct RecoverySelection {
     generation: u64,
     history_sha256: [u8; 32],
     brain_identity_sha256: [u8; 32],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cortex_decision_sha256: Option<[u8; 32]>,
 }
 
 impl RecoverySelection {
@@ -48,6 +50,7 @@ impl RecoverySelection {
             generation: checkpoint.generation,
             history_sha256: checkpoint.history_sha256,
             brain_identity_sha256: checkpoint.brain_identity_sha256,
+            cortex_decision_sha256: checkpoint.cortex_decision_sha256,
         }
     }
 
@@ -75,6 +78,7 @@ impl RecoverySelection {
             generation: self.generation,
             history_sha256: self.history_sha256,
             brain_identity_sha256: self.brain_identity_sha256,
+            cortex_decision_sha256: self.cortex_decision_sha256,
         })
     }
 }
@@ -89,6 +93,7 @@ pub enum Error {
     Attachment,
     RecoveryHistory,
     PurgeHistory,
+    CortexEvidence,
     Codec,
     CodecIntegrity,
     CodecStart,
@@ -139,6 +144,9 @@ fn lower_hex(s: &str) -> bool {
 }
 
 fn canonical_member(name: &str) -> bool {
+    if crate::cortex_evidence::backup_member(name) {
+        return true;
+    }
     if let Some(file) = name.strip_prefix("canonical/purge-approvals/") {
         return file.strip_suffix(".json").is_some_and(|id| {
             cryptex_core::validate::parse_uuid_str(id).is_ok()
@@ -209,6 +217,11 @@ fn inspect(
         {
             return Err(Error::PurgeHistory);
         }
+        if crate::cortex_evidence::backup_member(&name)
+            && file.size() > crate::cortex_evidence::MAX_RECEIPT
+        {
+            return Err(Error::CortexEvidence);
+        }
         let mut hasher = Sha256::new();
         let bytes = if name == IDENTITY {
             let mut identity = Vec::new();
@@ -245,8 +258,29 @@ fn inspect(
     if !members.contains_key(IDENTITY) {
         return Err(Error::Checkpoint);
     }
+    let pinned = expected
+        .cortex_decision_sha256
+        .map(|digest| format!("{:x}", sha2::digest::Output::<Sha256>::from(digest)));
+    if members
+        .get(crate::cortex_evidence::DECISION_FILE)
+        .map(|member| &member.sha256)
+        != pinned.as_ref()
+        || (pinned.is_none()
+            && members
+                .keys()
+                .any(|name| crate::cortex_evidence::backup_member(name)))
+    {
+        return Err(Error::CortexEvidence);
+    }
     Ok(Body {
-        format: "cryptex.backup.inventory.v2".into(),
+        format: if members
+            .keys()
+            .any(|name| crate::cortex_evidence::backup_member(name))
+        {
+            "cryptex.backup.inventory.v3".into()
+        } else {
+            "cryptex.backup.inventory.v2".into()
+        },
         brain_id: expected.brain_id.into(),
         writer_device_id: expected.writer.device_id().as_str().into(),
         writer_key_id: expected.writer.signing_key_id().as_str().into(),
@@ -266,7 +300,12 @@ fn encode(value: &impl Serialize) -> Result<Vec<u8>, Error> {
 }
 
 fn preimage(body: &Body) -> Result<Vec<u8>, Error> {
-    Ok([DOMAIN, encode(body)?.as_slice()].concat())
+    let domain = match body.format.as_str() {
+        "cryptex.backup.inventory.v2" => b"cryptex/backup/inventory/v2\0",
+        "cryptex.backup.inventory.v3" => b"cryptex/backup/inventory/v3\0",
+        _ => return Err(Error::Inventory),
+    };
+    Ok([domain.as_slice(), encode(body)?.as_slice()].concat())
 }
 
 /// Sign with the existing enrolled credential. Never initializes a missing key.
@@ -343,6 +382,9 @@ pub(crate) fn reconstruct_signed_legacy(
     expected: &Checkpoint<'_>,
     parent: &Path,
 ) -> Result<tempfile::TempDir, Error> {
+    if expected.cortex_decision_sha256.is_some() {
+        return Err(Error::CortexEvidence);
+    }
     reconstruct_members(
         payload,
         inspect(payload, expected, None)?.members,

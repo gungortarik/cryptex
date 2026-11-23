@@ -1,40 +1,11 @@
 //! Owner decision for one exact review in a retained disposable Brain.
 use super::{LifecycleError, fault, provenance, selection::Comparison};
 use cryptex_core::DeviceId;
+pub(super) use cryptexd::cortex_evidence::Choice;
+use cryptexd::cortex_evidence::{BatchDecision, DECISION_FILE as FILE, DECISION_SCHEMA as SCHEMA};
 use ed25519_dalek::SigningKey;
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::path::Path;
-
-const FILE: &str = "cortex-batch-decision.json";
-const SCHEMA: &str = "cryptex.m15.disposable-batch-decision.v1";
-
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub(super) enum Choice {
-    Accepted,
-    Cancelled,
-}
-
-impl Choice {
-    pub(super) fn from_flag(flag: &str) -> Option<Self> {
-        match flag {
-            "--accept-selection" => Some(Self::Accepted),
-            "--cancel-selection" => Some(Self::Cancelled),
-            _ => None,
-        }
-    }
-}
-
-#[derive(PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct BatchDecision {
-    schema: String,
-    brain_id: String,
-    device_id: String,
-    review_sha256: String,
-    choice: Choice,
-}
 
 fn load_decision(
     root: &Path,

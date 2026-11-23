@@ -1,6 +1,8 @@
 //! Installed Desktop export, followed by a restore after losing the disposable source.
 use super::*;
 use crate::secure_store::FileBackedSecureStore;
+#[path = "m15_backup_evidence.rs"]
+mod cortex;
 
 pub(super) fn check(work: &Path, desktop: &Path, kit: &Path, password: &Path) {
     let root = work.join("export-source");
@@ -10,7 +12,9 @@ pub(super) fn check(work: &Path, desktop: &Path, kit: &Path, password: &Path) {
         fs::create_dir(path).unwrap();
     }
     let store = FileBackedSecureStore::open(work.join("export-credentials")).unwrap();
-    let (device, _) = PairProfiles::enroll(&root, &store);
+    let (device, signer) = PairProfiles::enroll(&root, &store);
+    let evidence = cortex::Evidence::enroll(&root, &device, &signer, &store);
+    drop(signer);
     let local = resolver_for_export(&root, &store);
     drop(store);
     let public = work.join("kit-public");
@@ -165,6 +169,7 @@ pub(super) fn check(work: &Path, desktop: &Path, kit: &Path, password: &Path) {
     )
     .unwrap();
     assert_eq!(archives.len(), 1);
+    evidence.check(archives[0].path());
     let restored =
         scan_verified_canonical_from_local_anchor_until(archives[0].path(), BRAIN, &local, None)
             .unwrap();
@@ -247,6 +252,11 @@ pub(super) fn check(work: &Path, desktop: &Path, kit: &Path, password: &Path) {
         "m11_recipient_enrollment=passed wrong_brain=held decline=kept offline_restart=restored modified_certificate=held"
     );
     println!("m11_installed_export=passed cancelled=true overlap=held written=true restored=true");
+    drop(snapshot);
+    evidence.check_damage(archive.path(), &checkpoint);
+    println!(
+        "m15_encrypted_provenance=passed manual=true scheduled=true source_absent=true altered_or_missing=denied"
+    );
 }
 
 fn resolver_for_export(
