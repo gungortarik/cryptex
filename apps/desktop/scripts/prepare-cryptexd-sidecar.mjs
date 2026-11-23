@@ -43,7 +43,7 @@ export function sidecarBuildPaths(repositoryRoot, targetTriple, targetDirectory)
   };
 }
 
-export function prepareSidecar(targetTriple = process.env.TAURI_ENV_TARGET_TRIPLE) {
+export function prepareSidecar(targetTriple = process.env.TAURI_ENV_TARGET_TRIPLE, sealedStartupCheck = false) {
   const host = hostTripleFromRustc(execFileSync("rustc", ["-vV"], { encoding: "utf8" }));
   const triple = targetTriple ?? host;
   const cargoTargetDirectory = process.env.CARGO_TARGET_DIR
@@ -53,7 +53,8 @@ export function prepareSidecar(targetTriple = process.env.TAURI_ENV_TARGET_TRIPL
 
   execFileSync(
     "cargo",
-    ["build", "-p", "cryptexd", "--release", "--locked", "--target", triple],
+    ["build", "-p", "cryptexd", "--release", "--locked", "--target", triple,
+      ...(sealedStartupCheck ? ["--features", "m17-sealed-startup-check"] : [])],
     { cwd: repositoryDirectory, stdio: "inherit" },
   );
 

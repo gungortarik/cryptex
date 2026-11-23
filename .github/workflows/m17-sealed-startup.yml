@@ -1,0 +1,40 @@
+name: M17 installed Mac peer verification
+on:
+  workflow_dispatch:
+  push:
+    branches: ['codex/m17-release-candidate']
+    paths:
+      - '.github/workflows/m17-sealed-startup.yml'
+      - 'scripts/m17/mac_sealed_startup.py'
+      - 'scripts/m17/update_fixture.py'
+      - 'scripts/m8/mac_lan_setup.py'
+      - 'apps/desktop/scripts/prepare-cryptexd-sidecar.mjs'
+      - 'apps/desktop/src-tauri/**'
+      - 'services/cryptexd/build.rs'
+      - 'services/cryptexd/build_support/**'
+      - 'services/cryptexd/src/m8_owner_channel/**'
+      - 'services/cryptexd/Cargo.toml'
+permissions:
+  contents: read
+jobs:
+  sealed-startup:
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '26.0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pnpm install --frozen-lockfile
+      - run: cargo fmt --all -- --check
+      - run: python -B scripts/m17/mac_sealed_startup.py

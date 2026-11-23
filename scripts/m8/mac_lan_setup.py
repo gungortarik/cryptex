@@ -135,10 +135,19 @@ def build_frontend(source, node, pnpm, run, report):
     run([pnpm, '--filter', '@cryptex/desktop', 'build'], 'frontend_build', 600)
 
 
-def inventory(bundle, architecture, release, run):
+def inventory(bundle, architecture, release, run, *, sealed=False):
     files, roles = [], {}
     names = ['Contents/MacOS/cryptex-desktop', 'Contents/MacOS/cryptexd']
     names += [p.relative_to(bundle).as_posix() for p in sorted((bundle/'Contents/Resources').rglob('*')) if p.is_file()]
+    if sealed:
+        names = []
+        for path in sorted((bundle/'Contents').rglob('*')):
+            mode = path.lstat().st_mode
+            if stat.S_ISDIR(mode):
+                continue
+            if not stat.S_ISREG(mode):
+                raise PreflightError('owner_inventory_unsafe')
+            names.append(path.relative_to(bundle).as_posix())
     for name in names:
         path = bundle/name
         info = path.lstat()

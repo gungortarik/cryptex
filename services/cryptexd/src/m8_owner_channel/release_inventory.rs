@@ -288,7 +288,11 @@ pub(super) fn read_input(root: &Path, name: &str, limit: u64) -> Result<Vec<u8>,
         return Err(Error::Io);
     }
     let root = unsafe { File::from_raw_fd(fd) };
-    let file = open_member(&root, name)?;
+    let file = if matches!(name, "inventory.json" | "inventory.cms") {
+        open_components(&root, name)?
+    } else {
+        open_member(&root, name)?
+    };
     let metadata = file.metadata().map_err(|_| Error::Io)?;
     if !metadata.is_file() || metadata.nlink() != 1 || metadata.len() > limit {
         return Err(Error::Limit);
@@ -322,6 +326,11 @@ fn validate_path(path: &str) -> Result<(), Error> {
 
 fn open_member(root: &File, path: &str) -> Result<File, Error> {
     validate_path(path)?;
+    open_components(root, path)
+}
+
+// Callers supply a validated member path or one of the two fixed metadata names.
+fn open_components(root: &File, path: &str) -> Result<File, Error> {
     let mut directory = root.try_clone().map_err(|_| Error::Io)?;
     let mut parts = path.split('/').peekable();
     while let Some(part) = parts.next() {

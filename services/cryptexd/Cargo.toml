@@ -14,6 +14,7 @@ m11-installed-search-check = ["disposable-ipc"]
 m8-start-inspection = []
 # Isolated, headless real-binary startup experiment. Never enables owner routes.
 m8-local-startup-check = []
+m17-sealed-startup-check = ["m8-local-startup-check"]
 # Owner-approved controlled integration; independently pinned development policy.
 m8-development-product = ["m8-local-startup-check"]
 

@@ -11,13 +11,23 @@ fn main() {
             Ok("macos"),
             "local signed startup check requires macOS"
         );
-        let policy = development_policy::select(
-            std::env::var_os("CARGO_FEATURE_M8_DEVELOPMENT_PRODUCT").is_some(),
-            std::env::var("CRYPTEX_M8_DEVELOPMENT_RELEASE_ID")
-                .ok()
-                .as_deref(),
-        )
-        .expect("invalid independent development build policy");
+        let development = std::env::var_os("CARGO_FEATURE_M8_DEVELOPMENT_PRODUCT").is_some();
+        let policy = if std::env::var_os("CARGO_FEATURE_M17_SEALED_STARTUP_CHECK").is_some() {
+            assert!(!development, "choose one signing policy per build");
+            println!("cargo:rerun-if-env-changed=CRYPTEX_M17_SIGNER_DER");
+            println!("cargo:rerun-if-env-changed=CRYPTEX_M17_SOURCE_REVISION");
+            development_policy::sealed_check(
+                &std::env::var("CRYPTEX_M17_SOURCE_REVISION").unwrap_or_default(),
+            )
+        } else {
+            development_policy::select(
+                development,
+                std::env::var("CRYPTEX_M8_DEVELOPMENT_RELEASE_ID")
+                    .ok()
+                    .as_deref(),
+            )
+        }
+        .expect("invalid signed startup build policy");
         for (name, value) in [
             ("CRYPTEX_COMPILED_RELEASE_ID", policy.release_id.as_str()),
             ("CRYPTEX_COMPILED_DESKTOP_ID", policy.desktop_identifier),

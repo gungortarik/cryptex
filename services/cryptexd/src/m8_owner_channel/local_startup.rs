@@ -123,10 +123,21 @@ impl Release {
         if executable != root.join(relative) {
             return Err(Error::Image);
         }
-        let raw = read_input(&root, "Contents/Resources/m8-startup.json", 1024 * 1024)
-            .map_err(|_| Error::Inventory)?;
-        let cms = read_input(&root, "Contents/Resources/m8-startup.cms", 2 * 1024 * 1024)
-            .map_err(|_| Error::Inventory)?;
+        #[cfg(feature = "m17-sealed-startup-check")]
+        let (location, manifest, signature) = (
+            root.parent().ok_or(Error::Image)?.join(RELEASE),
+            "inventory.json",
+            "inventory.cms",
+        );
+        #[cfg(not(feature = "m17-sealed-startup-check"))]
+        let (location, manifest, signature) = (
+            root.clone(),
+            "Contents/Resources/m8-startup.json",
+            "Contents/Resources/m8-startup.cms",
+        );
+        let raw = read_input(&location, manifest, 1024 * 1024).map_err(|_| Error::Inventory)?;
+        let cms =
+            read_input(&location, signature, 2 * 1024 * 1024).map_err(|_| Error::Inventory)?;
         let architecture = match std::env::consts::ARCH {
             "aarch64" => "arm64",
             "x86_64" => "x86_64",
