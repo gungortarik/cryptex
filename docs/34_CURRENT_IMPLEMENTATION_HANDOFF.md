@@ -2,7 +2,7 @@
 
 ## M16 hardening in progress
 
-The [hardening campaign](../evidence/m16/hardening.md) maps the product failure matrix to native runs, starting from the M15 closeout. At `4a87c53`, all six signed-history scale jobs passed on Windows and macOS, including two independent reconstructions of 500,000 notes per platform. At `cf2cf3a`, both directions of encrypted peer recovery rejected truncation and a wrong Kit before recovering the intact signed notes. The repeated-partition and observed system-suspend checks use two disposable peers. M16 acceptance, the physical soak and personal onboarding remain open.
+The [hardening campaign](../evidence/m16/hardening.md) records two native reconstructions of 500,000 signed notes per platform, six offline/reconnect cycles per pair, and encrypted cross-platform recovery. The patched product revision is `6a40f00`. The owner sleep packets identify that exact revision; only receipts from an observed system suspend count for this gate. At `53019de` a test-only change also measured the guarded reader and two vault publications for 10,000 reopened notes on each platform. Resolve or explicitly disposition the Cortex purge/backup interaction and the advisories in the pinned transport, then obtain final human review. Personal onboarding remains at M17.
 
 ## M15 closed for disposable Cortex imports
 

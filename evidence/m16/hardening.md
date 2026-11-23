@@ -9,13 +9,13 @@ The section numbers refer to the [failure matrix](../../docs/17_TEST_AND_FAILURE
 | Sections | Failure or boundary | Runtime evidence and outstanding work |
 | --- | --- | --- |
 | 8, 9 | Interrupted canonical write, incompatible or damaged record, checkpoint loss, stale index and rebuild | [Storage baseline](../m2/m2-closeout-l1-l2-f4-f6-20261007.md), [projection baseline](../m3/m3-final-review-20261008.md), [M16 signed-pack reconstruction](https://github.com/gungortarik/cryptex/actions/runs/45119773599). All six scale jobs passed. |
-| 10 | Storage layout and platform-specific scale | [Original packaging comparison](../m0/p0-1/) and the new signed-pack campaign. The M16 workload measures verified reading, rebuilding and FTS lookup. Writer throughput and Obsidian projection require separate evidence. |
+| 10 | Storage layout and platform-specific scale | [Original append, filesystem and LAN measurements](../m0/p0-1/README.md), [M16 reader and reconstruction](https://github.com/gungortarik/cryptex/actions/runs/45121866739), and [guarded search and vault publication](https://github.com/gungortarik/cryptex/actions/runs/45122988170). Fixture generation time is excluded from reader measurements. |
 | 11 | Window close, login, duplicate writer, service crash, reconnect and failed update | [Installed platform review](../m14/platform-closeout-review.md) includes real temporary-account receipts. [Installed update rehearsal](https://github.com/gungortarik/cryptex/actions/runs/45119157833). |
 | 12, 15 | Local endpoint, role, capability, incompatible or malformed request, restricted retrieval and explicit consent | [General CI and cross-account Windows ACL](https://github.com/gungortarik/cryptex/actions/runs/45120098263), [local MCP rehearsal](https://github.com/gungortarik/cryptex/actions/runs/45119158085), [prior endpoint review](../m1/m1-final-review-20261007.md). Final review must also trace renderer and Doctor outputs. |
 | 13, 14 | Managed transport isolation, unavailable peer, delayed delivery, duplicate replay, restriction and repeated reconnect | [Trust and replication review](../m8/m8-final-candidate-review-20261118.md), [packaged repeated partition run](https://github.com/gungortarik/cryptex/actions/runs/45120714690). Live OS suspend and resume requires a separate observation. |
-| 16 | Interrupted backup, damaged generation, wrong recovery key, restore and reconstruction after source loss | [Installed recovery](https://github.com/gungortarik/cryptex/actions/runs/45119158424), [successful bidirectional baseline](https://github.com/gungortarik/cryptex/actions/runs/45119112938), [bidirectional rejection and retry](https://github.com/gungortarik/cryptex/actions/runs/45120234060). Review large objects, independent Kit selection and recovery of import receipts. |
+| 16 | Interrupted backup, large object, damaged generation, wrong recovery key, restore and reconstruction after source loss | [Large-object and installed recovery](https://github.com/gungortarik/cryptex/actions/runs/45119158424), [independent Kit recovery and accepted import evidence](../m15/cortex-import-review.md#final-acceptance), [bidirectional rejection and retry with patched dependencies](https://github.com/gungortarik/cryptex/actions/runs/45121906178). |
 | 17 | Purged history, stale replica, shared attachment, unreachable copies | [Forget and purge rehearsal](https://github.com/gungortarik/cryptex/actions/runs/45119157942), [scope of cleanup](../m10/forget-purge-closeout-review.md). Review interactions with backups and accepted imports. |
-| 18, 19 | Displayed health during service loss, maintenance and restoration, privacy of diagnostics | [Desktop and Doctor rehearsal](https://github.com/gungortarik/cryptex/actions/runs/45120098524), [desktop review](../m13/desktop-shell.md). Verify that a configured endpoint alone cannot produce remote durability or active status. |
+| 18, 19 | Displayed health during service loss, maintenance and restoration, privacy of diagnostics | [Desktop and Doctor rehearsal](https://github.com/gungortarik/cryptex/actions/runs/45121923267), [desktop review](../m13/desktop-shell.md) and the decoder and redaction tests below. An endpoint alone cannot establish remote durability. |
 | 20–23 | Required CI, traceable receipts, complete hardening scope | Final platform CI, reviewed material risks, a physical sleep/wake soak and human acceptance are open. |
 
 ## Reproduction
@@ -39,6 +39,27 @@ All six native release jobs at `4a87c53` passed. Each timed rebuild includes ope
 | Windows | 100,000 | 29,550 | 24,102 | 1 / 1 |
 | Windows | 500,000 | 96,538 | 96,354 | 4 / 3 |
 
+All six scale jobs also passed on the patched product revision `6a40f00`. At 500,000 events the missing/corrupt rebuilds took 75,454/74,225 ms on Windows and 91,110/89,252 ms on macOS. The reopened FTS queries took 2/3 ms and 1/1 ms respectively. The timings describe the same low-level signed-pack workload. [Patched native measurements](https://github.com/gungortarik/cryptex/actions/runs/45121866739)
+
+A separate release workload at `53019de` rebuilt knowledge from 10,000 signed notes, closed and reopened the database, and ran the daemon's guarded search and Obsidian publication paths. On each system the search returned the ten expected pack-edge matches, all ten bodies matched their generated Markdown, both publications produced exactly 10,000 note files, and an independent user file survived. The workload invokes the daemon operations directly; the measurements exclude WebView and Obsidian startup. [Native job results](https://github.com/gungortarik/cryptex/actions/runs/45122988170)
+
+| Platform | Guarded search (ms) | Initial vault (ms) | Vault refresh (ms) |
+| --- | ---: | ---: | ---: |
+| Windows x64 | 1,359 | 83,348 | 159,776 |
+| macOS arm64 | 1,685 | 10,678 | 11,305 |
+
+### Native product verification
+
+All eleven workflows requested at product revision `6a40f00` passed, including general CI on Windows and macOS and the Windows cross-account IPC check.
+
+| Area | Verified runs |
+| --- | --- |
+| Build, lint, authorization and native desktop | [General CI](https://github.com/gungortarik/cryptex/actions/runs/45121899289), [installed rollback and reconnect](https://github.com/gungortarik/cryptex/actions/runs/45121909232), [desktop shell](https://github.com/gungortarik/cryptex/actions/runs/45121923267) |
+| Visibility and authority | [Attachment flow](https://github.com/gungortarik/cryptex/actions/runs/45121919699), [forget and purge](https://github.com/gungortarik/cryptex/actions/runs/45121866875), [MCP consent](https://github.com/gungortarik/cryptex/actions/runs/45121912596), [Cortex import](https://github.com/gungortarik/cryptex/actions/runs/45121915978) |
+| Storage and recovery | [Signed-history scale](https://github.com/gungortarik/cryptex/actions/runs/45121866739), [repeated partitions](https://github.com/gungortarik/cryptex/actions/runs/45121866737), [installed encrypted backups](https://github.com/gungortarik/cryptex/actions/runs/45121902856), [recovery from the other OS](https://github.com/gungortarik/cryptex/actions/runs/45121906178) |
+
+All five workflows at `53019de` also completed successfully: [general CI](https://github.com/gungortarik/cryptex/actions/runs/45122995104), [scale and guarded vault](https://github.com/gungortarik/cryptex/actions/runs/45122988170), [historical reader](https://github.com/gungortarik/cryptex/actions/runs/45122988132), [desktop attachments](https://github.com/gungortarik/cryptex/actions/runs/45122988192) and [forget/purge](https://github.com/gungortarik/cryptex/actions/runs/45122988305). The difference from the physical sleep packet is test, workflow and evidence content.
+
 ### Security and recovery review
 
 The MCP tool list and dispatch use explicit names for health, requesting review and searching public notes. The daemon checks the approved stream, client role, capability, deadline and profile admission. The reader filters visible public notes before returning up to ten excerpts. Read access to a recovered profile is held when the MCP reader cannot verify both histories. The successful native MCP and forget rehearsals exercise the restricted and stale-index cases. [Bridge dispatch](../../tools/local-mcp/server.mjs) · [Daemon authorization](../../services/cryptexd/src/ipc/public_context.rs) · [Guarded context](../../services/cryptexd/src/knowledge_materialization/ai_context.rs)
@@ -59,9 +80,13 @@ At `6a40f00` the repeat scan checked 727 public crate/version pairs across the t
 
 ### Offline and system sleep
 
+The two `6a40f00` soak archives passed their extracted native smoke checks. Their Syncthing executables matched the established Windows x64 and Apple arm64 SHA-256 pins; both bundled license and authors files compared byte-for-byte with the monitored inventory. The exercises bind transport peers locally. [Patched package CI](https://github.com/gungortarik/cryptex/actions/runs/45121866737) · [Upstream source and notice inventory](../../third_party/syncthing/2.1.5/README.md)
+
 At `0cf55da`, the packaged two-peer smoke completed six disconnect/reconnect rounds on both platforms. It verified all 50 notes per replica after a cold read. An owner receipt additionally requires a suspend observed by the kernel while the retained peer is alive. Sampling brackets bound the actual suspended duration from below. A stopped user process or a change of wall clock does not count. Each package uses two local synthetic peers. [Native package smoke](https://github.com/gungortarik/cryptex/actions/runs/45120714690) · [Apple continuous clock](https://developer.apple.com/documentation/kernel/1646199-mach_continuous_time) · [Windows interrupt time](https://learn.microsoft.com/en-us/windows/win32/sysinfo/interrupt-time)
 
 ### Remaining decisions and observations
+
+**Transport release risk (R-04/R-28).** Inspection of the packaged executables found Go 1.27.1, x/crypto 0.55.0 and x/net 0.58.0 in the pinned Syncthing 2.1.5. The Go advisory database reports affected versions in all three. As an independent comparison, the official 2.1.7 Windows x64 and macOS arm64 ZIPs matched GitHub's published SHA-256; their binaries contain Go 1.27.3, x/crypto 0.57.0 and x/net 0.60.0. The later release still matches GO-2026-6859. Neither upstream candidate was installed during inspection. Run `govulncheck -mode=binary -format=json <syncthing executable>` (scanner v1.10.0 at review) for the binary findings. Stripped binaries can produce conservative module-level results even in symbol mode; these results do not establish network reachability. An old relay advisory ending at Syncthing 1.15.0 does not cover the reviewed 2.1.x versions. The release gate needs a disposition and native package compatibility/rollback evidence for any replacement pin before personal use. [Go advisory](https://pkg.go.dev/vuln/GO-2026-6859) · [Official release](https://github.com/syncthing/syncthing/releases/tag/v2.1.7) · [Managed transport ADR](../../docs/adr/ADR-0004-managed-syncthing-implementation-addendum.md)
 
 The M15 acceptance record describes two recovery limits. Purging a note linked to an accepted Cortex batch can prevent the next backup of that profile. Losing all import evidence before creating a recovery selection can eliminate the evidence identifying Cortex origin. Review the effects on surviving notes and on the retained independent recovery selection against risks R-17, R-18 and R-20 before a personal cutover. [M15 evidence and limits](../m15/cortex-import-review.md#evidence-and-limits)
 
