@@ -1,4 +1,5 @@
 //! Apply an explicitly staged local package while the user has quit Desktop.
+mod release;
 use cryptex_updater::{Health, Layout, PROBE, desktop};
 use process_wrap::std::{ChildWrapper, CommandWrap};
 use sha2::{Digest, Sha256};
@@ -70,8 +71,8 @@ enum Probe {
     TimedOut,
 }
 
-fn require_connection_check(package: &Path) -> io::Result<Health> {
-    match probe(package)? {
+fn require_connection_check(layout: &Layout, package: &Path, digest: &str) -> io::Result<Health> {
+    match probe(layout, package, digest)? {
         Probe::Replied(health) => Ok(health),
         Probe::TimedOut => Err(error("working Desktop update probe timed out")),
     }
@@ -99,7 +100,8 @@ fn terminate_probe(child: &mut dyn ChildWrapper) -> io::Result<()> {
     Ok(())
 }
 
-fn probe(package: &Path) -> io::Result<Probe> {
+fn probe(layout: &Layout, package: &Path, digest: &str) -> io::Result<Probe> {
+    release::verify(layout, package, digest)?;
     let mut command = Command::new(desktop(package));
     command
         .arg(PROBE)
@@ -212,7 +214,7 @@ impl Intent {
         }
         let old = working.ok_or_else(|| error("working image missing during recovery"))?;
         let new = staged.ok_or_else(|| error("staged image missing during recovery"))?;
-        let verified = require_connection_check(old)?;
+        let verified = require_connection_check(layout, old, &self.working)?;
         if verified.status != "connected" {
             return Err(error("retained Desktop could not reconnect"));
         }
@@ -229,7 +231,7 @@ impl Intent {
         if old != &layout.active {
             fs::rename(&layout.previous, &layout.active)?;
         }
-        let restored = require_connection_check(&layout.active)?;
+        let restored = require_connection_check(layout, &layout.active, &self.working)?;
         if restored.status != "connected" || restored.desktop_protocol != verified.desktop_protocol
         {
             return Err(error("recovered Desktop could not reconnect"));
@@ -238,7 +240,14 @@ impl Intent {
     }
 }
 
-fn reopen(layout: &Layout, lock: fs::File, outcome: &str, checks: Vec<Health>) -> io::Result<()> {
+fn reopen(
+    layout: &Layout,
+    lock: fs::File,
+    digest: &str,
+    outcome: &str,
+    checks: Vec<Health>,
+) -> io::Result<()> {
+    release::verify(layout, &layout.active, digest)?;
     drop(lock);
     let reopened = Command::new(desktop(&layout.active))
         .stdin(Stdio::null())
@@ -259,7 +268,7 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
         let intent: Intent = serde_json::from_reader(fs::File::open(&journal)?.take(1024))?;
         let checks = intent.restore(layout)?;
         fs::remove_file(journal)?;
-        return reopen(layout, transaction, "recovered", checks);
+        return reopen(layout, transaction, &intent.working, "recovered", checks);
     }
     if !vacant(&layout.previous)? {
         return Err(error("an unfinished update retains the previous package"));
@@ -279,7 +288,8 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
             "run the standalone updater from outside Desktop's install directory",
         ));
     }
-    let before = require_connection_check(&layout.active)?;
+    release::verify(layout, &layout.pending, approved)?;
+    let before = require_connection_check(layout, &layout.active, &original)?;
     if before.status != "connected" {
         return Err(error("current Desktop does not have a working daemon"));
     }
@@ -296,13 +306,19 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
     if package_digest(&layout.active)? != approved {
         return Err(error("activated package changed"));
     }
-    let candidate = match probe(&layout.active)? {
+    let candidate = match probe(layout, &layout.active, approved)? {
         Probe::Replied(health) => health,
         Probe::TimedOut => {
             let mut checks = vec![before];
             checks.extend(intent.restore(layout)?);
             fs::remove_file(journal)?;
-            return reopen(layout, transaction, "rolled_back_timeout", checks);
+            return reopen(
+                layout,
+                transaction,
+                &original,
+                "rolled_back_timeout",
+                checks,
+            );
         }
     };
     let mut checks = vec![before, candidate];
@@ -312,7 +328,7 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
         if package_digest(&layout.active)? != original {
             return Err(error("previous package changed"));
         }
-        let restored = require_connection_check(&layout.active)?;
+        let restored = require_connection_check(layout, &layout.active, &original)?;
         if restored.status != "connected" || restored.desktop_protocol != checks[0].desktop_protocol
         {
             return Err(error("restored Desktop could not reconnect"));
@@ -324,7 +340,17 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
         "updated"
     };
     fs::remove_file(journal)?;
-    reopen(layout, transaction, outcome, checks)
+    reopen(
+        layout,
+        transaction,
+        if outcome == "updated" {
+            approved
+        } else {
+            &original
+        },
+        outcome,
+        checks,
+    )
 }
 
 fn main() -> io::Result<()> {
@@ -334,6 +360,9 @@ fn main() -> io::Result<()> {
             println!("{}", package_digest(Path::new(directory))?);
             Ok(())
         }
+        [command, package, receipt] if command == "admit" => {
+            release::admit(&Layout::current()?, Path::new(package), Path::new(receipt))
+        }
         [command, digest] if command == "apply" => {
             let hash = digest
                 .to_str()
@@ -341,6 +370,8 @@ fn main() -> io::Result<()> {
                 .ok_or_else(|| error("expected SHA-256 package fingerprint"))?;
             apply(&Layout::current()?, &hash.to_ascii_lowercase())
         }
-        _ => Err(error("use fingerprint PATH or apply APPROVED_SHA256")),
+        _ => Err(error(
+            "use fingerprint PATH, admit PATH RECEIPT or apply APPROVED_SHA256",
+        )),
     }
 }

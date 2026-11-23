@@ -16,6 +16,9 @@ import time
 import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts/m17"))
+import update_fixture
+
 APP = ROOT / "apps/desktop"
 WINDOWS = sys.platform == "win32"
 SUFFIX = ".exe" if WINDOWS else ""
@@ -64,6 +67,9 @@ def build_packages(work):
                       "bundle": {"active": True, "externalBin": ["binaries/cryptexd"],
                                  "macOS": {"minimumSystemVersion": "26.0"},
                                  "windows": {"nsis": {"installMode": "currentUser"}}}}
+            if WINDOWS:
+                update_fixture.image(sidecar, "com.cryptex.daemon")
+                config["bundle"]["windows"].update(certificateThumbprint=os.environ["CX_UPDATE_CI_SIGNER"], digestAlgorithm="sha256")
             config_file = work / "update.conf.json"
             config_file.write_text(json.dumps(config), encoding="utf-8")
             run(pnpm, "--dir", APP, "exec", "tauri", "build", "--debug", "--features",
@@ -78,7 +84,25 @@ def build_packages(work):
             else:
                 package = dest / (PRODUCT + ".app")
                 run("ditto", target / "bundle/macos" / package.name, package)
-            packages.append((version, package, digest(sidecar)))
+            if WINDOWS:
+                with tempfile.TemporaryDirectory() as tmp:
+                    installed = Path(tmp) / "Cryptex"
+                    run(package, "/S", "/D=" + str(installed), timeout=180)
+                    daemon_hash = digest(installed / "cryptexd.exe")
+                    update_fixture.receipt(work / "cryptex-updater.exe", installed, dest / "release.cms")
+                    if not packages:
+                        update_fixture.receipt(work / "cryptex-updater.exe", installed, dest / "wrong.cms", wrong=True)
+                    # Remove the bootstrap installation registration before packaging the next version.
+                    run(installed / "uninstall.exe", "/S", "_?=" + str(installed), timeout=180)
+            else:
+                daemon = package / "Contents/MacOS/cryptexd"
+                update_fixture.image(daemon, "com.cryptex.daemon")
+                update_fixture.image(package, "com.cryptex.desktop")
+                daemon_hash = digest(daemon)
+                update_fixture.receipt(work / "cryptex-updater", package, dest / "release.cms")
+                if not packages:
+                    update_fixture.receipt(work / "cryptex-updater", package, dest / "wrong.cms", wrong=True)
+            packages.append((version, package, daemon_hash))
     finally:
         protocol.write_bytes(original)
         sidecar.unlink(missing_ok=True)
@@ -263,6 +287,17 @@ def exercise(packages, work, runtime, env):
     previous = active.with_name(active.name + ".previous")
     state = (Path(os.environ["LOCALAPPDATA"]) if WINDOWS else Path.home() / "Library/Application Support") / "Cryptex-Updater"
     journal = state / "package-transition.json"
+    def refuse(command, reason):
+        result = subprocess.run(command, env=env, capture_output=True, timeout=40)
+        if result.returncode == 0 or reason not in result.stderr:
+            raise RuntimeError(f"Unexpected signing decision: {result.returncode} {result.stderr!r}")
+
+    baseline_dir = packages[0][1].parent
+    refuse([tool, "admit", active, baseline_dir / "wrong.cms"], b"receipt verification failed")
+    refuse([tool, "admit", active, packages[1][1].parent / "release.cms"], b"receipt verification failed")
+    for path, (_, artifact, _) in zip([active, *(image[0] for image in images)], packages, strict=True):
+        for _ in range(2):
+            run(tool, "admit", path, artifact.parent / "release.cms", env=env, timeout=45)
     for index, source in enumerate((images[0][0], images[1][0], images[1][0], images[1][0])):
         if WINDOWS:
             shutil.copytree(source, pending)
@@ -271,9 +306,28 @@ def exercise(packages, work, runtime, env):
         receipt = runtime / "m14-update-result.json"
         receipt.unlink(missing_ok=True)
         approved = run(tool, "fingerprint", source, text=True, capture_output=True).stdout.strip()
+        if index == 0:
+            candidate_receipt = state / "release-receipts" / approved
+            saved_receipt = candidate_receipt.read_bytes()
+            candidate_receipt.write_bytes((baseline_dir / "wrong.cms").read_bytes())
+            try:
+                refuse([tool, "apply", approved], b"receipt verification failed")
+                if journal.exists() or previous.exists() or receipt.exists() or not pending.is_dir():
+                    raise RuntimeError("Unauthenticated update changed the current installation")
+            finally:
+                candidate_receipt.write_bytes(saved_receipt)
         if index == 2:
             working = run(tool, "fingerprint", active, text=True, capture_output=True).stdout.strip()
             interruption = interrupt_after_selection(tool, approved, working, active, runtime, journal, env)
+            retained_receipt = state / "release-receipts" / working
+            saved_receipt = retained_receipt.read_bytes()
+            retained_receipt.write_bytes(baseline_dir.joinpath("wrong.cms").read_bytes())
+            try:
+                refuse([tool, "apply", approved], b"receipt verification failed")
+                if not journal.is_file() or not previous.is_dir() or receipt.exists():
+                    raise RuntimeError("Unauthenticated recovery changed the interrupted selection")
+            finally:
+                retained_receipt.write_bytes(saved_receipt)
             if verify_note(daemon, runtime) != original_note:
                 raise RuntimeError("Interrupted selection changed canonical note data")
         else:
@@ -321,7 +375,9 @@ def exercise(packages, work, runtime, env):
         receipts.append(transaction)
         # Keep the displaced package as evidence and free the staging name.
         pending.rename(user_root / ("Cryptex-displaced-" + str(index)))
-    return {"platform": sys.platform, "scope": "installed-product-updater", "transactions": receipts,
+    return {"wrong_signer_refused": True, "foreign_receipt_refused": True, "unauthenticated_update_refused": True,
+            "unauthenticated_rollback_refused": True,
+            "platform": sys.platform, "scope": "installed-product-updater", "transactions": receipts,
             "restored_pair_byte_identical": True}
 
 
@@ -333,12 +389,14 @@ def main():
     packages_dir = Path(packages_dir).resolve()
     if action == "build" and getpass.getuser().lower() in ("runneradmin", "runner"):
         packages_dir.mkdir()
-        run("cargo", "build", "--locked", "-p", "cryptex-updater")
-        target = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")).resolve()
-        shutil.copy2(target / "debug" / ("cryptex-updater" + SUFFIX), packages_dir)
-        with tarfile.open(packages_dir / "cryptex-local-updater.tar.gz", "w:gz") as archive:
-            archive.add(packages_dir / ("cryptex-updater" + SUFFIX), arcname="cryptex-updater" + SUFFIX)
-        packages = build_packages(packages_dir)
+        with update_fixture.signer():
+            run("cargo", "build", "--locked", "-p", "cryptex-updater")
+            target = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")).resolve()
+            shutil.copy2(target / "debug" / ("cryptex-updater" + SUFFIX), packages_dir)
+            update_fixture.image(packages_dir / ("cryptex-updater" + SUFFIX), "com.cryptex.updater")
+            with tarfile.open(packages_dir / "cryptex-local-updater.tar.gz", "w:gz") as archive:
+                archive.add(packages_dir / ("cryptex-updater" + SUFFIX), arcname="cryptex-updater" + SUFFIX)
+            packages = build_packages(packages_dir)
         for _, artifact, daemon_hash in packages:
             (artifact.parent / "daemon.sha256").write_text(daemon_hash, encoding="ascii")
         return

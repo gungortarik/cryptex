@@ -118,6 +118,10 @@ impl Layout {
         }
     }
 
+    pub fn release_receipts(&self) -> PathBuf {
+        self.state.join("release-receipts")
+    }
+
     pub fn intent(&self) -> PathBuf {
         self.state.join("package-transition.json")
     }

@@ -2,12 +2,13 @@ name: M14 installed update and rollback
 on:
   workflow_dispatch:
   push:
-    branches: ['codex/m14-login-startup']
+    branches: ['codex/m14-login-startup', 'codex/m17-release-candidate']
     paths:
       - '.github/workflows/m14-installed-update.yml'
       - 'scripts/m14/installed_update.py'
       - 'apps/desktop/src-tauri/**'
       - 'apps/updater/**'
+      - 'scripts/m17/*update*'
       - 'services/cryptexd/src/ipc.rs'
       - 'services/cryptexd/src/compat.rs'
       - 'scripts/m8/*standard-user*.ps1'
@@ -39,7 +40,8 @@ jobs:
           python-version: '3.12'
       - run: pnpm install --frozen-lockfile
       - run: cargo fmt --all -- --check
-      - name: Build the three native installers
+      - name: Build the three signed Mac bundles and updater
+        if: runner.os == 'macOS'
         run: python -B scripts/m14/installed_update.py build "${{ runner.temp }}/m14-packages"
       - name: Exercise installed update and rollback in the disposable Mac account
         if: runner.os == 'macOS'
@@ -47,7 +49,7 @@ jobs:
       - name: Exercise installed update and rollback as a temporary Windows standard user
         if: runner.os == 'Windows'
         shell: pwsh
-        run: ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -M14UpdatePackages "$env:RUNNER_TEMP/m14-packages"
+        run: ./scripts/m17/windows_update_rehearsal.ps1
       - name: Verify that unrelated IPC failures cannot qualify as a protocol rejection
         run: cargo test --locked -p cryptexd --lib health_protocol_mismatch_requires_an_explicit_correlated_rejection
       - name: Lint the installed update observer and desktop client
