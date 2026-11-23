@@ -87,7 +87,7 @@ No checkbox may be marked complete without actual evidence from the applicable m
 ## F. Release artifacts
 
 - [ ] Signed/notarized packaging is complete as appropriate for each platform.
-  - Evidence:
+  - Evidence: [Disposable local signing on both platforms](https://github.com/gungortarik/cryptex/actions/runs/45253534985). The owner-controlled release identity, signed updater and final candidate remain open.
 - [ ] Final third-party notices are included.
   - Evidence:
 - [ ] Syncthing/other bundled dependency notice obligations are satisfied.
