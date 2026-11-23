@@ -25,7 +25,7 @@ fn read_receipt(path: &Path) -> io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
-fn content(digest: &str) -> String {
+pub(super) fn content(digest: &str) -> String {
     format!(
         "cryptex.owner-package.v1\nos={}\narch={}\nsha256={digest}\n",
         env::consts::OS,

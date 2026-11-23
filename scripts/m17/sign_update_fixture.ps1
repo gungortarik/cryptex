@@ -1,4 +1,4 @@
-param([ValidateSet('image','receipt','wrong-receipt')][string]$Action, [string]$Path, [string]$OutputPath)
+param([ValidateSet('image','wrong-receipt')][string]$Action, [string]$Path, [string]$OutputPath)
 $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows') {
     throw 'Disposable Windows runner required'

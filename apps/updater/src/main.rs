@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     env, fs,
-    io::{self, Read},
+    io::{self, Read, Write},
     path::Path,
     process::{Command, ExitStatus, Stdio},
     sync::mpsc,
@@ -364,6 +364,15 @@ fn main() -> io::Result<()> {
             println!("{}", package_digest(Path::new(directory))?);
             Ok(())
         }
+        [command, directory, approved] if command == "statement" => {
+            let digest = package_digest(Path::new(directory))?;
+            if approved.to_str() != Some(&digest) {
+                return Err(error("package differs from approved fingerprint"));
+            }
+            io::stdout()
+                .lock()
+                .write_all(release::content(&digest).as_bytes())
+        }
         [command, package, receipt] if command == "admit" => {
             release::admit(&Layout::current()?, Path::new(package), Path::new(receipt))
         }
@@ -375,7 +384,7 @@ fn main() -> io::Result<()> {
             apply(&Layout::current()?, &hash.to_ascii_lowercase())
         }
         _ => Err(error(
-            "use fingerprint PATH, admit PATH RECEIPT or apply APPROVED_SHA256",
+            "use fingerprint PATH, statement PATH APPROVED_SHA256, admit PATH RECEIPT or apply APPROVED_SHA256",
         )),
     }
 }

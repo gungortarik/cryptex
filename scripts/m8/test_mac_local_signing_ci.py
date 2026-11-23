@@ -14,7 +14,7 @@ from mac_local_startup_ci import run_real_startup_checks
 
 
 @contextmanager
-def disposable_signing_identity():
+def disposable_signing_identity(cms_helper=None):
     if (sys.platform != "darwin" or os.environ.get("GITHUB_ACTIONS") != "true"
             or os.environ.get("RUNNER_ENVIRONMENT") != "github-hosted"
             or os.environ.get("RUNNER_OS") != "macOS"):
@@ -70,10 +70,18 @@ def disposable_signing_identity():
                     "create_ci_keychain")
             checked(run_bounded, ["/usr/bin/security", "unlock-keychain", "-p", password, str(keychain)],
                     "unlock_ci_keychain")
+            trusted_tools = ["-T", "/usr/bin/codesign"]
+            partitions = "apple-tool:,apple:,codesign:"
+            if cms_helper is not None:
+                from mac_ci_credential_keychain import image_hash
+                helper_info = checked(run_bounded, ["/usr/bin/codesign", "-d", "--verbose=4",
+                                      str(cms_helper)], "inspect_receipt_helper")
+                trusted_tools.extend(["-T", str(cms_helper)])
+                partitions += ",cdhash:" + image_hash(helper_info)
             checked(run_bounded, ["/usr/bin/security", "import", str(root / "identity.p12"),
-                    "-k", str(keychain), "-P", password, "-T", "/usr/bin/codesign"], "import_ci_identity")
+                    "-k", str(keychain), "-P", password, *trusted_tools], "import_ci_identity")
             checked(run_bounded, ["/usr/bin/security", "set-key-partition-list",
-                    "-S", "apple-tool:,apple:,codesign:", "-s", "-k", password, str(keychain)],
+                    "-S", partitions, "-s", "-k", password, str(keychain)],
                     "authorize_ci_codesign")
             search_attempted = True
             checked(run_bounded, ["/usr/bin/security", "list-keychains", "-d", "user", "-s",

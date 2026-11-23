@@ -2,7 +2,7 @@
 from contextlib import contextmanager
 import os
 from pathlib import Path
-import platform
+import hashlib
 import shutil
 import subprocess
 import sys
@@ -10,6 +10,8 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 WINDOWS = sys.platform == "win32"
+
+from sign_owner_update import sign
 
 
 @contextmanager
@@ -23,13 +25,21 @@ def signer():
     elif sys.platform == "darwin":
         sys.path.insert(0, str(ROOT / "scripts/m8"))
         from test_mac_local_signing_ci import disposable_signing_identity
-        with disposable_signing_identity() as (directory, _keychain, _password, _id, _cargo, _openssl):
-            subprocess.run(["/usr/bin/security", "set-keychain-settings", "-lut", "3600", _keychain], check=True, timeout=15)
-            os.environ["CRYPTEX_UPDATE_SIGNER_DER"] = str(directory / "cert.der")
-            try:
-                yield
-            finally:
-                del os.environ["CRYPTEX_UPDATE_SIGNER_DER"]
+        with tempfile.TemporaryDirectory() as scratch:
+            helper = Path(scratch).resolve() / "owner-cms"
+            subprocess.run(["/usr/bin/clang", "-Wall", "-Wextra", "-Werror", ROOT / "scripts/m8/mac_owner_cms.c",
+                            ROOT / "services/cryptexd/src/m8_owner_channel/native/inventory.c",
+                            "-framework", "Security", "-framework", "CoreFoundation", "-o", helper], check=True, timeout=60)
+            subprocess.run(["/usr/bin/codesign", "--sign", "-", "--identifier", "com.cryptex.ci.update-signer",
+                            helper], check=True, timeout=30)
+            with disposable_signing_identity(helper) as (directory, keychain, _password, _id, _cargo, _openssl):
+                subprocess.run(["/usr/bin/security", "set-keychain-settings", "-lut", "3600", keychain], check=True, timeout=15)
+                os.environ["CRYPTEX_UPDATE_SIGNER_DER"] = str(directory / "cert.der")
+                os.environ["CX_UPDATE_CI_CMS_HELPER"] = str(helper)
+                try:
+                    yield
+                finally:
+                    del os.environ["CRYPTEX_UPDATE_SIGNER_DER"], os.environ["CX_UPDATE_CI_CMS_HELPER"]
     else:
         raise RuntimeError("Unsupported signing platform")
 
@@ -46,21 +56,43 @@ def image(path, identifier):
 
 def receipt(tool, package, output, wrong=False):
     digest = subprocess.check_output([tool, "fingerprint", package], text=True).strip()
-    arch = {"AMD64": "x86_64", "x86_64": "x86_64", "arm64": "aarch64"}[platform.machine()]
-    message = f"cryptex.owner-package.v1\nos={'windows' if WINDOWS else 'macos'}\narch={arch}\nsha256={digest}\n"
+    pin = hashlib.sha256(Path(os.environ["CRYPTEX_UPDATE_SIGNER_DER"]).read_bytes()).hexdigest()
+    helper = os.environ.get("CX_UPDATE_CI_CMS_HELPER")
+    if not wrong:
+        sign(tool, package, digest, pin, output, helper)
+        return
+    # Negative controls run once per build, using the baseline package.
     with tempfile.TemporaryDirectory() as temp:
-        content = Path(temp) / "statement"
-        content.write_bytes(message.encode("ascii"))
+        scratch = Path(temp)
+        refused = scratch / "refused.cms"
+        for expected_digest, expected_pin in (("0" * 64, pin), (digest, "0" * 64)):
+            try:
+                sign(tool, package, expected_digest, expected_pin, refused, helper)
+            except subprocess.CalledProcessError:
+                pass
+            else:
+                raise RuntimeError("Signed update with an unapproved package or identity")
+            if refused.exists():
+                raise RuntimeError("Rejected signing request published a receipt")
+        existing = scratch / "existing.cms"
+        existing.write_bytes(b"original")
+        try:
+            sign(tool, package, digest, pin, existing, helper)
+        except FileExistsError:
+            pass
+        else:
+            raise RuntimeError("Signer accepted existing output")
+        if existing.read_bytes() != b"original":
+            raise RuntimeError("Existing output changed")
+        content = scratch / "statement"
+        content.write_bytes(subprocess.check_output([tool, "statement", package, digest], timeout=180))
         if WINDOWS:
             subprocess.run(["pwsh", "-NoProfile", "-File", ROOT / "scripts/m17/sign_update_fixture.ps1",
-                            "wrong-receipt" if wrong else "receipt", content, output], check=True, timeout=60)
+                            "wrong-receipt", content, output], check=True, timeout=60)
         else:
-            key_dir = Path(os.environ["CRYPTEX_UPDATE_SIGNER_DER"]).parent
-            if wrong:
-                key_dir = Path(temp)
-                subprocess.run([shutil.which("openssl"), "req", "-x509", "-newkey", "rsa:2048", "-nodes",
-                                "-keyout", key_dir / "key.pem", "-out", key_dir / "cert.pem", "-days", "1",
-                                "-subj", "/CN=Cryptex unrelated CI"], stderr=subprocess.DEVNULL, check=True, timeout=30)
+            subprocess.run([shutil.which("openssl"), "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+                            "-keyout", scratch / "key.pem", "-out", scratch / "cert.pem", "-days", "1",
+                            "-subj", "/CN=Cryptex unrelated CI"], stderr=subprocess.DEVNULL, check=True, timeout=30)
             subprocess.run([shutil.which("openssl"), "cms", "-sign", "-binary", "-nodetach", "-md", "sha256",
-                            "-in", content, "-signer", key_dir / "cert.pem", "-inkey", key_dir / "key.pem",
+                            "-in", content, "-signer", scratch / "cert.pem", "-inkey", scratch / "key.pem",
                             "-outform", "DER", "-out", output], check=True, timeout=30)
