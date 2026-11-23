@@ -12,7 +12,7 @@ No checkbox may be marked complete without actual evidence from the applicable m
 ## A. Milestone and architecture gates
 
 - [ ] All required prior milestone contracts are complete through M16.
-  - Evidence:
+  - Open prerequisite: [M7 controlled Obsidian write-back](../docs/milestones/M7_OBSIDIAN_CONTROLLED_WRITEBACK.md#completion-gate). The owner approved a change in sequence. M7 still requires evidence that the Vault API confines reads and writes to the managed directory on both platforms. On November 23, 2026 the [public API request](https://forum.obsidian.md/t/api-request-physically-contained-vault-operations-for-managed-paths/119512) contained the original post and zero public replies.
 - [ ] All required accepted ADRs/addenda are current.
   - Evidence:
 - [ ] No unresolved architecture conflict is being hidden by implementation convenience.
@@ -87,13 +87,13 @@ No checkbox may be marked complete without actual evidence from the applicable m
 ## F. Release artifacts
 
 - [ ] Signed/notarized packaging is complete as appropriate for each platform.
-  - Evidence: [Disposable local signing on both platforms](https://github.com/gungortarik/cryptex/actions/runs/45253534985). The owner-controlled release identity, signed updater and final candidate remain open.
+  - Evidence: [Disposable local signing on both platforms](https://github.com/gungortarik/cryptex/actions/runs/45253534985). The [first-install verifiers](https://github.com/gungortarik/cryptex/actions/runs/45260525337) and [signed updater](https://github.com/gungortarik/cryptex/actions/runs/45257477174) passed with disposable identities. Owner-controlled signing, live Mac role verification and final candidate acceptance remain open.
 - [ ] Final third-party notices are included.
   - Evidence: [Frontend, native Rust dependencies and embedded component notices](../evidence/m17/personal-packaging.md). Final installed inventory and transport review are pending.
 - [ ] Syncthing/other bundled dependency notice obligations are satisfied.
-  - Evidence: [Official transport archive contents and source references](https://github.com/gungortarik/cryptex/actions/runs/45258102534). Installed-payload verification awaits selection of the corrected transport.
+  - Evidence: [Official transport archive contents and linked dependency notices](https://github.com/gungortarik/cryptex/actions/runs/45262814860). Installed-payload verification awaits selection of the corrected transport.
 - [ ] Release artifacts are traceable to repository-controlled source and pinned dependencies.
-  - Evidence:
+  - Evidence: [Installed provenance matched the clean source revision and build inputs on both platforms](https://github.com/gungortarik/cryptex/actions/runs/45261329297). Repeat against the final release candidate.
 - [ ] Final release checklist has been reviewed by the human owner.
   - Evidence:
 
