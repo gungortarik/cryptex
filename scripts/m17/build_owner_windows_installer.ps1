@@ -27,11 +27,17 @@ $cert = $identities[0]
 $tempBase = (Get-Item -LiteralPath ([IO.Path]::GetTempPath())).FullName.TrimEnd('\')
 $scratch = [IO.Directory]::CreateTempSubdirectory('cryptex-owner-package-').FullName
 $targetBefore = [Environment]::GetEnvironmentVariable('CARGO_TARGET_DIR')
+$sidecarStage = $null
+$copiedDaemon = $null
 try {
     $env:CARGO_TARGET_DIR = Join-Path $scratch 'target'
     $release = [IO.Directory]::CreateDirectory((Join-Path $env:CARGO_TARGET_DIR 'release')).FullName
     $copiedDesktop = Join-Path $release 'cryptex-desktop.exe'
-    $copiedDaemon = Join-Path $scratch $sidecars[0].Name
+    # Tauri normalizes externalBin paths without the Windows drive prefix.
+    # Keep the signed copy at a unique path relative to the Tauri build manifest.
+    $relativeStage = 'binaries/owner-' + [guid]::NewGuid().ToString('N')
+    $sidecarStage = New-Item -ItemType Directory -Path (Join-Path "$repo/apps/desktop/src-tauri" $relativeStage)
+    $copiedDaemon = Join-Path $sidecarStage.FullName $sidecars[0].Name
     Copy-Item -LiteralPath $desktop -Destination $copiedDesktop
     Copy-Item -LiteralPath $sidecars[0].FullName -Destination $copiedDaemon
     if ((Get-FileHash -LiteralPath $copiedDesktop).Hash -ine $DesktopSha256 -or
@@ -44,7 +50,7 @@ try {
     }
     $config = Join-Path $scratch 'signing.json'
     @{ bundle = @{
-        externalBin = @((Join-Path $scratch 'cryptexd'))
+        externalBin = @("$relativeStage/cryptexd")
         windows = @{ certificateThumbprint = $cert.Thumbprint; digestAlgorithm = 'sha256' }
     }} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $config
     Push-Location -LiteralPath "$repo/apps/desktop"
@@ -66,6 +72,8 @@ try {
     [pscustomobject]@{ Installer = $output; ReleaseSha256 = $hash; CertificateSha256 = $CertificateSha256 }
 } finally {
     [Environment]::SetEnvironmentVariable('CARGO_TARGET_DIR', $targetBefore)
+    if ($copiedDaemon -and [IO.File]::Exists($copiedDaemon)) { [IO.File]::Delete($copiedDaemon) }
+    if ($sidecarStage) { [IO.Directory]::Delete($sidecarStage.FullName, $false) }
     $resolved = (Resolve-Path -LiteralPath $scratch).Path
     if ([IO.Path]::GetDirectoryName($resolved) -ieq $tempBase -and
         [IO.Path]::GetFileName($resolved).StartsWith('cryptex-owner-package-') -and $resolved -ieq $scratch) {
