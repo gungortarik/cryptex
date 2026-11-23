@@ -71,6 +71,15 @@ def exercise(root, revision):
             raise
     else:
         raise RuntimeError("Signer accepted an output directory inside the sealed application")
+    try:
+        prepare(installed, "0" * 40, pin, hashlib.sha256(desktop.read_bytes()).hexdigest(), helper, installed.parent)
+    except subprocess.CalledProcessError as error:
+        if error.returncode != 2 or b"local_signed_startup_Inventory" not in (error.stderr or b"").splitlines():
+            raise
+    else:
+        raise RuntimeError("A valid signature with the wrong source revision was published")
+    if slot().exists():
+        raise RuntimeError("Wrong revision occupied the approved slot")
     publish()
     run("/usr/bin/codesign", "--verify", "--strict", installed)
     try:

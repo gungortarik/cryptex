@@ -55,6 +55,13 @@ def approved_snapshot(bundle, scratch, pin, approved_image):
     return snapshot
 
 
+def verify_pair(snapshot):
+    result = subprocess.run([snapshot / "Contents/MacOS/cryptex-desktop", "--cryptex-verify-installed-inventory"],
+                            check=True, capture_output=True, timeout=25)
+    if result.stdout.splitlines() != [b"sealed_inventory_verified"]:
+        raise ValueError("Package did not verify its inventory")
+
+
 def prepare(bundle, revision, pin, approved_image, helper, output):
     if not re.fullmatch("[0-9a-f]{40}", revision):
         raise ValueError("Expected the full reviewed source revision")
@@ -64,10 +71,11 @@ def prepare(bundle, revision, pin, approved_image, helper, output):
     if os.path.lexists(destination):
         raise FileExistsError(destination)
     with tempfile.TemporaryDirectory(dir=output) as scratch:
-        stage = Path(scratch) / "release"
+        stage = Path(scratch) / destination.name
         stage.mkdir(mode=0o700)
         snapshot = approved_snapshot(bundle, Path(scratch), pin, approved_image)
         write_inventory(snapshot, revision, pin.lower(), helper, stage)
+        verify_pair(snapshot)
         verify(bundle, pin, approved_image)
         publish(stage, destination)
     return destination
@@ -106,10 +114,7 @@ def stage_delivery(bundle, source, pin, approved_image, output):
         pair = read_pair(source)
         for filename, data in pair.items():
             (stage / filename).write_bytes(data)
-        result = subprocess.run([snapshot / "Contents/MacOS/cryptex-desktop", "--cryptex-verify-installed-inventory"],
-                                check=True, capture_output=True, timeout=25)
-        if result.stdout.splitlines() != [b"sealed_inventory_verified"]:
-            raise ValueError("Package did not verify its inventory")
+        verify_pair(snapshot)
         verify(bundle, pin, approved_image)
         try:
             publish(stage, destination)
