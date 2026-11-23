@@ -7,7 +7,7 @@
 
 #[cfg(test)]
 #[path = "projection_scale_test.rs"]
-mod scale_test;
+pub(crate) mod scale_test;
 
 use std::fs;
 use std::path::Path;

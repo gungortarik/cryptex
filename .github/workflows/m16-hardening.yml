@@ -7,6 +7,7 @@ on:
       - 'Cargo.toml'
       - 'crates/projection/src/**'
       - 'services/cryptexd/src/projection.rs'
+      - 'services/cryptexd/src/knowledge_materialization.rs'
       - '.github/workflows/m16-hardening.yml'
       - 'services/cryptexd/src/projection_scale_test.rs'
 jobs:
@@ -43,3 +44,14 @@ jobs:
             done
             grep -F '1 passed; 0 failed' "$log"
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Search reopened history and refresh its generated vault
+        if: matrix.events == 10000
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_name=knowledge_materialization::tests::guarded_search_and_vault_publish_the_same_reopened_history_at_scale
+          log="$RUNNER_TEMP/m16-vault.log"
+          cargo test --release --locked -p cryptexd --lib "$test_name" -- --exact --ignored --nocapture | tee "$log"
+          for phase in initial refresh; do
+            grep -Ex "m16_guarded_vault phase=$phase notes=10000 guarded_hits=10 search_ms=[0-9]+ vault_ms=[0-9]+" "$log" >> "$GITHUB_STEP_SUMMARY"
+          done

@@ -4294,6 +4294,81 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "native M16 guarded reader and vault workload"]
+    fn guarded_search_and_vault_publish_the_same_reopened_history_at_scale() {
+        use crate::projection::open_projection_db;
+        use crate::projection::scale_test::{BRAIN, write_signed_fixture};
+
+        let profile = tempfile::tempdir().unwrap();
+        let vault = tempfile::tempdir().unwrap();
+        let root = profile.path();
+        let store = FakeSecureStore::new();
+        let env = SecureStoreEnvironment::Dev;
+        let device = DeviceId::new("m16-synthetic-vault").unwrap();
+        let devices = std::slice::from_ref(&device);
+        write_signed_fixture(root, &device, &store, 10_000);
+        let key = ensure_event_signing_key(&store, env, root, &device, &[], true).unwrap();
+        let mut resolver = OneTrustedDevice {
+            device: device.as_str().to_owned(),
+            key_id: key.public.signing_key_id,
+            key: key.signing_key.verifying_key(),
+        };
+        let (mut db, _) = open_projection_db(root).unwrap();
+        rebuild_device_projection(&store, env, root, &device, &db).unwrap();
+        rebuild_knowledge_from_canonical(root, BRAIN, devices, &mut resolver, &mut db).unwrap();
+        drop(db);
+        let (db, _) = open_projection_db(root).unwrap();
+        let started = Instant::now();
+        let hits = search_events_with_retrieval_safety(
+            root,
+            BRAIN,
+            devices,
+            &mut resolver,
+            &db,
+            &SearchQuery {
+                text: Some("m16edge".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let search_ms = started.elapsed().as_millis();
+        assert_eq!(hits.len(), 10);
+        let owner_file = vault.path().join("user.md");
+        fs::write(&owner_file, b"synthetic owner file").unwrap();
+        for phase in ["initial", "refresh"] {
+            let started = Instant::now();
+            let published = rebuild_vault_with_retrieval_safety(
+                root,
+                BRAIN,
+                devices,
+                &mut resolver,
+                &db,
+                vault.path(),
+            )
+            .unwrap();
+            let elapsed_ms = started.elapsed().as_millis();
+            assert_eq!(published.note_count, 10_000);
+            let notes = vault.path().join("Cryptex/notes");
+            assert_eq!(
+                fs::read_dir(&notes)
+                    .unwrap()
+                    .collect::<Result<Vec<_>, _>>()
+                    .unwrap()
+                    .len(),
+                10_000
+            );
+            for hit in &hits {
+                let text = fs::read_to_string(notes.join(format!("{}.md", hit.event_id))).unwrap();
+                assert_eq!(text.split_once("---\n\n").unwrap().1.trim_end(), hit.text);
+            }
+            assert_eq!(fs::read(&owner_file).unwrap(), b"synthetic owner file");
+            println!(
+                "m16_guarded_vault phase={phase} notes=10000 guarded_hits=10 search_ms={search_ms} vault_ms={elapsed_ms}"
+            );
+        }
+    }
+
+    #[test]
     fn vault_view_uses_only_representative_entities_and_reduced_relations() {
         use cryptex_events::{EntityKind, FactValue};
         use cryptex_knowledge::{Entity, Fact, KnowledgeState, Provenance, Relation};

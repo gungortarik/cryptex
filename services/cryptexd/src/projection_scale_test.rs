@@ -15,7 +15,7 @@ use std::io::{BufWriter, Write};
 use std::time::Instant;
 
 const PACK_SIZE: u64 = 1000;
-const BRAIN: &str = "6651823e-f82f-4c0e-817c-51edb9428556";
+pub(crate) const BRAIN: &str = "6651823e-f82f-4c0e-817c-51edb9428556";
 const ENV: SecureStoreEnvironment = SecureStoreEnvironment::Dev;
 
 fn pack_digests(root: &Path, device: &DeviceId) -> Vec<(std::ffi::OsString, [u8; 32])> {
@@ -42,7 +42,7 @@ fn synthetic_id(seq: u64) -> String {
 
 /// Fixture setup uses the production envelope and frame formats. Timings start
 /// after setup, so they measure the actual daemon reader and SQLite rebuild.
-fn write_signed_fixture(
+pub(crate) fn write_signed_fixture(
     root: &Path,
     device: &DeviceId,
     store: &FakeSecureStore,
