@@ -54,7 +54,8 @@ export function prepareSidecar(targetTriple = process.env.TAURI_ENV_TARGET_TRIPL
   execFileSync(
     "cargo",
     ["build", "-p", "cryptexd", "--release", "--locked", "--target", triple,
-      ...(sealedStartupCheck ? ["--features", "m17-sealed-startup-check"] : [])],
+      ...(sealedStartupCheck ? ["--features", sealedStartupCheck === "profile-trial"
+        ? "m17-sealed-profile-trial" : "m17-sealed-startup-check"] : [])],
     { cwd: repositoryDirectory, stdio: "inherit" },
   );
 

@@ -13,6 +13,7 @@ m11-installed-search-check = ["tauri/custom-protocol", "cryptexd/m11-installed-s
 m8-device-recovery-check = ["tauri/custom-protocol", "cryptexd/m8-start-inspection"]
 m8-local-startup-check = ["cryptexd/m8-local-startup-check", "tauri/custom-protocol"]
 m17-sealed-startup-check = ["m8-local-startup-check", "cryptexd/m17-sealed-startup-check"]
+m17-sealed-profile-trial = ["m17-sealed-startup-check", "cryptexd/m17-sealed-profile-trial"]
 m8-development-product = ["m8-local-startup-check", "cryptexd/m8-development-product"]
 
 [build-dependencies]

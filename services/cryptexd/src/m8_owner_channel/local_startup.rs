@@ -60,7 +60,11 @@ fn check_profile(profile: Option<ContentProfile>) -> Result<(), Error> {
     if (cfg!(feature = "m8-development-product")
         && profile != Some(ContentProfile::ExistingProfile))
         || (cfg!(feature = "m17-sealed-startup-check")
-            && profile.is_some_and(|p| p != ContentProfile::Ephemeral))
+            && profile.is_some_and(|p| {
+                p != ContentProfile::Ephemeral
+                    && !(cfg!(feature = "m17-sealed-profile-trial")
+                        && p == ContentProfile::ExistingProfile)
+            }))
     {
         return Err(Error::Arguments);
     }
@@ -766,8 +770,39 @@ pub use crate::ipc::native_profile::{
 
 pub const CONTENT_MARKER: &str = "m8-isolated-native-content-v1\n";
 pub const DURABLE_MARKER: &str = "m8-isolated-native-keychain-v1\n";
+/// Both signed images derive the same disposable profile slot from their pinned certificate.
+#[cfg(feature = "m17-sealed-profile-trial")]
+pub fn sealed_trial_root() -> Result<PathBuf, Error> {
+    let temp = std::env::temp_dir()
+        .canonicalize()
+        .map_err(|_| Error::Arguments)?;
+    Ok(temp.join(format!("cryptex-m17-profile-{:x}", Sha256::digest(CERT))))
+}
+
 fn require_content_runtime(root: &Path, profile: ContentProfile) -> Result<(), Error> {
     if profile == ContentProfile::ExistingProfile {
+        #[cfg(feature = "m17-sealed-profile-trial")]
+        {
+            if root != sealed_trial_root()?
+                || root.canonicalize().map_err(|_| Error::Arguments)? != root
+            {
+                return Err(Error::Arguments);
+            }
+            let descriptor = root.join("signed-probe.json");
+            let device = crate::identity_runtime::load_brain_identity(root)
+                .ok()
+                .and_then(|brain| {
+                    crate::local_device_identity::load_local_device_identity(root, &brain.brain_id)
+                        .ok()
+                })
+                .and_then(|local| cryptex_core::DeviceId::new(local.device_id).ok())
+                .ok_or(Error::Arguments)?;
+            crate::signed_transfer_probe::verify_files(
+                &cryptex_storage::sealed_segment_path(root, &device, 0),
+                &descriptor,
+            )
+            .map_err(|_| Error::Arguments)?;
+        }
         return crate::ipc::native_profile::validate_existing(root).map_err(|_| Error::Arguments);
     }
     use std::os::unix::fs::MetadataExt;

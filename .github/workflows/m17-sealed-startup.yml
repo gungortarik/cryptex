@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/m17-sealed-startup.yml'
       - 'scripts/m17/mac_sealed_startup.py'
+      - 'scripts/m17/mac_sealed_profile.py'
+      - 'services/cryptexd/src/ipc/native_profile.rs'
       - 'scripts/m17/mac_reopened_window.swift'
       - 'scripts/m17/sign_owner_update.py'
       - 'scripts/m17/prepare_mac_inventory.py'
@@ -24,9 +26,14 @@ permissions:
   contents: read
 jobs:
   sealed-startup:
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [ephemeral, persistent]
     runs-on: macos-26
     timeout-minutes: 45
     env:
+      M17_MAC_TRIAL: ${{ matrix.profile }}
       MACOSX_DEPLOYMENT_TARGET: '26.0'
     steps:
       - uses: actions/checkout@v4

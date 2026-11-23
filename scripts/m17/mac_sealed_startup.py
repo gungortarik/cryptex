@@ -23,11 +23,14 @@ def exercise(root, revision):
     config["bundle"]["resources"]["../dist"] = "frontend"
     overlay = root / "bundle.json"
     overlay.write_text(json.dumps(config), encoding="utf-8")
+    profile_trial = os.environ.get("M17_MAC_TRIAL") == "persistent"
+    feature = "m17-sealed-profile-trial" if profile_trial else "m17-sealed-startup-check"
     run("node", "--input-type=module", "-e",
-        "import {prepareSidecar} from './scripts/prepare-cryptexd-sidecar.mjs'; prepareSidecar(undefined,true)",
+        "import {prepareSidecar} from './scripts/prepare-cryptexd-sidecar.mjs'; "
+        "prepareSidecar(undefined,process.env.M17_MAC_TRIAL === 'persistent' ? 'profile-trial' : true)",
         cwd=ROOT / "apps/desktop", timeout=1200)
     run("pnpm", "--filter", "@cryptex/desktop", "exec", "tauri", "build", "--bundles", "app",
-        "--features", "m17-sealed-startup-check", "--config", overlay, cwd=ROOT, timeout=1200)
+        "--features", feature, "--config", overlay, cwd=ROOT, timeout=1200)
     installed = root / "Applications/Cryptex.app"
     installed.parent.mkdir()
     unsigned = ROOT / "target/release/bundle/macos/Cryptex.app"
@@ -107,6 +110,10 @@ def exercise(root, revision):
     else:
         raise RuntimeError("Existing inventory was overwritten")
     startup("connected")
+    if profile_trial:
+        from mac_sealed_profile import check
+        check(root, desktop, pin)
+        return
     window = subprocess.run(["/usr/bin/swift", ROOT / "scripts/m8/mac_ui_quit_check.swift", desktop],
                             capture_output=True, text=True, timeout=120)
     if window.returncode or "sealed_window_verified_note_and_cleanup=passed" not in window.stdout.splitlines():

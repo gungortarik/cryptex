@@ -394,7 +394,10 @@ pub(crate) fn serve(
         .map_err(io::Error::other)?;
     // No Unix or derived worker is exposed until it shares the original
     // native namespace capability set and verified device pins.
-    #[cfg(feature = "m8-development-product")]
+    #[cfg(any(
+        feature = "m8-development-product",
+        feature = "m17-sealed-profile-trial"
+    ))]
     trace_stage("unix_data", || {
         super::spawn_retrieval_with_consent(
             root,

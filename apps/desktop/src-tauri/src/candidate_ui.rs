@@ -1290,8 +1290,8 @@ fn check_transport_pairing(root: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Own normal startup in the sealed rehearsal. The native session uses a fresh
-/// synthetic profile, including when launched by the window system.
+/// Window-system launch owns the verified native session. Both builds are
+/// rehearsals; only the profile trial reopens its pre-enrolled synthetic note.
 #[cfg(feature = "m17-sealed-startup-check")]
 pub fn sealed_entry() -> Option<Result<(), String>> {
     if std::env::args_os().len() > 1 {
@@ -1300,6 +1300,16 @@ pub fn sealed_entry() -> Option<Result<(), String>> {
                 .unwrap_or_else(|| Err("sealed_rehearsal_arguments".into())),
         );
     }
+    #[cfg(feature = "m17-sealed-profile-trial")]
+    return Some((|| {
+        let runtime =
+            cryptexd::local_signed_startup::sealed_trial_root().map_err(|e| e.to_string())?;
+        let (owner, content) = Owner::start_profile(&runtime, ContentProfile::ExistingProfile)?;
+        let (context, binding) = install_context(content, &runtime)?;
+        owner.client.call(|reply| Work::Bind(binding, reply))?;
+        owner_window(context, owner, true, || Ok(()))
+    })());
+    #[cfg(not(feature = "m17-sealed-profile-trial"))]
     Some((|| {
         let scratch = tempfile::Builder::new()
             .prefix("cryptex-m17-ui-")
@@ -1438,6 +1448,12 @@ pub fn entry() -> Option<Result<(), String>> {
     })())
 }
 
+#[cfg(feature = "m17-sealed-profile-trial")]
+#[tauri::command]
+fn m17_search_observed() {
+    println!("sealed_profile_search_visible=passed");
+}
+
 fn owner_window(
     mut context: tauri::Context<tauri::Wry>,
     owner: Owner,
@@ -1458,28 +1474,48 @@ fn owner_window(
     context.config_mut().app.windows.clear();
     let app = tauri::Builder::default()
         .manage(owner.client.clone())
-        .invoke_handler(tauri::generate_handler![
-            m8_native_profile_status,
-            m8_new_bootstrap_transaction_id,
-            m8_read_bootstrap_brain_identity,
-            m8_read_transport_device_id,
-            m8_connection_settings,
-            m8_retirement_file,
-            m8_create_bootstrap_offer,
-            m8_create_bootstrap_proof,
-            m8_prepare_peer_approval,
-            m8_confirm_peer_approval,
-            m8_cancel_peer_approval,
-            m8_complete_peer_approval,
-            m8_prepare_owner_security_operation,
-            m8_confirm_owner_security_operation,
-            m8_cancel_owner_security_operation,
-            p0_3_ipc_health,
-            p0_5_set_capture_session_guard,
-        ])
+        .invoke_handler(move |invoke: tauri::ipc::Invoke<tauri::Wry>| {
+            #[cfg(feature = "m17-sealed-profile-trial")]
+            if existing_profile
+                && matches!(
+                    invoke.message.command(),
+                    "p0_4_guarded_search" | "m17_search_observed"
+                )
+            {
+                let search: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool =
+                    tauri::generate_handler![super::p0_4_guarded_search, m17_search_observed];
+                return search(invoke);
+            }
+            let dispatch: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                m8_native_profile_status,
+                m8_new_bootstrap_transaction_id,
+                m8_read_bootstrap_brain_identity,
+                m8_read_transport_device_id,
+                m8_connection_settings,
+                m8_retirement_file,
+                m8_create_bootstrap_offer,
+                m8_create_bootstrap_proof,
+                m8_prepare_peer_approval,
+                m8_confirm_peer_approval,
+                m8_cancel_peer_approval,
+                m8_complete_peer_approval,
+                m8_prepare_owner_security_operation,
+                m8_confirm_owner_security_operation,
+                m8_cancel_owner_security_operation,
+                p0_3_ipc_health,
+                p0_5_set_capture_session_guard,
+            ];
+            dispatch(invoke)
+        })
         .setup(move |app| {
-            tauri::WebviewWindowBuilder::from_config(app, &window)?
-                .incognito(true)
+            let builder = tauri::WebviewWindowBuilder::from_config(app, &window)?.incognito(true);
+            #[cfg(feature = "m17-sealed-profile-trial")]
+            let builder = if existing_profile {
+                builder.initialization_script(include_str!("sealed_profile_search.js"))
+            } else {
+                builder
+            };
+            builder
                 .on_navigation(|url| url.scheme() == "tauri" && url.host_str() == Some("localhost"))
                 .build()?;
             Ok(())
