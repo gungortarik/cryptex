@@ -18,6 +18,7 @@ import uuid
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/m17"))
 import update_fixture
+from package_owner_updater import package as package_updater
 
 APP = ROOT / "apps/desktop"
 WINDOWS = sys.platform == "win32"
@@ -452,13 +453,38 @@ def main():
         with update_fixture.signer():
             run("cargo", "build", "--release", "--locked", "-p", "cryptex-updater")
             target = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")).resolve()
-            shutil.copy2(target / "release" / ("cryptex-updater" + SUFFIX), packages_dir)
-            update_fixture.image(packages_dir / ("cryptex-updater" + SUFFIX), "com.cryptex.updater")
-            notices = packages_dir / "updater-notices.json"
-            run("node", ROOT / "scripts/m17/updater_notices.mjs", notices)
-            with tarfile.open(packages_dir / "cryptex-local-updater.tar.gz", "w:gz") as archive:
-                archive.add(notices, arcname="notices/rust.json")
-                archive.add(packages_dir / ("cryptex-updater" + SUFFIX), arcname="cryptex-updater" + SUFFIX)
+            image = target / "release" / ("cryptex-updater" + SUFFIX)
+            approved = digest(image)
+            certificate = Path(os.environ["CRYPTEX_UPDATE_SIGNER_DER"])
+            signer = digest(certificate)
+            output = packages_dir / "cryptex-local-updater.tar.gz"
+            keychain = os.environ.get("CX_NATIVE_TEST_KEYCHAIN")
+            with tempfile.TemporaryDirectory() as temp:
+                other = Path(temp) / "other.cer"
+                other.write_bytes(certificate.read_bytes() + b"x")
+                for sha, cert, pin, reason in ((approved, certificate, "0" * 64, "Different owner certificate"),
+                        ("0" * 64, certificate, signer, "Different unsigned updater"),
+                        (approved, other, digest(other), "Updater trusts a different package signer")):
+                    try:
+                        package_updater(image, sha, cert, pin, output, keychain)
+                    except ValueError as error:
+                        if str(error) != reason:
+                            raise
+                    else:
+                        raise RuntimeError("Updater packaging accepted a wrong approval or identity")
+                    if output.exists():
+                        raise RuntimeError("Refused updater packaging published an archive")
+            expected = package_updater(image, approved, certificate, signer, output, keychain)
+            if digest(output) != expected or digest(image) != approved:
+                raise RuntimeError("Published archive or reviewed updater changed")
+            with tarfile.open(output, "r:gz") as archive:
+                if archive.getnames() != [image.name, "notices/rust.json"]:
+                    raise RuntimeError("Unexpected updater archive members")
+                archive.extractall(packages_dir, filter="data")
+            tool = packages_dir / image.name
+            if run(tool, "signer-fingerprint", text=True, capture_output=True).stdout.strip() != signer:
+                raise RuntimeError("Delivered updater has the wrong trust pin")
+            print("owner_updater_archive_verified=true archive_sha256=" + expected, flush=True)
             packages = build_packages(packages_dir)
         for _, artifact, daemon_hash in packages:
             (artifact.parent / "daemon.sha256").write_text(daemon_hash, encoding="ascii")

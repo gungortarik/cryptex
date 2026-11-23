@@ -13,6 +13,22 @@ def check(command):
     return subprocess.run(command, capture_output=True, timeout=90, check=True).stdout
 
 
+def verify_image(image, executable, role, signer_sha256):
+    with tempfile.TemporaryDirectory() as temp:
+        check(["/usr/bin/codesign", "--verify", "--strict", "--all-architectures",
+               "-R", f'=identifier "{role}"', image])
+        architectures = check(["/usr/bin/lipo", "-archs", executable]).decode("ascii").split()
+        if not architectures or not all(re.fullmatch(r"[A-Za-z0-9_]+", arch) for arch in architectures):
+            raise ValueError("Unrecognized Mach-O architecture")
+        for arch in architectures:
+            prefix = Path(temp) / f"{role}.{arch}."
+            check(["/usr/bin/codesign", "--display", "--architecture", arch,
+                   f"--extract-certificates={prefix}", image])
+            leaf = Path(str(prefix) + "0").read_bytes()
+            if hashlib.sha256(leaf).hexdigest() != signer_sha256.lower():
+                raise ValueError("Unexpected Cryptex signer")
+
+
 def verify(bundle, signer_sha256, release_sha256):
     if sys.platform != "darwin":
         raise ValueError("macOS required")
@@ -35,21 +51,8 @@ def verify(bundle, signer_sha256, release_sha256):
             digest.update(chunk)
     if digest.hexdigest() != release_sha256.lower():
         raise ValueError("Different Cryptex release")
-    with tempfile.TemporaryDirectory() as temp:
-        for image, executable, role in ((bundle, desktop, "com.cryptex.desktop"),
-                                        (daemon, daemon, "com.cryptex.daemon")):
-            check(["/usr/bin/codesign", "--verify", "--strict", "--all-architectures",
-                   "-R", f'=identifier "{role}"', image])
-            architectures = check(["/usr/bin/lipo", "-archs", executable]).decode("ascii").split()
-            if not architectures or not all(re.fullmatch(r"[A-Za-z0-9_]+", arch) for arch in architectures):
-                raise ValueError("Unrecognized Mach-O architecture")
-            for arch in architectures:
-                prefix = Path(temp) / f"{role}.{arch}."
-                check(["/usr/bin/codesign", "--display", "--architecture", arch,
-                       f"--extract-certificates={prefix}", image])
-                leaf = Path(str(prefix) + "0").read_bytes()
-                if hashlib.sha256(leaf).hexdigest() != signer_sha256.lower():
-                    raise ValueError("Unexpected Cryptex signer")
+    verify_image(bundle, desktop, "com.cryptex.desktop", signer_sha256)
+    verify_image(daemon, daemon, "com.cryptex.daemon", signer_sha256)
     metadata = plistlib.loads(info.read_bytes())
     if metadata.get("CFBundleIdentifier") != "com.cryptex.desktop" or metadata.get("CFBundleExecutable") != desktop.name:
         raise ValueError("Unexpected application identity")

@@ -10,6 +10,14 @@ use std::{
 const PIN: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/update-signer.der"));
 const MAX_CMS: u64 = 65536;
 
+pub(super) fn signer_fingerprint() -> io::Result<String> {
+    use sha2::{Digest, Sha256};
+    if PIN.is_empty() {
+        return Err(error("owner release signer is not provisioned"));
+    }
+    Ok(format!("{:x}", Sha256::digest(PIN)))
+}
+
 fn read_receipt(path: &Path) -> io::Result<Vec<u8>> {
     let metadata = fs::symlink_metadata(path)?;
     if !metadata.is_file() || !(1..=MAX_CMS).contains(&metadata.len()) {

@@ -362,6 +362,10 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
 fn main() -> io::Result<()> {
     let args = env::args_os().skip(1).collect::<Vec<_>>();
     match args.as_slice() {
+        [command] if command == "signer-fingerprint" => {
+            println!("{}", release::signer_fingerprint()?);
+            Ok(())
+        }
         [command, directory] if command == "fingerprint" => {
             println!("{}", package_digest(Path::new(directory))?);
             Ok(())

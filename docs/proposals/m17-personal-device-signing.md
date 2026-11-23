@@ -30,9 +30,31 @@ The command makes private copies of both reviewed build products and uses the se
 
 Use the previously enrolled public certificate to authenticate the candidate and the retained installation. Bind the platform, architecture, release identity and package contents to the approved candidate before executing any update probe. The existing protocol check then tests compatibility. If activation fails, verify the retained installation before reopening it. A replacement certificate requires explicit owner verification through the same independent channel as the first install. A missing key or unverifiable retained image keeps the package inactive.
 
-Keep signed application binaries separate from the Brain, OS credentials, backups and Recovery Kit. An ordinary uninstall removes the application and its startup registration. Erasure of personal data remains a distinct owner operation under the existing purge rules. Disposable signed update and reinstall tests preserved a signed note on both systems. The Windows NSIS test also verified removal of the matching login entry. The Mac removal path and the owner-controlled installations still require verification.
+Keep signed application binaries separate from the Brain, OS credentials, backups and Recovery Kit. An ordinary uninstall removes the application and its startup registration. Erasure of personal data remains a distinct owner operation under the existing purge rules. Disposable signed update and reinstall tests preserved a signed note on both systems. The Windows NSIS test also verified removal of the matching login entry. First installation with the owner's own keys remains open.
 
 The standalone updater takes the independently approved public certificate at build time through `CRYPTEX_UPDATE_SIGNER_DER`. A build without that certificate refuses admission. The `fingerprint` operation measures the installed directory. An attached CMS statement binds the full directory digest, OS and CPU architecture. The `admit` operation validates that statement and the two native executables before saving a receipt. The normal `apply` operation rechecks the selected and retained images against their receipts. The owner-selected digest identifies the requested update. It grants no signing authority. [Installed update evidence](../../evidence/m17/personal-packaging.md#signed-updates)
+
+### Delivering the standalone updater
+
+On each signing machine, set `CRYPTEX_UPDATE_SIGNER_DER` to the absolute path of the owner's public DER certificate for that OS. Build the reviewed checkout with `cargo build --release --locked -p cryptex-updater`. Record the SHA-256 of that unsigned executable. From the same checkout, package it with the matching OS signing identity.
+
+```sh
+python scripts/m17/package_owner_updater.py UPDATER UNSIGNED_SHA256 PUBLIC_DER CERTIFICATE_SHA256 NEW_ARCHIVE.tar.gz
+```
+
+The command signs a copy, verifies its native signature, and outputs the SHA-256 of an archive containing the signed program and its dependency notices. Compare that archive hash with the value recorded independently on the signing machine before extracting it on the receiving device. The updater's `signer-fingerprint` command reports the SHA-256 of the public certificate it uses to authenticate future packages. Packaging stops if the build lacks this pin or contains a different one. Run the updater outside the installed Desktop directory.
+
+### Removing the installed application on Mac
+
+Quit Cryptex first. From outside the application, use the standalone updater built with the reviewed public certificate. Supply the approved full-package digest from the signing machine.
+
+```sh
+cryptex-updater remove-installed-app APPROVED_PACKAGE_SHA256
+```
+
+The updater checks the signed receipt, application and daemon before asking macOS to move the installed bundle to Trash. If a Cryptex LaunchAgent file exists, its label, executable, arguments and run-at-login setting must exactly match this installation. The updater moves that file to Trash first. A different entry, an active Desktop or an unfinished update stops removal. If moving the application fails after the login file was moved, rerun the same command after resolving the reported OS error. This removes the registration for future logins. The command leaves the current launchd session alone.
+
+The profile, keys, backups and inactive update packages stay in place. To reinstall, verify the signed application and its detached metadata using the first-install procedure. The owner can enable login startup again separately.
 
 ## macOS startup after installation
 
