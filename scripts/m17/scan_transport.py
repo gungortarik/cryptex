@@ -69,7 +69,11 @@ def inspect(release, target, executable, directory):
             shutil.copyfileobj(source, dest)
     out = subprocess.run(["govulncheck", "-mode=binary", "-format=json", binary], check=True,
                          capture_output=True, text=True, timeout=240)
+    build = json.loads(subprocess.check_output(["go", "version", "-m", "-json", binary], timeout=30))
+    if build.get("Main", {}).get("Path") != "github.com/syncthing/syncthing" or not build.get("Deps"):
+        raise ValueError("Missing official executable dependency inventory")
     return {"target": target, "archive_sha256": expected.removeprefix("sha256:"), "upstream_notices": notices,
+            "linked_modules": build["Deps"],
             "source": f"https://github.com/{REPOSITORY}/tree/{tag}", **findings(out.stdout)}
 
 

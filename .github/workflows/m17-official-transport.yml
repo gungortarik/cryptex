@@ -7,6 +7,8 @@ on:
       - '.github/workflows/m17-official-transport.yml'
       - 'scripts/m17/scan_transport.py'
       - 'scripts/m17/test_scan_transport.py'
+      - 'scripts/m17/transport_notices.py'
+      - 'scripts/m17/test_transport_notices.py'
 permissions:
   contents: read
 jobs:
@@ -25,6 +27,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -B -m unittest discover -s scripts/m17 -p 'test_scan_transport.py' -v
+      - run: python -B -m unittest discover -s scripts/m17 -p 'test_transport_notices.py' -v
       - run: go install golang.org/x/vuln/cmd/govulncheck@v1.10.0
       - name: Compare archive digests and inspect both binaries
         env:
@@ -34,4 +37,11 @@ jobs:
         with:
           name: official-transport-inspection
           path: ${{ runner.temp }}/transport.json
+          if-no-files-found: error
+      - name: Compare linked module sources and collect their exact notices
+        run: python -B scripts/m17/transport_notices.py "$RUNNER_TEMP/transport.json" "$RUNNER_TEMP/linked-notices.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: official-transport-linked-notices
+          path: ${{ runner.temp }}/linked-notices.json
           if-no-files-found: error
