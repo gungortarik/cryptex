@@ -10,7 +10,7 @@ import tempfile
 
 from update_fixture import ROOT, image, receipt, signer
 
-from prepare_mac_inventory import prepare, write_inventory
+from prepare_mac_inventory import prepare, stage_delivery, write_inventory
 
 
 def run(*args, **kwargs):
@@ -137,7 +137,28 @@ def exercise(root, revision):
     candidate_slot.rename(held)
     apply("rolled_back_failed_probe", "original", 3)
     startup("updater-restored")
-    held.rename(candidate_slot)
+    distribution = root / "delivery"
+    distribution.mkdir()
+    candidate = distribution / "Cryptex.app"
+    run("/usr/bin/ditto", pending, candidate)
+    candidate_digest = hashlib.sha256((candidate / "Contents/MacOS/cryptex-desktop").read_bytes()).hexdigest()
+    damaged = distribution / "damaged"
+    damaged.mkdir()
+    shutil.copyfile(held / "inventory.json", damaged / "inventory.json")
+    (damaged / "inventory.cms").write_bytes(b"invalid")
+    for foreign in (original_slot, damaged):
+        try:
+            stage_delivery(candidate, foreign, pin, candidate_digest, installed.parent)
+        except subprocess.CalledProcessError as error:
+            if error.returncode != 2 or b"local_signed_startup_Inventory" not in (error.stderr or b"").splitlines():
+                raise
+        else:
+            raise RuntimeError("Receiving Mac staged invalid inventory")
+        if candidate_slot.exists():
+            raise RuntimeError("Rejected inventory occupied the release slot")
+    for _ in range(2):
+        if stage_delivery(candidate, held, pin, candidate_digest, installed.parent) != candidate_slot:
+            raise RuntimeError("Receiving Mac selected the wrong release slot")
     apply("updated", "candidate", 2)
     startup("updater-selected")
     image(daemon, "com.cryptex.unrelated")

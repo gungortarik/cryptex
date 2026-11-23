@@ -2958,6 +2958,22 @@ fn local_signed_startup_check() -> Option<Result<(), String>> {
 mod installed_search;
 
 fn main() {
+    #[cfg(all(target_os = "macos", feature = "m17-sealed-startup-check"))]
+    if std::env::args_os().nth(1).as_deref()
+        == Some(std::ffi::OsStr::new("--cryptex-verify-installed-inventory"))
+    {
+        if std::env::args_os().len() != 2 {
+            std::process::exit(2);
+        }
+        match cryptexd::local_signed_startup::verified_desktop_content(Duration::from_secs(15)) {
+            Ok(_) => println!("sealed_inventory_verified"),
+            Err(error) => {
+                eprintln!("{error}");
+                std::process::exit(2);
+            }
+        }
+        return;
+    }
     #[cfg(feature = "m14-installed-update-check")]
     if let Err(error) = installed_update_check::admit() {
         eprintln!("Update rehearsal refused: {error}");

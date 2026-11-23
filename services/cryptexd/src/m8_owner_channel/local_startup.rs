@@ -309,7 +309,10 @@ pub struct Prepared {
 /// rendezvous, starts no child and grants no native session. The selected owner
 /// must still verify its own release and bind these exact bytes before a webview
 /// is created. In particular, a user prompt cannot consume the native deadline.
-#[cfg(feature = "m8-development-product")]
+#[cfg(any(
+    feature = "m8-development-product",
+    feature = "m17-sealed-startup-check"
+))]
 pub fn verified_desktop_content(timeout: Duration) -> Result<crate::ProtectedContent, Error> {
     crate::import_staging::macos_fs::require_product_os().map_err(|_| Error::Image)?;
     let deadline = Instant::now().checked_add(timeout).ok_or(Error::Deadline)?;
