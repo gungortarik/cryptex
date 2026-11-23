@@ -190,8 +190,11 @@ if($p.PSObject.Properties['m9_historical_daemon'] -and $p.m9_historical_daemon) 
     exit 0
 }
 $cutoffOnly=$p.PSObject.Properties['lan_cutoff_only'] -and $p.lan_cutoff_only
-if($cutoffOnly -or ($p.PSObject.Properties['lan_setup_only'] -and $p.lan_setup_only)) {
-    if($cutoffOnly) {
+$syncStress=$p.PSObject.Properties['m16_sync_stress'] -and $p.m16_sync_stress
+if($syncStress -or $cutoffOnly -or ($p.PSObject.Properties['lan_setup_only'] -and $p.lan_setup_only)) {
+    if($syncStress) {
+        & $p.python -B (Join-Path $p.workspace 'scripts/m16/sync_stress.py') --windows-artifact $p.lan_artifact
+    } elseif($cutoffOnly) {
         & $p.python -B (Join-Path $p.workspace 'scripts/m8/test_lan_cutoff_pair.py') --test-windows $p.lan_artifact
     } else {
         & $p.python -B (Join-Path $p.workspace 'scripts/m8/windows_lan_setup_ci.py') $p.lan_artifact

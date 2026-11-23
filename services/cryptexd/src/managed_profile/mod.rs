@@ -85,6 +85,15 @@ fn native_observation_survives_process_exit() {
 fn paired_attachment_transfer() {
     sealed_export::tests::reader_preflight::transfer::run();
 }
+#[cfg(all(
+    test,
+    any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+))]
+#[test]
+#[ignore = "M16 requires two disposable profiles and pinned native transports"]
+fn repeated_offline_exchange() {
+    sealed_export::tests::reader_preflight::transfer::stress::run();
+}
 #[cfg(all(test, windows))]
 mod tests;
 #[cfg(windows)]

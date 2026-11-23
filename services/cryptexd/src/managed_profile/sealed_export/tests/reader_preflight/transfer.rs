@@ -8,6 +8,7 @@ use std::thread;
 mod automatic;
 mod lifecycle;
 mod stale_purge;
+pub(in crate::managed_profile) mod stress;
 
 struct Wire {
     sender: PathBuf,
