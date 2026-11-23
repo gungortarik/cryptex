@@ -1,5 +1,9 @@
 # 34 — Current Implementation Handoff
 
+## M15 closed for disposable Cortex imports
+
+On November 23, 2026 the owner reviewed candidate `5e86ef9` and approved closure for synthetic data in temporary profiles, conditional on Windows and macOS verification. All four workflows passed for that exact candidate. Both installed applications recovered the signed source receipts and owner decision from manual and scheduled encrypted backups after the source profile and its credentials were removed. Existing signed backups also restored. The [acceptance record](../evidence/m15/cortex-import-review.md#final-acceptance) gives the test counts, compatibility and limits. Personal onboarding remains at M17. The next milestone is M16 hardening.
+
 ## M15 explicit owner decision for a disposable batch
 
 At `277df55`, all eighteen daemon capture tests passed on both [Windows and macOS](https://github.com/gungortarik/cryptex/actions/runs/45114621364). An exact nonempty comparison supplies a digest for the owner to review. The [accept and cancel commands](milestones/M15_CORTEX_FRESH_REINGESTION.md#accepting-or-cancelling-a-disposable-batch) reverify the same selection and signed receipts before persisting the chosen outcome. Both outcomes survived reopening. Repeating the same choice kept the signed decision bytes, staged packs, receipts and original export intact. Conflicting choices, invalidated reviews and altered signatures failed. This verifies the decision for a synthetic temporary Brain. Personal-data cutover and milestone acceptance remain open.
