@@ -17,12 +17,17 @@ $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=Cryptex CI 
     -KeyExportPolicy NonExportable -HashAlgorithm SHA256 -NotAfter (Get-Date).AddDays(1) `
     -CertStoreLocation Cert:\CurrentUser\My
 $publicPath = Join-Path $fixture.FullName 'signer.cer'
-$rootPath = "Cert:\CurrentUser\Root\$($cert.Thumbprint)"
+# The hosted runner is disposable. CurrentUser\Root requests an interactive
+# confirmation; install only the public code-signing leaf in the VM trust store.
+$rootPath = "Cert:\LocalMachine\Root\$($cert.Thumbprint)"
+$ownsTrustEntry = $false
 try {
     Export-Certificate -Cert $cert -FilePath $publicPath | Out-Null
     $pin = (Get-FileHash -LiteralPath $publicPath -Algorithm SHA256).Hash
     if (Test-Path -LiteralPath $rootPath) { throw 'Unexpected existing fixture trust' }
-    Import-Certificate -CertStoreLocation Cert:\CurrentUser\Root -FilePath $publicPath | Out-Null
+    $ownsTrustEntry = $true
+    Write-Output 'Installing the public CI signing certificate in the disposable VM'
+    Import-Certificate -CertStoreLocation Cert:\LocalMachine\Root -FilePath $publicPath | Out-Null
     $config = Join-Path $fixture.FullName 'signing.json'
     @{bundle=@{windows=@{certificateThumbprint=$cert.Thumbprint; digestAlgorithm='sha256'}}} |
         ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $config
@@ -30,6 +35,7 @@ try {
     if ($staged.Count -ne 1) { throw 'Expected one staged daemon' }
     $null = Set-AuthenticodeSignature -FilePath $staged[0].FullName -Certificate $cert -HashAlgorithm SHA256
     Assert-ImageSigner $staged[0].FullName $pin
+    Write-Output 'Staged daemon signature verified; building NSIS'
     Push-Location -LiteralPath "$repo/apps/desktop"
     try {
         pnpm exec tauri bundle --ci --bundles nsis --config src-tauri/tauri.bundle.conf.json --config $config
@@ -67,6 +73,6 @@ try {
     }
     Write-Output 'Signed NSIS, installed desktop and daemon matched the fixture pin. Wrong signer and changed file refused.'
 } finally {
-    if (Test-Path -LiteralPath $rootPath) { Remove-Item -LiteralPath $rootPath }
+    if ($ownsTrustEntry -and (Test-Path -LiteralPath $rootPath)) { Remove-Item -LiteralPath $rootPath }
     Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($cert.Thumbprint)" -DeleteKey
 }

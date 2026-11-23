@@ -5,7 +5,9 @@ on:
     branches: ['codex/m17-release-candidate']
     paths:
       - '.github/workflows/m17-owner-signing.yml'
-      - 'scripts/m17/**'
+      - 'scripts/m17/mac_package_signing.py'
+      - 'scripts/m17/windows_package_signing.ps1'
+      - 'third_party/rust-notices/**'
       - 'apps/desktop/scripts/*notices*'
       - 'apps/desktop/src-tauri/tauri.bundle.conf.json'
       - 'scripts/m8/test_mac_local_signing_ci.py'
@@ -41,9 +43,11 @@ jobs:
           python -B scripts/m8/test_mac_local_signing_runner.py
           pnpm --filter @cryptex/desktop tauri:package --bundles app
           python -B scripts/m17/mac_package_signing.py
-      - if: runner.os == 'Windows'
+      - name: Build the unsigned Windows binaries
+        if: runner.os == 'Windows'
+        run: pnpm --filter @cryptex/desktop tauri:package-smoke
+      - name: Sign the Windows installer and inspect the installed images
+        if: runner.os == 'Windows'
+        timeout-minutes: 6
         shell: pwsh
-        run: |
-          pnpm --filter @cryptex/desktop tauri:package-smoke
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ./scripts/m17/windows_package_signing.ps1
+        run: ./scripts/m17/windows_package_signing.ps1

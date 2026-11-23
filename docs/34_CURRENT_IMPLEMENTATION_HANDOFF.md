@@ -6,6 +6,8 @@ The owner intends to use Cryptex on their own Mac and Windows VM. The [beta chec
 
 Paid publisher credentials and invited-user distribution have not been selected. The existing [Mac image policy](proposals/m8-macos-release-image-policy.md) supports an independently pinned local certificate for controlled development and has separate release activation conditions. M17 needs a verified owner-operated signing and upgrade path for each OS, the remaining native dependency and transport notices, final candidate checks, and explicit release approval. Personal data enrollment is still on hold pending verification of a corrected official transport.
 
+The [personal-device signing proposal](proposals/m17-personal-device-signing.md) covers the first install, update and rollback trust decisions. The [M17 package record](../evidence/m17/personal-packaging.md) tracks installation, notice and official transport checks.
+
 ## M16 hardening complete
 
 On November 23, 2026 the owner reviewed candidate `d06eaf5` and approved closure conditional on native CI and the final technical review. All 13 candidate workflows passed on Windows and macOS, with 33 successful jobs. The [acceptance record](../evidence/m16/hardening.md#final-candidate-review) covers scale and reconstruction, repeated offline sync, physical sleep observations, recovery after an accepted Cortex purge, security review and installed-app checks.
