@@ -413,9 +413,9 @@ def main():
     if action == "build" and getpass.getuser().lower() in ("runneradmin", "runner"):
         packages_dir.mkdir()
         with update_fixture.signer():
-            run("cargo", "build", "--locked", "-p", "cryptex-updater")
+            run("cargo", "build", "--release", "--locked", "-p", "cryptex-updater")
             target = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")).resolve()
-            shutil.copy2(target / "debug" / ("cryptex-updater" + SUFFIX), packages_dir)
+            shutil.copy2(target / "release" / ("cryptex-updater" + SUFFIX), packages_dir)
             update_fixture.image(packages_dir / ("cryptex-updater" + SUFFIX), "com.cryptex.updater")
             notices = packages_dir / "updater-notices.json"
             run("node", ROOT / "scripts/m17/updater_notices.mjs", notices)
