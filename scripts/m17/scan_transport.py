@@ -13,6 +13,19 @@ REPOSITORY = "syncthing/syncthing"
 TARGETS = {"windows-amd64": "syncthing.exe", "macos-arm64": "syncthing"}
 
 
+def upstream_notices(package, stem):
+    result = {}
+    for name in ("LICENSE.txt", "AUTHORS.txt"):
+        matches = [entry for entry in package.infolist() if entry.filename == stem + "/" + name]
+        if len(matches) != 1 or not 0 < matches[0].file_size <= 1024 * 1024:
+            raise ValueError(f"Missing, duplicated or oversized upstream notice: {name}")
+        contents = package.read(matches[0])
+        if not contents.decode("utf-8").strip():
+            raise ValueError(f"Empty upstream notice: {name}")
+        result[name] = {"bytes": len(contents), "sha256": hashlib.sha256(contents).hexdigest()}
+    return result
+
+
 def findings(output):
     decoder = json.JSONDecoder()
     found = set()
@@ -48,6 +61,7 @@ def inspect(release, target, executable, directory):
             raise ValueError("Release asset integrity check failed")
     binary = directory / executable
     with zipfile.ZipFile(archive) as package:
+        notices = upstream_notices(package, stem)
         info, = [member for member in package.infolist() if member.filename == stem + "/" + executable]
         if not 0 < info.file_size <= 256 * 1024 * 1024:
             raise ValueError("Unexpected executable size")
@@ -55,7 +69,8 @@ def inspect(release, target, executable, directory):
             shutil.copyfileobj(source, dest)
     out = subprocess.run(["govulncheck", "-mode=binary", "-format=json", binary], check=True,
                          capture_output=True, text=True, timeout=240)
-    return {"target": target, "archive_sha256": expected.removeprefix("sha256:"), **findings(out.stdout)}
+    return {"target": target, "archive_sha256": expected.removeprefix("sha256:"), "upstream_notices": notices,
+            "source": f"https://github.com/{REPOSITORY}/tree/{tag}", **findings(out.stdout)}
 
 
 def main():
