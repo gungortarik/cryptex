@@ -160,14 +160,14 @@ class ReviewedCaptureTest(unittest.TestCase):
             # securityd resolves the runner's selected default Keychain through
             # its login home. The daemon's trial profile still lives in TMPDIR.
             env["HOME"] = os.environ["HOME"]
-        source_args = [] if mode in ("--provenance", "--remove-trial-key") else [self.source]
+        source_args = [] if mode in ("--provenance", "--compare-selection", "--remove-trial-key") else [self.source]
         run = subprocess.run([DAEMON, "cortex-import-disposable", *source_args, mode, trial_id],
                              input=b"".join(json.dumps(d).encode() + b"\n" for d in decisions),
                              capture_output=True, cwd=self.profile, env=env, timeout=90)
         self.assertNotIn(b"private body marker", run.stdout + run.stderr)
         if expected_exit is None:
             self.assertNotEqual(run.returncode, 0)
-            if mode == "--provenance":
+            if mode in ("--provenance", "--compare-selection"):
                 self.assertEqual(run.stdout, b"")
             return run.stderr
         self.assertEqual(run.returncode, expected_exit, run.stderr)
@@ -235,6 +235,85 @@ class ReviewedCaptureTest(unittest.TestCase):
         path.write_bytes(original)
         (directory / "orphan.json").write_bytes(original)
         self.assertIn(b"source_receipt_inventory_mismatch", self.run_phase("--provenance", trial_id, expected_exit=None))
+
+    def selection(self, trial_id, *decisions):
+        return {"schema": "cryptex.cortex.selection.v1", "brain_id": trial_id, "selected": decisions}
+
+    def test_selection_comparison_shows_missing_extra_and_changed_offline(self):
+        trial_id = str(uuid.uuid4())
+        self.addCleanup(self.run_phase, "--remove-trial-key", trial_id)
+        other = dict(self.approval, capture_id=str(uuid.uuid4()), source_path="Notes/b.md",
+                     source_sha256=hashlib.sha256(b"second note").hexdigest())
+        (self.notes / "b.md").write_bytes(b"second note")
+        selected = self.selection(trial_id, self.approval, other)
+        _, first, second, _ = self.run_phase("--batch-create", trial_id, self.approval, other)
+        self.source.rename(self.source.with_name("disconnected-export"))
+        root = self.temp / f"cryptex-m15-restart-{trial_id}"
+        before = canonical_packs(root)
+        evidence = snapshot(root / "cortex-source-receipts")
+        report, = self.run_phase("--compare-selection", trial_id, selected)
+        self.assertTrue(report["ready_for_owner_review"])
+        self.assertEqual(report["brain_id"], trial_id)
+        self.assertEqual((report["selected_count"], report["verified_count"]), (2, 2))
+        self.assertEqual({r["event_id"] for r in report["matched"]}, {first["event_id"], second["event_id"]})
+        self.assertEqual([report[k] for k in ("missing", "extra", "changed")], [[], [], []])
+        self.assertEqual(self.run_phase("--compare-selection", trial_id,
+                                        self.selection(trial_id, other, self.approval)), [report])
+
+        absent = dict(other, source_path="Notes/absent.md", capture_id=str(uuid.uuid4()),
+                      source_sha256=hashlib.sha256(b"missing note").hexdigest())
+        report, = self.run_phase("--compare-selection", trial_id, self.selection(trial_id, self.approval, absent))
+        self.assertFalse(report["ready_for_owner_review"])
+        self.assertEqual(report["missing"], [absent])
+        self.assertEqual([r["approval"] for r in report["extra"]], [other])
+        self.assertEqual([r["approval"] for r in report["matched"]], [self.approval])
+        self.assertEqual(report["changed"], [])
+
+        for field, value in (("classification", "public"), ("source_path", "Notes/renamed.md"),
+                             ("source_sha256", absent["source_sha256"]), ("review_sha256", "1" * 64)):
+            with self.subTest(field=field):
+                changed = dict(self.approval, **{field: value})
+                report, = self.run_phase("--compare-selection", trial_id, self.selection(trial_id, changed, other))
+                self.assertFalse(report["ready_for_owner_review"])
+                difference, = report["changed"]
+                self.assertEqual(difference["selected"], changed)
+                self.assertEqual(difference["verified"]["approval"], self.approval)
+                self.assertEqual(difference["verified"]["event_id"], first["event_id"])
+        self.assertEqual(canonical_packs(root), before)
+        self.assertEqual(snapshot(root / "cortex-source-receipts"), evidence)
+
+    def test_selection_comparison_refuses_invalid_inputs_and_corrupt_receipt(self):
+        trial_id = str(uuid.uuid4())
+        self.addCleanup(self.run_phase, "--remove-trial-key", trial_id)
+        _, receipt, _ = self.run_phase("--batch-create", trial_id, self.approval)
+        for selection, issue in (
+            (self.selection(str(uuid.uuid4()), self.approval), b"selection_scope_mismatch"),
+            (self.selection(trial_id, self.approval, self.approval), b"ambiguous_selection"),
+            (self.selection(trial_id, dict(self.approval, source_path="../note.md")), b"invalid_selection"),
+            (self.selection(trial_id, dict(self.approval, review_sha256="x")), b"invalid_selection"),
+            ({"brain_id": trial_id, "schema": "cryptex.cortex.selection.v1"}, b"invalid_selection"),
+        ):
+            self.assertIn(issue, self.run_phase("--compare-selection", trial_id, selection, expected_exit=None))
+        selection = self.selection(trial_id, self.approval)
+        path = (self.temp / f"cryptex-m15-restart-{trial_id}" / "cortex-source-receipts" /
+                (receipt["event_id"] + ".json"))
+        altered = json.loads(path.read_bytes())
+        altered["source"]["approval"]["classification"] = "public"
+        path.write_text(json.dumps(altered), encoding="utf-8")
+        self.assertIn(b"source_receipt_signature", self.run_phase("--compare-selection", trial_id,
+                                                                   selection, expected_exit=None))
+
+    def test_selection_comparison_empty_batch(self):
+        trial_id = str(uuid.uuid4())
+        self.addCleanup(self.run_phase, "--remove-trial-key", trial_id)
+        self.run_phase("--batch-create", trial_id)
+        empty, = self.run_phase("--compare-selection", trial_id, self.selection(trial_id))
+        self.assertFalse(empty["ready_for_owner_review"])
+        self.assertEqual((empty["selected_count"], empty["verified_count"]), (0, 0))
+        report, = self.run_phase("--compare-selection", trial_id, self.selection(trial_id, self.approval))
+        self.assertFalse(report["ready_for_owner_review"])
+        self.assertEqual(report["missing"], [self.approval])
+        self.assertEqual(report["extra"], [])
 
     def interrupt_batch(self):
         trial_id = str(uuid.uuid4())

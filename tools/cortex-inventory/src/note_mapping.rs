@@ -79,11 +79,16 @@ pub(super) fn notes_directory(source: &Path) -> Result<Dir, ReviewIssue> {
     Ok(root.open_dir_nofollow("Notes")?)
 }
 
-fn read_note(source: &Path, path: &str) -> Result<MemoryNotePayload, ReviewIssue> {
+pub fn mapped_note_name(path: &str) -> Result<&str, ReviewIssue> {
     let name = path
         .strip_prefix("Notes/")
         .ok_or(ReviewIssue::UnmappedCategory)?;
     validate_name(name)?;
+    Ok(name)
+}
+
+fn read_note(source: &Path, path: &str) -> Result<MemoryNotePayload, ReviewIssue> {
+    let name = mapped_note_name(path)?;
     let folder = notes_directory(source)?;
     let metadata = exact_metadata(&folder, name)?;
     read_listed_note(&folder, name, &metadata)

@@ -70,6 +70,14 @@ In the same temporary directory and login account, run `cryptexd cortex-import-d
 
 Before capture the daemon durably signs the reviewed decision for the current Brain and device. It clears this pending decision after publishing the matching source receipt. If the process exits between those steps, the next provenance check resolves the original capture ID and verifies the note against the signed decision. It can then publish the missing receipt without reopening the export or appending an event. An existing matching receipt survives a second interruption during cleanup. An unverifiable commit, an unexplained missing receipt, or altered, misplaced or extra evidence blocks the report. This recovery covers committed notes in a disposable batch. Use `--remove-trial-key TRIAL_UUID` with the same disposable command for credential cleanup when the trial is finished.
 
+### Comparing a selection before owner acceptance
+
+Keep the reviewed approvals separately from the import results. For the disposable Brain, run `cryptexd cortex-import-disposable --compare-selection TRIAL_UUID` and supply one UTF-8 JSON document on standard input (up to 8 MiB). Its `schema` is `cryptex.cortex.selection.v1`, its `brain_id` is the trial UUID, and its `selected` array holds the original approvals sent to the batch importer, including their capture IDs and any review digests. The original export may be offline. The caller supplies the intended selection; building it from the output receipts would conceal missing notes.
+
+The daemon verifies the whole batch using the same checks and interrupted-receipt recovery as `--provenance`. The comparison lists exact matches, selected approvals with no corresponding capture ID, and verified receipts outside the selection. For an existing capture ID with different metadata, `changed` shows the selected and verified values together. The report contains local source metadata and event IDs. It omits note bodies. Invalid or ambiguous selections and unverifiable evidence produce a diagnostic and no report.
+
+Exit code zero means a comparison report is available. Check `ready_for_owner_review` before presenting the batch for final approval. It is true only for a nonempty selection whose receipts match exactly. Running the comparison leaves final acceptance pending.
+
 ## Completion gate
 
 M15 is complete only when scope items and relevant recovery/privacy/failure tests pass, required CI is green, Definition of Done is satisfied and human review is complete.

@@ -86,10 +86,15 @@ pub(super) fn run(source: Option<&Path>, mode: &str, id: &str) -> Result<(), Lif
             _ => Err(fault("trial_key_cleanup_unconfirmed")),
         };
     }
+    let selection = if source.is_none() && mode == "--compare-selection" {
+        Some(super::selection::Selection::read(io::stdin().lock(), id)?)
+    } else {
+        None
+    };
     let mode = match mode {
         "--restart-create" => TrialMode::Capture,
         "--exit-before-reply" => TrialMode::ExitBeforeReply,
-        "--provenance" if source.is_none() => TrialMode::Replay,
+        "--provenance" | "--compare-selection" if source.is_none() => TrialMode::Replay,
         "--restart-replay" => TrialMode::Replay,
         "--batch-create" => TrialMode::Batch,
         "--batch-exit-before-source-receipt" => TrialMode::BatchExitBeforeSourceReceipt,
@@ -142,7 +147,11 @@ pub(super) fn run(source: Option<&Path>, mode: &str, id: &str) -> Result<(), Lif
         cryptexd::event_signing_key::load_existing_event_verifying_key(&store, DEV, &root, &device)
             .map_err(|_| fault("trial_key_unavailable"))?;
     let Some(source) = source else {
-        let report = provenance::report(&root, &device, &store, &public)?;
+        let sources = provenance::verified_sources(&root, &device, &store, &public)?;
+        let report = match selection {
+            Some(selection) => selection.compare(sources)?,
+            None => json!({"schema":"cryptex.cortex.provenance.v1", "sources":sources}),
+        };
         return emit(&mut io::stdout().lock(), &report).map_err(Into::into);
     };
     emit(

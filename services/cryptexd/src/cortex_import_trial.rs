@@ -4,6 +4,8 @@ use cryptexd::secure_store::SecureStore;
 mod provenance;
 #[cfg(any(windows, target_os = "macos"))]
 mod restart;
+#[cfg(any(windows, target_os = "macos"))]
+mod selection;
 use cryptex_core::{BrainIdentity, DeviceId, validate::parse_uuid_str};
 use cryptex_cortex_inventory::{review_notes, reviewed_payload};
 use cryptex_events::{Classification, ContentHashHex, EventPayload};
@@ -180,7 +182,10 @@ fn emit(output: &mut impl Write, value: &Value) -> io::Result<()> {
 pub(super) fn run(args: &[String]) -> Result<(), LifecycleError> {
     #[cfg(any(windows, target_os = "macos"))]
     if let [flag, id] = args
-        && matches!(flag.as_str(), "--provenance" | "--remove-trial-key")
+        && matches!(
+            flag.as_str(),
+            "--provenance" | "--compare-selection" | "--remove-trial-key"
+        )
     {
         return restart::run(None, flag, id);
     }

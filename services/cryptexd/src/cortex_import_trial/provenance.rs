@@ -12,7 +12,6 @@ use cryptexd::{
 };
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet},
@@ -29,13 +28,13 @@ const MAX_RECEIPT: u64 = 32 * 1024;
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Source {
+pub(super) struct Source {
     schema: String,
     brain_id: String,
     device_id: String,
     event_id: String,
     content_hash: String,
-    approval: Approval,
+    pub(super) approval: Approval,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -258,12 +257,12 @@ fn pending_source(
     Ok(Some(Source::from_commit(&intent.approval, &commit)))
 }
 
-pub(super) fn report(
+pub(super) fn verified_sources(
     root: &Path,
     device: &DeviceId,
     store: &impl SecureStore,
     key: &VerifyingKey,
-) -> Result<Value, LifecycleError> {
+) -> Result<Vec<Source>, LifecycleError> {
     let directory = root.join(DIRECTORY);
     if !fs::symlink_metadata(&directory).is_ok_and(|m| m.is_dir()) {
         return Err(fault("source_receipts_unavailable"));
@@ -321,5 +320,5 @@ pub(super) fn report(
         }
         clear_pending(root)?;
     }
-    Ok(json!({"schema":"cryptex.cortex.provenance.v1", "sources":sources}))
+    Ok(sources)
 }
