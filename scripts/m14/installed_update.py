@@ -298,7 +298,7 @@ def exercise(packages, work, runtime, env):
     for path, (_, artifact, _) in zip([active, *(image[0] for image in images)], packages, strict=True):
         for _ in range(2):
             run(tool, "admit", path, artifact.parent / "release.cms", env=env, timeout=45)
-    for index, source in enumerate((images[0][0], images[1][0], images[1][0], images[1][0])):
+    for index, source in enumerate([images[0][0]] + [images[1][0]] * 4):
         if WINDOWS:
             shutil.copytree(source, pending)
         else:
@@ -338,16 +338,23 @@ def exercise(packages, work, runtime, env):
             process, timeout_evidence = apply_with_live_timeout(tool, approved, runtime, env)
             if run(tool, "fingerprint", pending, text=True, capture_output=True).stdout.strip() != approved:
                 raise RuntimeError("Timeout rollback changed the staged candidate")
+        elif index == 4:
+            marker = runtime / "m17-fail-probe"
+            marker.touch(exist_ok=False)
+            try:
+                process = run(tool, "apply", approved, env=env, text=True, stdout=subprocess.PIPE, timeout=150)
+            finally:
+                marker.unlink()
         else:
             process = run(tool, "apply", approved, env=env, text=True, stdout=subprocess.PIPE, timeout=150)
         report = json.loads(process.stdout)
-        expected = ([(1, 1), (2, 2)], [(2, 2), (2, 1), (2, 2)], [(2, 2), (2, 2)], [(2, 2)] * 3)[index]
+        expected = ([(1, 1), (2, 2)], [(2, 2), (2, 1), (2, 2)], [(2, 2), (2, 2)], [(2, 2)] * 3, [(2, 2)] * 3)[index]
         checks = report["checks"]
         if [(c["desktop_protocol"], c["daemon_protocol"]) for c in checks] != expected:
             raise RuntimeError(f"Unexpected IPC handshake sequence: {checks}")
         if [c["status"] for c in checks] != ["incompatible" if a != b else "connected" for a, b in expected]:
             raise RuntimeError("Unexpected update decision evidence")
-        if report["outcome"] != ("updated", "rolled_back", "recovered", "rolled_back_timeout")[index]:
+        if report["outcome"] != ("updated", "rolled_back", "recovered", "rolled_back_timeout", "rolled_back_failed_probe")[index]:
             raise RuntimeError(f"Unexpected updater outcome: {report}")
         if journal.exists() or previous.exists():
             raise RuntimeError("Completed operation retained an unfinished transition")
@@ -375,10 +382,26 @@ def exercise(packages, work, runtime, env):
         receipts.append(transaction)
         # Keep the displaced package as evidence and free the staging name.
         pending.rename(user_root / ("Cryptex-displaced-" + str(index)))
+
+    # An ordinary app removal and reinstall must leave the separate Brain readable.
+    if WINDOWS:
+        run(active / "uninstall.exe", "/S", timeout=120)
+        deadline = time.monotonic() + 60
+        while (desktop.exists() or daemon.exists()) and time.monotonic() < deadline:
+            time.sleep(0.2)
+        if desktop.exists() or daemon.exists():
+            raise RuntimeError("NSIS left the application binaries installed")
+        install(packages[1], active)
+    else:
+        active.rename(work / "removed.app")
+        run("ditto", packages[1][1], active)
+    run(tool, "admit", active, packages[1][1].parent / "release.cms", env=env, timeout=45)
+    if verify_note(daemon, runtime) != original_note:
+        raise RuntimeError("Reinstall changed the signed note or its verification evidence")
     return {"wrong_signer_refused": True, "foreign_receipt_refused": True, "unauthenticated_update_refused": True,
             "unauthenticated_rollback_refused": True,
             "platform": sys.platform, "scope": "installed-product-updater", "transactions": receipts,
-            "restored_pair_byte_identical": True}
+            "restored_pair_byte_identical": True, "signed_note_verified_after_reinstall": True}
 
 
 def main():

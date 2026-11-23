@@ -60,6 +60,13 @@ pub(super) fn hold_live_probe_for_timeout(
 /// Hold only the disposable candidate's reply. The actual updater remains
 /// uninstrumented and the probe still owns its native session lock.
 pub(super) fn hold_rejected_reply(root: &std::path::Path) -> Result<(), String> {
+    if root
+        .join("m17-fail-probe")
+        .try_exists()
+        .map_err(|e| e.to_string())?
+    {
+        return Err("disposable candidate failed to report health".into());
+    }
     let armed = root.join("m14-interrupt-probe");
     if !armed.try_exists().map_err(|e| e.to_string())? {
         return Ok(());

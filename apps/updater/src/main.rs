@@ -69,12 +69,14 @@ fn package_digest(path: &Path) -> io::Result<String> {
 enum Probe {
     Replied(Health),
     TimedOut,
+    Failed,
 }
 
 fn require_connection_check(layout: &Layout, package: &Path, digest: &str) -> io::Result<Health> {
     match probe(layout, package, digest)? {
         Probe::Replied(health) => Ok(health),
         Probe::TimedOut => Err(error("working Desktop update probe timed out")),
+        Probe::Failed => Err(error("working Desktop failed its update probe")),
     }
 }
 
@@ -149,7 +151,7 @@ fn probe(layout: &Layout, package: &Path, digest: &str) -> io::Result<Probe> {
         return Ok(Probe::TimedOut);
     };
     if !exit.success() {
-        return Err(error("Desktop failed its update probe"));
+        return Ok(Probe::Failed);
     }
     let health: Health = serde_json::from_slice(&bytes)?;
     if health.desktop_pid != child.id()
@@ -248,6 +250,7 @@ fn reopen(
     checks: Vec<Health>,
 ) -> io::Result<()> {
     release::verify(layout, &layout.active, digest)?;
+    fs::remove_file(layout.intent())?;
     drop(lock);
     let reopened = Command::new(desktop(&layout.active))
         .stdin(Stdio::null())
@@ -267,7 +270,6 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
     if !vacant(&journal)? {
         let intent: Intent = serde_json::from_reader(fs::File::open(&journal)?.take(1024))?;
         let checks = intent.restore(layout)?;
-        fs::remove_file(journal)?;
         return reopen(layout, transaction, &intent.working, "recovered", checks);
     }
     if !vacant(&layout.previous)? {
@@ -308,15 +310,18 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
     }
     let candidate = match probe(layout, &layout.active, approved)? {
         Probe::Replied(health) => health,
-        Probe::TimedOut => {
+        failure @ (Probe::TimedOut | Probe::Failed) => {
             let mut checks = vec![before];
             checks.extend(intent.restore(layout)?);
-            fs::remove_file(journal)?;
             return reopen(
                 layout,
                 transaction,
                 &original,
-                "rolled_back_timeout",
+                if matches!(failure, Probe::TimedOut) {
+                    "rolled_back_timeout"
+                } else {
+                    "rolled_back_failed_probe"
+                },
                 checks,
             );
         }
@@ -339,7 +344,6 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
         fs::rename(&layout.previous, &layout.pending)?;
         "updated"
     };
-    fs::remove_file(journal)?;
     reopen(
         layout,
         transaction,
