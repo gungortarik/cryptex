@@ -93,6 +93,43 @@ try {
     } catch {
         if ($_.Exception.Message -ne 'Invalid installer signature (HashMismatch)') { throw }
     }
+    # M14 verifies creation of this exact per-user registration at login.
+    # Exercise removal by the ordinary signed installer with its real product name.
+    $startup = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Software\Microsoft\Windows\CurrentVersion\Run')
+    $neighbor = "Cryptex-CI-$($fixture.Name)"
+    $entry = '"' + (Join-Path $destination 'cryptex-desktop.exe') + '" --cryptex-background'
+    $ownsStartup = $false
+    $ownsNeighbor = $false
+    try {
+        if ($startup.GetValueNames() -contains 'Cryptex' -or $startup.GetValueNames() -contains $neighbor) {
+            throw 'Unexpected existing startup registration in disposable account'
+        }
+        $startup.SetValue('Cryptex', $entry)
+        $ownsStartup = $true
+        $startup.SetValue($neighbor, '')
+        $ownsNeighbor = $true
+        $uninstaller = Join-Path $destination 'uninstall.exe'
+        $remove = Start-Process -FilePath $uninstaller -ArgumentList '/S' -PassThru -WindowStyle Hidden
+        if (-not $remove.WaitForExit(60000)) { throw 'Uninstaller timed out' }
+        if ($remove.ExitCode -ne 0) { throw "Uninstaller exited with $($remove.ExitCode)" }
+        # NSIS can hand off to a temporary copy and return before its child finishes.
+        $limit = [DateTime]::UtcNow.AddSeconds(45)
+        do {
+            $pending = ($startup.GetValueNames() -contains 'Cryptex') -or
+                (Test-Path -LiteralPath (Join-Path $destination 'cryptex-desktop.exe')) -or
+                (Test-Path -LiteralPath (Join-Path $destination 'cryptexd.exe'))
+            if ($pending) { Start-Sleep -Milliseconds 200 }
+        } while ($pending -and [DateTime]::UtcNow -lt $limit)
+        if ($pending -or $startup.GetValueNames() -notcontains $neighbor) {
+            throw 'Uninstall must remove its startup registration and binaries and preserve unrelated entries'
+        }
+        Write-Output 'Verified ordinary NSIS uninstall and per-user startup removal.'
+    } finally {
+        # The worker account is discarded. Remove only fixture values we created.
+        if ($ownsNeighbor) { $startup.DeleteValue($neighbor, $false) }
+        if ($ownsStartup -and $startup.GetValue('Cryptex') -ceq $entry) { $startup.DeleteValue('Cryptex', $false) }
+        $startup.Dispose()
+    }
     Write-Output 'Signed NSIS, installed desktop and daemon matched the fixture pin. Wrong signer and changed file refused.'
 } finally {
     if ($ownsTrustEntry -and (Test-Path -LiteralPath $rootPath)) { Remove-Item -LiteralPath $rootPath }
