@@ -1,5 +1,9 @@
 # 34 — Current Implementation Handoff
 
+## M15 recovery of an interrupted source receipt
+
+At `e4e766b`, all thirteen daemon capture tests passed on both [Windows and macOS](https://github.com/gungortarik/cryptex/actions/runs/45094172575). The disposable daemon exited after committing one synthetic restricted note and before publishing its source receipt. With the export disconnected, another process verified the signed owner decision and the committed note, then published the missing receipt. Repeated review preserved the receipt bytes and the canonical packs. An altered decision, missing capture evidence, a corrupt existing receipt and an extra receipt each blocked recovery and produced no report. The inventory suite passed all fifteen tests on macOS and fourteen applicable tests on Windows. The next M15 step is to reconcile reviewed import selections with verified source receipts in a temporary Brain before presenting a batch for owner acceptance. Personal-data cutover remains open.
+
 ## M15 offline source review for multiple imported notes
 
 At `8d009d7`, [Windows and macOS CI](https://github.com/gungortarik/cryptex/actions/runs/45081399084) passed all eleven capture tests on both platforms. Two synthetic notes with distinct classifications were imported into the same temporary Brain. After the daemon exited and the source directory was disconnected, a new process matched each signed source receipt to its verified event, text digest and classification. Replay kept two events. Changed, swapped, missing and extra receipts failed review with zero report bytes. The [batch command and report](milestones/M15_CORTEX_FRESH_REINGESTION.md#reviewing-the-origin-of-multiple-notes) are feature-gated. An outstanding recovery case is interruption after a batch note commits and before its signed source receipt is published. Automatic recovery for that interval and final cutover remain open.
