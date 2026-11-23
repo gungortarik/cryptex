@@ -45,6 +45,20 @@ try {
     if ($installers.Count -ne 1) { throw 'Expected one signed NSIS installer' }
     $installer = $installers[0].FullName
     Assert-ImageSigner $installer $pin
+    $verifyInstaller = Join-Path $PSScriptRoot 'verify_first_install_windows.ps1'
+    $release = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash
+    & $verifyInstaller $installer $pin $release
+    foreach ($case in @(
+        @{ signer = ('0' * 64); release = $release; reason = 'Unexpected Cryptex signer' },
+        @{ signer = $pin; release = ('0' * 64); reason = 'Different Cryptex release' }
+    )) {
+        try {
+            & $verifyInstaller $installer $case.signer $case.release
+            throw 'First-install verification accepted unexpected owner or release'
+        } catch {
+            if ($_.Exception.Message -ne $case.reason) { throw }
+        }
+    }
     $destination = Join-Path $fixture.FullName 'Applications'
     $proc = Start-Process -FilePath $installer -ArgumentList @('/S', "/D=$destination") -PassThru -WindowStyle Hidden
     if (-not $proc.WaitForExit(180000)) { $proc.Kill($true); throw 'Installer timed out' }
@@ -70,6 +84,12 @@ try {
     [IO.File]::WriteAllBytes($edited, $bytes)
     if ((Get-AuthenticodeSignature -LiteralPath $edited).Status -ne 'HashMismatch') {
         throw 'Expected native hash mismatch on modified daemon'
+    }
+    try {
+        & $verifyInstaller $edited $pin (Get-FileHash -LiteralPath $edited).Hash
+        throw 'First-install verification accepted modified signed code'
+    } catch {
+        if ($_.Exception.Message -ne 'Invalid installer signature (HashMismatch)') { throw }
     }
     Write-Output 'Signed NSIS, installed desktop and daemon matched the fixture pin. Wrong signer and changed file refused.'
 } finally {

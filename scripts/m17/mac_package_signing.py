@@ -38,9 +38,19 @@ def main():
         for image, identifier in [(bundle / daemon_path, daemon_id), (bundle, bundle_id)]:
             command("/usr/bin/codesign", "--force", "--options", "runtime", "--timestamp=none",
                     "--keychain", keychain, "--sign", signer, "--identifier", identifier, image)
+        owner_pin = hashlib.sha256((root / "cert.der").read_bytes()).hexdigest()
+        with (bundle / "Contents/MacOS/cryptex-desktop").open("rb") as signed:
+            release_hash = hashlib.file_digest(signed, "sha256").hexdigest()
         installed = root / "Applications/Cryptex.app"
         installed.parent.mkdir()
         command("/usr/bin/ditto", bundle, installed)
+        verifier = [sys.executable, "-B", ROOT / "scripts/m17/verify_first_install_mac.py", installed]
+        command(*verifier, owner_pin, release_hash)
+        for pin, release, reason in [("0" * 64, release_hash, "Unexpected Cryptex signer"),
+                                     (owner_pin, "0" * 64, "Different Cryptex release")]:
+            result = command(*verifier, pin, release, check=False)
+            if result.returncode == 0 or reason not in result.stderr:
+                raise RuntimeError("First-install verification accepted unexpected owner or release")
         native_notices = installed / "Contents/Resources/notices/rust.json"
         if native_notices.read_bytes() != (ROOT / "apps/desktop/src-tauri/binaries/rust-notices.json").read_bytes():
             raise RuntimeError("Installed Rust inventory differs from the input")
@@ -57,6 +67,8 @@ def main():
         notice = installed / "Contents/Resources/notices/frontend.json"
         with notice.open("ab") as stream:
             stream.write(b" ")
+        if command(*verifier, owner_pin, release_hash, check=False).returncode == 0:
+            raise RuntimeError("First-install verification accepted changed resources")
         if command("/usr/bin/codesign", "--verify", "--strict", installed,
                    check=False).returncode == 0:
             raise RuntimeError("Changed sealed resource accepted")

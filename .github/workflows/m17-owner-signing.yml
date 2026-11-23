@@ -7,6 +7,7 @@ on:
       - '.github/workflows/m17-owner-signing.yml'
       - 'scripts/m17/mac_package_signing.py'
       - 'scripts/m17/windows_package_signing.ps1'
+      - 'scripts/m17/verify_first_install_*'
       - 'third_party/rust-notices/**'
       - 'apps/desktop/scripts/*notices*'
       - 'apps/desktop/src-tauri/tauri.bundle.conf.json'
