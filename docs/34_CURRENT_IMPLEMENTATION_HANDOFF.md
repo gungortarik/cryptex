@@ -1,5 +1,9 @@
 # 34 — Current Implementation Handoff
 
+## M16 hardening in progress
+
+The [hardening campaign](../evidence/m16/hardening.md) maps the product failure matrix to native runs, starting from the M15 closeout. At `4a87c53`, all six signed-history scale jobs passed on Windows and macOS, including two independent reconstructions of 500,000 notes per platform. At `cf2cf3a`, both directions of encrypted peer recovery rejected truncation and a wrong Kit before recovering the intact signed notes. The repeated-partition and observed system-suspend checks use two disposable peers. M16 acceptance, the physical soak and personal onboarding remain open.
+
 ## M15 closed for disposable Cortex imports
 
 On November 23, 2026 the owner reviewed candidate `5e86ef9` and approved closure for synthetic data in temporary profiles, conditional on Windows and macOS verification. All four workflows passed for that exact candidate. Both installed applications recovered the signed source receipts and owner decision from manual and scheduled encrypted backups after the source profile and its credentials were removed. Existing signed backups also restored. The [acceptance record](../evidence/m15/cortex-import-review.md#final-acceptance) gives the test counts, compatibility and limits. Personal onboarding remains at M17. The next milestone is M16 hardening.
