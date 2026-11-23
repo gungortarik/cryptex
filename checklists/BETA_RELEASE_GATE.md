@@ -30,8 +30,8 @@ No checkbox may be marked complete without actual evidence from the applicable m
   - Evidence: [Reconstruction after the source profile was removed](https://github.com/gungortarik/cryptex/actions/runs/45241783915)
 - [x] Recovery Kit can restore required backup decryption capability.
   - Evidence: [Bidirectional recovery with disposable Kits](https://github.com/gungortarik/cryptex/actions/runs/45241902996)
-- [ ] Recovery Kit can bootstrap the first trusted device after total device loss.
-  - Evidence:
+- [x] Recovery Kit can bootstrap the first trusted device after total device loss.
+  - Evidence: [First-device approval with offline Recovery Kit and fresh device credentials](../evidence/m11/backup-container.md#first-device-approval-on-a-single-replacement-computer).
 - [x] Backup/restore drills required by M16 have passed.
   - Evidence: [M16 closeout](../evidence/m16/hardening.md#final-candidate-review)
 
@@ -47,10 +47,10 @@ No checkbox may be marked complete without actual evidence from the applicable m
   - Evidence:
 - [ ] Secrets/private keys use appropriate OS secure storage.
   - Evidence:
-- [ ] Restricted memory remains excluded from AI by default.
-  - Evidence:
-- [ ] Purge/recovery are not autonomous AI tools.
-  - Evidence:
+- [x] Restricted memory remains excluded from AI by default.
+  - Evidence: [Signed classification checks on the guarded public reader](../evidence/m12/local-mcp-review.md#security-failure-handling-and-ui).
+- [x] Purge/recovery are not autonomous AI tools.
+  - Evidence: [Authenticated client discovery and three-tool catalog](../evidence/m12/local-mcp-review.md).
 - [ ] Logs/diagnostics do not expose memory bodies, secrets, credentials or recovery material by default.
   - Evidence:
 
@@ -64,8 +64,8 @@ No checkbox may be marked complete without actual evidence from the applicable m
   - Evidence:
 - [ ] Required platform-native behavior/polish is verified on Windows.
   - Evidence:
-- [ ] DPI/Retina/theme/accessibility requirements are verified as applicable.
-  - Evidence:
+- [x] DPI/Retina/theme/accessibility requirements are verified as applicable.
+  - Evidence: [M14 display and keyboard evidence](../evidence/m14/platform-closeout-review.md). Coverage uses the native WebView and emulated densities. Hardware monitor changes and assistive-technology sessions remain outside that evidence.
 - [x] Packaging smoke has passed on both platforms.
   - Evidence: [M16 installed package smoke on Windows and macOS](https://github.com/gungortarik/cryptex/actions/runs/45241883226). Repeat for the final M17 candidate.
 
@@ -79,8 +79,8 @@ No checkbox may be marked complete without actual evidence from the applicable m
   - Evidence: [Repeated native transport partitions with verification](https://github.com/gungortarik/cryptex/actions/runs/45241784035)
 - [x] Sleep/wake/offline/reconnect soak has passed.
   - Evidence: [Mac and Windows VM kernel-observed sleep receipts](../evidence/m16/hardening.md#offline-and-system-sleep)
-- [ ] Backup/restore drills have passed.
-  - Evidence:
+- [x] Backup/restore drills have passed.
+  - Evidence: [Restore after purging an imported note on both platforms](../evidence/m16/hardening.md#restore-after-purging-an-accepted-cortex-note).
 - [ ] No known high-severity blocker remains open for the release scope.
   - Evidence: [Personal-use release hold for managed Syncthing](../evidence/m16/hardening.md#personal-use-release-hold).
 
