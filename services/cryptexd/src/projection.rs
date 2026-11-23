@@ -5,6 +5,10 @@
 //! for projection purposes. Checkpoints advance in the same SQLite transaction as
 //! projected rows.
 
+#[cfg(test)]
+#[path = "projection_scale_test.rs"]
+mod scale_test;
+
 use std::fs;
 use std::path::Path;
 

@@ -1,0 +1,41 @@
+name: M16 signed history scale and recovery
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/m16-hardening.yml'
+      - 'services/cryptexd/src/projection_scale_test.rs'
+jobs:
+  signed-history:
+    permissions:
+      contents: read
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+        events: [10000, 100000, 500000]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: m16-release
+      - name: Rebuild and reopen the projection from signed packs
+        shell: bash
+        env:
+          CRYPTEX_M16_EVENTS: ${{ matrix.events }}
+        run: |
+          set -euo pipefail
+          test_name=projection::scale_test::signed_pack_projection_recovers_at_scale
+          log="$RUNNER_TEMP/m16-projection.log"
+          cargo test --release --locked -p cryptexd --lib "$test_name" -- --exact --ignored --nocapture | tee "$log"
+          {
+            echo "Revision $GITHUB_SHA; $RUNNER_OS $RUNNER_ARCH; $(rustc --version); Cargo release"
+            for phase in missing corrupt; do
+              grep -Ex "m16_projection phase=$phase events=$CRYPTEX_M16_EVENTS packs=$((CRYPTEX_M16_EVENTS / 1000)) rebuild_ms=[0-9]+ search_ms=[0-9]+" "$log"
+            done
+            grep -F '1 passed; 0 failed' "$log"
+          } >> "$GITHUB_STEP_SUMMARY"
