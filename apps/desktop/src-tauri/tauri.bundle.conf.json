@@ -2,6 +2,13 @@
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
     "active": true,
+    "resources": {
+      "../dist/notices/frontend.json": "notices/frontend.json",
+      "../node_modules/@tauri-apps/api/LICENSE-MIT": "notices/tauri-api/LICENSE-MIT",
+      "../node_modules/@tauri-apps/api/LICENSE-APACHE-2.0": "notices/tauri-api/LICENSE-APACHE-2.0",
+      "../../../crates/knowledge/src/unicode16_casefold/LICENSE-MIT.txt": "notices/focaccia/LICENSE-MIT.txt",
+      "../../../crates/knowledge/src/unicode16_casefold/LICENSE-UNICODE.txt": "notices/focaccia/LICENSE-UNICODE.txt"
+    },
     "externalBin": ["binaries/cryptexd"],
     "macOS": { "minimumSystemVersion": "26.0" }
   }

@@ -65,7 +65,30 @@ def install(release, base):
     daemon = desktop.with_name("cryptexd" + SUFFIX)
     if digest(daemon) != digest(staged):
         raise RuntimeError("Installed daemon differs from the packaged sidecar")
+    resources = target if WINDOWS else target / "Contents/Resources"
+    verify_notices(resources)
     return desktop, daemon
+
+
+def verify_notices(resources):
+    config_dir = ROOT / "apps/desktop/src-tauri"
+    config = json.loads((config_dir / "tauri.bundle.conf.json").read_text(encoding="utf-8"))
+    for source, destination in config["bundle"]["resources"].items():
+        if destination.startswith("notices/") and digest(resources / destination) != digest(config_dir / source):
+            raise RuntimeError(f"Installed attribution differs from packaging input: {destination}")
+    entries = json.loads((resources / "notices/frontend.json").read_bytes())
+    packages = {entry["name"] for entry in entries}
+    required = {"react", "react-dom", "scheduler", "@tauri-apps/api"}
+    if not required.issubset(packages) or len(packages) != len(entries):
+        raise RuntimeError("Installed frontend notice inventory is incomplete or ambiguous")
+    for entry in entries:
+        if not all(isinstance(entry.get(key), str) and entry[key].strip()
+                   for key in ("version", "identifier", "text")):
+            raise RuntimeError("Missing frontend attribution or license text")
+    for notice in ("focaccia/LICENSE-MIT.txt", "focaccia/LICENSE-UNICODE.txt",
+                   "tauri-api/LICENSE-MIT", "tauri-api/LICENSE-APACHE-2.0"):
+        if not (resources / "notices" / notice).is_file():
+            raise RuntimeError(f"Missing installed notice: {notice}")
 
 
 def wait_snapshot(root, process, note):
