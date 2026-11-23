@@ -42,7 +42,7 @@ No checkbox may be marked complete without actual evidence from the applicable m
 - [ ] No custom cryptography has been introduced.
   - Evidence: Release receipt and executable verification use [Windows CryptoAPI and Authenticode](../apps/updater/native/windows.c) and [Apple Security](../apps/updater/native/macos.c) with the [existing CMS decoder](../services/cryptexd/src/m8_owner_channel/native/inventory.c). Include these adapters in final candidate review.
 - [ ] Renderer/webview remains least privilege.
-  - Evidence: The [M16 webview and IPC review](../evidence/m16/hardening.md#security-and-recovery-review) covers the shipped CSP and explicit invoke list. Neither changed between M16 and `03857d4`.
+  - Evidence: The [M16 webview and IPC review](../evidence/m16/hardening.md#security-and-recovery-review) covers the shipped CSP and explicit invoke list. The [review at `40dea0f`](../evidence/m17/personal-packaging.md#dependency-and-renderer-review-at-40dea0f) confirmed that the capability files and CSP remain unchanged from M16.
 - [ ] UI code has no arbitrary shell or unrestricted filesystem access.
   - Evidence: The [Desktop invocation review](../evidence/m16/hardening.md#security-and-recovery-review) applies to the same renderer source at `03857d4`. The updater runs as a separate native executable.
 - [ ] Secrets/private keys use appropriate OS secure storage.

@@ -89,3 +89,30 @@ At `bf98cb7` the [Mac delivery command](../../scripts/m17/build_owner_mac_packag
 At `018f3f7`, Tauri lost the drive prefix of an absolute sidecar path. The Windows signing step failed before installation when the runner checked out the project on a different drive from its temporary files. At `b890699` the [packaging command](../../scripts/m17/build_owner_windows_installer.ps1) used a unique path relative to the Tauri manifest for the signed daemon and removed it after bundling. The original reviewed executable inputs retained their hashes. [Failing Windows run](https://github.com/gungortarik/cryptex/actions/runs/45284332989)
 
 The corrected run built a per-user NSIS installer with a disposable certificate. It rejected a mismatched input digest and missing signing identity before publication. The installed Desktop and daemon matched the certificate pin. A modified daemon and a foreign signer were refused. The ordinary uninstaller removed both binaries and its startup entry while preserving an unrelated entry. The companion Mac packaging job passed as well. These jobs used hosted accounts. [Native Windows and Mac jobs](https://github.com/gungortarik/cryptex/actions/runs/45286355369)
+
+## Dependency and renderer review at 40dea0f
+
+On November 23, the [registry query](../../scripts/m16/check_rust_advisories.py) compared 727 public Rust crate/version pairs with OSV. None of the affected versions were in the normal or build dependency trees for the Desktop, daemon or updater on Windows x64 or Mac arm64. The separate Windows codec trial still resolves an affected `crypto-bigint 0.5.5`. Seven other affected entries were outside the inspected product and codec graphs. The release diff from M16 adds the existing `cc` build dependency to the updater in the workspace lockfile.
+
+The production pnpm workspace audit and npm audits of the local MCP and backup tools reported zero known advisories. The 27 capture, connection and status policy tests passed on Windows with the pinned Node 24.19.0. The Desktop capability files and CSP are unchanged from M16. The new removal operation is a standalone native updater command with a signed-package check and no renderer binding.
+
+These checks cover the listed code and dependency graphs at this revision. The [official transport hold](../m16/hardening.md#personal-use-release-hold) still applies separately to the bundled Go executable.
+
+## Removing an approved Mac installation
+
+The [installed updater run](https://github.com/gungortarik/cryptex/actions/runs/45289049570) at `65d4043` exercised the Mac removal command in a disposable account. It refused a wrong approved digest, an unrelated login plist, a busy Desktop session lock, and a pending update journal. For the matching installation macOS moved the application and matching LaunchAgent file to Trash. The adjacent unrelated plist retained its original bytes. The test reinstalled the signed application and verified the original signed note and its recorded hashes. It repeated removal and reinstall with login startup already disabled. The Windows standard-user update and reinstall suite passed at the same revision.
+
+The Mac assertions cover the persistent login file and binaries. They do not measure a new OS login or unload an already registered launchd job in the current session. [Owner removal procedure](../../docs/proposals/m17-personal-device-signing.md#removing-the-installed-application-on-mac)
+
+## Standalone updater delivery from the owner's signing machine
+
+At `40dea0f` the [packaging command](../../scripts/m17/package_owner_updater.py) ran on native Windows and macOS with disposable certificate-store and Keychain identities. It refused a mismatched public certificate, unapproved executable hash and an updater built to trust a different signer. Both native suites extracted the signed updater from the resulting archive and used that executable for the five update and rollback scenarios. The signed test note remained verifiable after reinstall. The [sealed Mac run](https://github.com/gungortarik/cryptex/actions/runs/45289817066) also passed for this revision. The [companion first-install jobs](https://github.com/gungortarik/cryptex/actions/runs/45289817231) verified the installed signatures on both platforms.
+
+The two archived executables and notices were downloaded from the [native run](https://github.com/gungortarik/cryptex/actions/runs/45289817134). Both archive digests matched the signing-job logs. Every embedded notice document matched its recorded SHA-256.
+
+| Native target | Archive SHA-256 | Packages | Distinct notice documents |
+| --- | --- | ---: | ---: |
+| Windows x64 | `93fa8c1b6ce6a69af3f883ade727925083da1239e93ae86a5d9e1dd37dbe8723` | 44 | 30 |
+| macOS arm64 | `a76ac5d88bb609004efffccdbf87d5be393851a92a88e3860da2e2c4bb5c190d` | 37 | 35 |
+
+The owner package procedure produces fresh archives with independently enrolled local keys. The hashes above identify only these disposable CI artifacts.
