@@ -73,11 +73,14 @@ def exercise(root, release):
     publish(release)
     run("/usr/bin/codesign", "--verify", "--strict", installed)
     startup("connected")
-    runtime = root / "user-interface"
-    run("/usr/bin/swift", ROOT / "scripts/m8/mac_ui_quit_check.swift", desktop, runtime, timeout=120)
-    receipt = json.loads((runtime / "ui-receipt.json").read_bytes())
-    if receipt.get("eventCount") != 1 or receipt.get("prefixPreserved") is not True:
-        raise RuntimeError("The installed interface failed to preserve its synthetic note")
+    window = subprocess.run(["/usr/bin/swift", ROOT / "scripts/m8/mac_ui_quit_check.swift", desktop],
+                            capture_output=True, text=True, timeout=120)
+    if window.returncode or "sealed_window_verified_note_and_cleanup=passed" not in window.stdout.splitlines():
+        raise RuntimeError(f"Ordinary window launch failed its receipt check: {window.returncode} {window.stderr[-1024:]}")
+    refused = subprocess.run([desktop, "--cryptex-m8-local-content-existing-profile-ui", root / "unused"],
+                             capture_output=True, text=True, timeout=30)
+    if refused.returncode != 2 or "sealed_rehearsal_arguments" not in refused.stderr.splitlines() or (root / "unused").exists():
+        raise RuntimeError("Sealed rehearsal accepted an existing-profile launch")
     publish(release + "-other")
     startup("stale-inventory", "local_signed_startup_Inventory")
     image(daemon, "com.cryptex.unrelated")

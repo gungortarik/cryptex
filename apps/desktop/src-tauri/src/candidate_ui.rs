@@ -1290,6 +1290,45 @@ fn check_transport_pairing(root: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Own normal startup in the sealed rehearsal. The native session uses a fresh
+/// synthetic profile, including when launched by the window system.
+#[cfg(feature = "m17-sealed-startup-check")]
+pub fn sealed_entry() -> Option<Result<(), String>> {
+    if std::env::args_os().len() > 1 {
+        return Some(
+            super::local_signed_startup_check()
+                .unwrap_or_else(|| Err("sealed_rehearsal_arguments".into())),
+        );
+    }
+    Some((|| {
+        let scratch = tempfile::Builder::new()
+            .prefix("cryptex-m17-ui-")
+            .tempdir()
+            .map_err(|_| "sealed_rehearsal_runtime")?;
+        let runtime = scratch
+            .path()
+            .canonicalize()
+            .map_err(|_| "sealed_rehearsal_runtime")?
+            .join("profile");
+        let (owner, content) = Owner::start(&runtime)?;
+        let (context, binding) = install_context(content, &runtime)?;
+        owner.client.call(|reply| Work::Bind(binding, reply))?;
+        owner_window(context, owner, false, move || {
+            let receipt: serde_json::Value = serde_json::from_slice(
+                &std::fs::read(runtime.join("ui-receipt.json"))
+                    .map_err(|_| "sealed_rehearsal_receipt")?,
+            )
+            .map_err(|_| "sealed_rehearsal_receipt")?;
+            if receipt["eventCount"] != 1 || receipt["prefixPreserved"] != true {
+                return Err("sealed_rehearsal_note".into());
+            }
+            scratch.close().map_err(|_| "sealed_rehearsal_cleanup")?;
+            println!("sealed_window_verified_note_and_cleanup=passed");
+            Ok(())
+        })
+    })())
+}
+
 pub fn entry() -> Option<Result<(), String>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     if !args.first().is_some_and(|arg| {
@@ -1328,7 +1367,7 @@ pub fn entry() -> Option<Result<(), String>> {
         } else {
             Owner::start(&runtime)?
         };
-        let (mut context, binding) = install_context(content, &runtime)?;
+        let (context, binding) = install_context(content, &runtime)?;
         owner.client.call(|reply| Work::Bind(binding, reply))?;
         if args[0] == "--cryptex-m8-local-content-check" {
             eprintln!("m8_candidate_scenario=synthetic_sessions");
@@ -1395,64 +1434,71 @@ pub fn entry() -> Option<Result<(), String>> {
             println!("native_prepare_and_actor_failures_burn_grants=passed");
             return Ok(());
         }
-        let mut window = context
-            .config()
-            .app
-            .windows
-            .first()
-            .cloned()
-            .ok_or("candidate_window")?;
-        window.title = "Cryptex Ã‚Â· Ã„Â°zole onay testi".into();
-        if existing_profile {
-            window.title = "Cryptex - Existing profile".into();
-        }
-        context.config_mut().app.windows.clear();
-        let app = tauri::Builder::default()
-            .manage(owner.client.clone())
-            .invoke_handler(tauri::generate_handler![
-                m8_native_profile_status,
-                m8_new_bootstrap_transaction_id,
-                m8_read_bootstrap_brain_identity,
-                m8_read_transport_device_id,
-                m8_connection_settings,
-                m8_retirement_file,
-                m8_create_bootstrap_offer,
-                m8_create_bootstrap_proof,
-                m8_prepare_peer_approval,
-                m8_confirm_peer_approval,
-                m8_cancel_peer_approval,
-                m8_complete_peer_approval,
-                m8_prepare_owner_security_operation,
-                m8_confirm_owner_security_operation,
-                m8_cancel_owner_security_operation,
-                p0_3_ipc_health,
-                p0_5_set_capture_session_guard,
-            ])
-            .setup(move |app| {
-                tauri::WebviewWindowBuilder::from_config(app, &window)?
-                    .incognito(true)
-                    .on_navigation(|url| {
-                        url.scheme() == "tauri" && url.host_str() == Some("localhost")
-                    })
-                    .build()?;
-                Ok(())
-            })
-            .build(context)
-            .map_err(|_| "candidate_window")?;
-        // AppKit may terminate the process directly after the Exit callback.
-        // Finish the receipt and reap the owned child while the callback is live.
-        let mut owner = Some(owner);
-        app.run(move |_, event| {
-            if matches!(event, tauri::RunEvent::Exit)
-                && let Some(owner) = owner.take()
-                && let Err(error) = owner.close()
-            {
-                eprintln!("candidate_ui_shutdown: {error}");
-                std::process::exit(2);
-            }
-        });
-        Ok(())
+        owner_window(context, owner, existing_profile, || Ok(()))
     })())
+}
+
+fn owner_window(
+    mut context: tauri::Context<tauri::Wry>,
+    owner: Owner,
+    existing_profile: bool,
+    after_close: impl FnOnce() -> Result<(), String> + 'static,
+) -> Result<(), String> {
+    let mut window = context
+        .config()
+        .app
+        .windows
+        .first()
+        .cloned()
+        .ok_or("candidate_window")?;
+    window.title = "Cryptex Ã‚Â· Ã„Â°zole onay testi".into();
+    if existing_profile {
+        window.title = "Cryptex - Existing profile".into();
+    }
+    context.config_mut().app.windows.clear();
+    let app = tauri::Builder::default()
+        .manage(owner.client.clone())
+        .invoke_handler(tauri::generate_handler![
+            m8_native_profile_status,
+            m8_new_bootstrap_transaction_id,
+            m8_read_bootstrap_brain_identity,
+            m8_read_transport_device_id,
+            m8_connection_settings,
+            m8_retirement_file,
+            m8_create_bootstrap_offer,
+            m8_create_bootstrap_proof,
+            m8_prepare_peer_approval,
+            m8_confirm_peer_approval,
+            m8_cancel_peer_approval,
+            m8_complete_peer_approval,
+            m8_prepare_owner_security_operation,
+            m8_confirm_owner_security_operation,
+            m8_cancel_owner_security_operation,
+            p0_3_ipc_health,
+            p0_5_set_capture_session_guard,
+        ])
+        .setup(move |app| {
+            tauri::WebviewWindowBuilder::from_config(app, &window)?
+                .incognito(true)
+                .on_navigation(|url| url.scheme() == "tauri" && url.host_str() == Some("localhost"))
+                .build()?;
+            Ok(())
+        })
+        .build(context)
+        .map_err(|_| "candidate_window")?;
+    // AppKit may terminate the process directly after the Exit callback.
+    // Finish the receipt and reap the owned child while the callback is live.
+    let mut session = Some((owner, after_close));
+    app.run(move |_, event| {
+        if matches!(event, tauri::RunEvent::Exit)
+            && let Some((owner, finish)) = session.take()
+            && let Err(error) = owner.close().and_then(|()| finish())
+        {
+            eprintln!("candidate_ui_shutdown: {error}");
+            std::process::exit(2);
+        }
+    });
+    Ok(())
 }
 
 #[cfg(feature = "m8-development-product")]

@@ -2993,6 +2993,13 @@ fn main() {
         }
         std::process::exit(if result.is_ok() { 0 } else { 2 });
     }
+    #[cfg(all(target_os = "macos", feature = "m17-sealed-startup-check"))]
+    if let Some(result) = candidate_ui::sealed_entry() {
+        if let Err(error) = &result {
+            eprintln!("{error}");
+        }
+        std::process::exit(if result.is_ok() { 0 } else { 2 });
+    }
     #[cfg(all(target_os = "macos", feature = "m8-development-product"))]
     if let Some(result) = candidate_ui::development_entry() {
         if let Err(error) = &result {

@@ -56,6 +56,16 @@ impl ContentProfile {
         )
     }
 }
+fn check_profile(profile: Option<ContentProfile>) -> Result<(), Error> {
+    if (cfg!(feature = "m8-development-product")
+        && profile != Some(ContentProfile::ExistingProfile))
+        || (cfg!(feature = "m17-sealed-startup-check")
+            && profile.is_some_and(|p| p != ContentProfile::Ephemeral))
+    {
+        return Err(Error::Arguments);
+    }
+    Ok(())
+}
 const RELEASE: &str = env!("CRYPTEX_COMPILED_RELEASE_ID");
 const VERIFICATION_HINT: &[u8] = b"cryptex-m8-verification-progress-v1\n";
 #[path = "local_client.rs"]
@@ -320,9 +330,7 @@ impl Prepared {
         Self::current_profile(timeout, ContentProfile::Ephemeral)
     }
     pub fn current_profile(timeout: Duration, profile: ContentProfile) -> Result<Self, Error> {
-        if cfg!(feature = "m8-development-product") && profile != ContentProfile::ExistingProfile {
-            return Err(Error::Arguments);
-        }
+        check_profile(Some(profile))?;
         if profile == ContentProfile::ExistingProfile {
             crate::import_staging::macos_fs::require_product_os().map_err(|_| Error::Image)?;
         }
@@ -338,11 +346,7 @@ impl Prepared {
     /// The path is a launch locator. Only the subsequent native live image and
     /// exact-instance checks establish this isolated startup observation.
     pub fn launch(self, mut command: Command, ready: &Path) -> Result<LocalDaemon, Error> {
-        if cfg!(feature = "m8-development-product")
-            && self.content_profile != Some(ContentProfile::ExistingProfile)
-        {
-            return Err(Error::Arguments);
-        }
+        check_profile(self.content_profile)?;
         check_time(self.deadline)?;
         if Path::new(command.get_program()) != self.daemon_path() {
             return Err(Error::Arguments);
@@ -685,11 +689,7 @@ pub fn child_gate(args: &mut Vec<String>) -> Result<Option<ChildGuard>, Error> {
         _ => None,
     };
     let runtime = PathBuf::from(&args[3]);
-    if cfg!(feature = "m8-development-product")
-        && content_profile != Some(ContentProfile::ExistingProfile)
-    {
-        return Err(Error::Arguments);
-    }
+    check_profile(content_profile)?;
     if let Some(profile) = content_profile {
         require_content_runtime(&runtime, profile)?;
     }
