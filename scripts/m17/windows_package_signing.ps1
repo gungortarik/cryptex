@@ -43,6 +43,9 @@ try {
     $proc = Start-Process -FilePath $installer -ArgumentList @('/S', "/D=$destination") -PassThru -WindowStyle Hidden
     if (-not $proc.WaitForExit(180000)) { $proc.Kill($true); throw 'Installer timed out' }
     if ($proc.ExitCode -ne 0) { throw "Installer exited with $($proc.ExitCode)" }
+    $notices = Get-FileHash -LiteralPath (Join-Path $destination 'notices/rust.json')
+    $sourceNotices = Get-FileHash -LiteralPath "$repo/apps/desktop/src-tauri/binaries/rust-notices.json"
+    if ($notices.Hash -ne $sourceNotices.Hash) { throw 'Installed Rust inventory differs from the input' }
     foreach ($file in 'cryptex-desktop.exe','cryptexd.exe') {
         $image = Join-Path $destination $file
         Assert-ImageSigner $image $pin

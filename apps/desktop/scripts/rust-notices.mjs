@@ -7,6 +7,18 @@ function cargo(root, args) {
   return execFileSync("cargo", args, { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
 }
 
+function noticeDocument(directory, name, texts, expectedHash) {
+  const file = path.resolve(directory, name);
+  const relative = path.relative(directory, file);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) throw new Error(`External notice: ${name}`);
+  const bytes = readFileSync(file);
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  if (!bytes.length || (expectedHash && sha256 !== expectedHash)) throw new Error(`Invalid notice: ${name}`);
+  const text = bytes.toString("utf8");
+  texts.set(sha256, Buffer.from(text, "utf8").equals(bytes) ? { text } : { base64: bytes.toString("base64") });
+  return { name: relative.split(path.sep).join("/"), sha256 };
+}
+
 export function collectRustNotices(root, triple, hostTriple = triple) {
   const filter = triple === hostTriple ? ["--filter-platform", triple] : [];
   const metadata = JSON.parse(cargo(root, ["metadata", "--locked", "--format-version", "1", ...filter, "--features", "tauri/custom-protocol"]));
@@ -19,6 +31,8 @@ export function collectRustNotices(root, triple, hostTriple = triple) {
     packages.set(key, pkg);
   }
 
+  const supplemental = path.resolve(root, "third_party/rust-notices");
+  const sources = JSON.parse(readFileSync(path.join(supplemental, "sources.json"), "utf8"));
   const notices = [];
   const texts = new Map();
   const selected = new Set();
@@ -35,23 +49,15 @@ export function collectRustNotices(root, triple, hostTriple = triple) {
       throw new Error(`Review source or license for ${key}`);
     }
     const dir = path.dirname(pkg.manifest_path);
-    const files = new Set(readdirSync(dir, { withFileTypes: true })
+    const files = new Set(readdirSync(dir, { recursive: true, withFileTypes: true })
       .filter(entry => entry.isFile() && /^(licen[cs]e|copying|copyright|notice|unlicense)([._-]|$)/i.test(entry.name))
-      .map(entry => entry.name));
+      .map(entry => path.relative(dir, path.join(entry.parentPath, entry.name)).split(path.sep).join("/")));
     if (pkg.license_file) files.add(pkg.license_file);
-    const documents = [];
-    for (const name of [...files].sort()) {
-      const absolute = path.resolve(dir, name);
-      const relative = path.relative(dir, absolute);
-      if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) throw new Error(`External license for ${key}`);
-      const bytes = readFileSync(absolute);
-      if (!bytes.length) throw new Error(`Empty notice for ${key}`);
-      const hash = createHash("sha256").update(bytes).digest("hex");
-      // Preserve exact upstream bytes, including CRLF and non-UTF-8 notices.
-      const text = bytes.toString("utf8");
-      texts.set(hash, Buffer.from(text, "utf8").equals(bytes) ? { text } : { base64: bytes.toString("base64") });
-      documents.push({ name: relative.split(path.sep).join("/"), sha256: hash });
+    const documents = [...files].sort().map(name => noticeDocument(dir, name, texts));
+    for (const entry of sources[`${pkg.name}-${pkg.version}`] ?? []) {
+      documents.push({ ...noticeDocument(supplemental, entry.file, texts, entry.sha256), source: entry.source });
     }
+    if (!documents.length) throw new Error(`Missing licensed source notice for ${key}`);
     notices.push({ name: pkg.name, version: pkg.version, license: pkg.license, repository: pkg.repository, documents });
   }
   return { target: triple, scope: "normal and build dependencies",

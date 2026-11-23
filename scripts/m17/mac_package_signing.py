@@ -12,11 +12,14 @@ from test_mac_local_signing_ci import disposable_signing_identity
 
 
 def command(*args, check=True):
-    return subprocess.run(args, check=check, timeout=90, capture_output=True)
+    outcome = subprocess.run(args, timeout=90, capture_output=True, text=True)
+    if check and outcome.returncode:
+        raise RuntimeError(f"{Path(args[0]).name} failed: {outcome.stderr.strip()[:2048]}")
+    return outcome
 
 
 def verify(image, identifier, signer, public_der, directory):
-    requirement = f'identifier "{identifier}" and certificate leaf = H"{signer}"'
+    requirement = f'=identifier "{identifier}" and certificate leaf = H"{signer}"'
     command("/usr/bin/codesign", "--verify", "--strict", "--all-architectures",
             "-R", requirement, image)
     prefix = directory / identifier
@@ -38,13 +41,16 @@ def main():
         installed = root / "Applications/Cryptex.app"
         installed.parent.mkdir()
         command("/usr/bin/ditto", bundle, installed)
+        native_notices = installed / "Contents/Resources/notices/rust.json"
+        if native_notices.read_bytes() != (ROOT / "apps/desktop/src-tauri/binaries/rust-notices.json").read_bytes():
+            raise RuntimeError("Installed Rust inventory differs from the input")
         info = plistlib.loads((installed / "Contents/Info.plist").read_bytes())
         if info["CFBundleIdentifier"] != bundle_id:
             raise RuntimeError("Unexpected installed bundle identifier")
         leaf = (root / "cert.der").read_bytes()
         for image, identifier in [(installed, bundle_id), (installed / daemon_path, daemon_id)]:
             verify(image, identifier, signer, leaf, root)
-            wrong = f'identifier "{identifier}" and certificate leaf = H"{"0" * 40}"'
+            wrong = f'=identifier "{identifier}" and certificate leaf = H"{"0" * 40}"'
             if command("/usr/bin/codesign", "--verify", "--strict", "-R", wrong,
                        image, check=False).returncode == 0:
                 raise RuntimeError("Unrelated signer accepted")

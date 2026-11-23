@@ -18,6 +18,7 @@ test("release inventory covers the native desktop and daemon and retains exact n
   assert.deepEqual(keys, [...new Set(keys)].sort());
   assert.ok(report.packages.find(pkg => pkg.name === "tauri").documents.length > 0);
   for (const pkg of report.packages) {
+    assert.ok(pkg.documents.length, pkg.name);
     for (const doc of pkg.documents) {
       const value = report.documents[doc.sha256];
       const bytes = value.text === undefined ? Buffer.from(value.base64, "base64") : Buffer.from(value.text);
