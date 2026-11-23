@@ -116,3 +116,17 @@ On November 23, 2026 the owner chose to retain the official-package policy and h
 To lift the hold, verify the candidate's upstream archive digests and license inventory, inspect the embedded Go and module versions, and rescan the actual executables on both targets. Review any remaining findings. Exercise managed startup, pairing, transfer, a compatible upgrade and recovery of the last working pair after upgrade rejection in disposable native profiles before accepting the replacement pin. [Managed transport and rollback decision](../../docs/adr/ADR-0004-managed-syncthing-implementation-addendum.md)
 
 The final Rust dependency scan found a newly reported advisory for the desktop's transitive `cookie 0.18.2`. The workspace lock now selects the upstream fix, `0.18.3`. The advisory concerns private encrypted cookies after a Unix fork. Its appearance in a package graph alone does not establish that the desktop uses the affected operation. [Upstream advisory](https://github.com/advisories/GHSA-8wcq-xq25-7fhm)
+
+### Final candidate review
+
+The owner reviewed [the changes from M15 to `d06eaf5`](https://github.com/gungortarik/cryptex/compare/50869d6...d06eaf5) and approved M16 closure conditional on successful native CI and final technical review. The separate personal-use hold above stays in force.
+
+The repeat OSV scan of 727 public Rust crate/version pairs reported zero affected versions in the normal/build graphs for the desktop, daemon and updater on Windows x64 and macOS arm64. The synthetic codec trial and out-of-graph findings remain as documented above. Production-dependency audits of the pnpm workspace, local MCP tool and backup tool each reported zero findings. The Windows run of the status, connection and capture policy tests passed all 27 cases. Doctor renders a fixed message for each health outcome and a last-check timestamp. Its engine controls operate through the owned-child check. The Home view labels remote storage unverified. [Doctor rendering](../../apps/desktop/src/App.tsx) · [Engine control evidence](../m13/desktop-shell.md#product-interactions)
+
+The following checks were requested for the reviewed commit. Each link identifies an exact-candidate run; the closeout requires checking the completed native jobs.
+
+| Area | Runs |
+| --- | --- |
+| Build, privileges and installed UI | [General CI](https://github.com/gungortarik/cryptex/actions/runs/45241873464), [installed update](https://github.com/gungortarik/cryptex/actions/runs/45241878473), [release package smoke](https://github.com/gungortarik/cryptex/actions/runs/45241883226), [desktop shell](https://github.com/gungortarik/cryptex/actions/runs/45241887445) |
+| Storage, scale and transport | [Signed history](https://github.com/gungortarik/cryptex/actions/runs/45241784252), [repeated partitions](https://github.com/gungortarik/cryptex/actions/runs/45241784035), [installed backup](https://github.com/gungortarik/cryptex/actions/runs/45241783920), [cross-platform restore](https://github.com/gungortarik/cryptex/actions/runs/45241902996) |
+| Data access and recovery | [Historical reader](https://github.com/gungortarik/cryptex/actions/runs/45241919854), [attachments](https://github.com/gungortarik/cryptex/actions/runs/45241914364), [forget/purge](https://github.com/gungortarik/cryptex/actions/runs/45241907337), [MCP consent](https://github.com/gungortarik/cryptex/actions/runs/45241892729), [Cortex import and purge recovery](https://github.com/gungortarik/cryptex/actions/runs/45241783915) |
