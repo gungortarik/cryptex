@@ -213,6 +213,8 @@ If new evidence contradicts an accepted decision, implementation stops and the A
 
 **Mitigation:** exact toolchain/dependency baseline, lockfiles, later dependency/security auditing.
 
+**M16 owner decision (2026-11-23).** Continue using unmodified official Syncthing builds. Personal onboarding and distribution for personal use are on hold until a corrected official build passes the native package checks on Windows and macOS. The current 2.1.5 pin and the reviewed 2.1.7 release both have advisory matches. See the [transport review and criteria for lifting the hold](../evidence/m16/hardening.md#personal-use-release-hold).
+
 ### R-29 — Syncthing third-party notices
 
 **Risk:** managed packaging may miss applicable third-party licensing/notices obligations.
