@@ -1613,6 +1613,10 @@ fn end_user_quit(state: &ProbeState) {
 fn stop_daemon_for_user_quit(state: &ProbeState, note: &str) -> Result<(), String> {
     // Adapt State-based stopper for RunEvent / tray paths that hold ProbeState.
     stop_supervised_daemon(state)?;
+    record_daemon_stopped(note)
+}
+
+fn record_daemon_stopped(note: &str) -> Result<(), String> {
     if let Ok(root) = runtime_root_path() {
         write_supervisor_state(&root, note, None, false)?;
         write_snapshot(&root, note, false, Ok(None))?;
@@ -2329,21 +2333,39 @@ fn p0_2_quit_clean(app: AppHandle, _state: State<'_, ProbeState>) -> Result<(), 
     Ok(())
 }
 fn stop_supervised_daemon(state: &ProbeState) -> Result<(), String> {
+    stop_supervised_daemon_for(state, DaemonStop::Interactive)
+}
+
+#[derive(Clone, Copy)]
+enum DaemonStop {
+    Interactive,
+    UpdateProbe,
+}
+
+fn stop_supervised_daemon_for(state: &ProbeState, reason: DaemonStop) -> Result<(), String> {
+    let wait = match reason {
+        DaemonStop::Interactive => Duration::from_secs(3),
+        DaemonStop::UpdateProbe => cryptex_updater::PROBE_TIMEOUT,
+    };
     let runtime = state
         .runtime_root
         .lock()
         .map_err(|e| e.to_string())?
         .clone();
     if let Some(runtime) = &runtime {
-        let _ = fs::write(runtime.join("stop"), "stop\n");
+        fs::write(runtime.join("stop"), "stop\n")
+            .map_err(|e| format!("daemon stop request: {e}"))?;
         write_supervisor_state(runtime, "daemon_stop_requested", None, true)?;
     }
     if let Some(mut child) = state.child.lock().map_err(|e| e.to_string())?.take() {
-        let deadline = Instant::now() + Duration::from_secs(3);
+        let deadline = Instant::now() + wait;
         loop {
             match child.try_wait().map_err(|error| error.to_string())? {
                 Some(status) => {
                     *state.supervised_pid.lock().map_err(|e| e.to_string())? = None;
+                    if matches!(reason, DaemonStop::UpdateProbe) && !status.success() {
+                        return Err("update daemon exited uncleanly".into());
+                    }
                     if pilot_runtime::root().is_some() && !status.success() {
                         return Err("PILOT_DAEMON_UNCLEAN_EXIT".into());
                     }
@@ -2362,7 +2384,7 @@ fn stop_supervised_daemon(state: &ProbeState) -> Result<(), String> {
 
     if let Some(runtime) = &runtime {
         let bin = installed_daemon()?;
-        let deadline = Instant::now() + Duration::from_secs(3);
+        let deadline = Instant::now() + wait;
         loop {
             let status = query_daemon_status(&bin, runtime)?;
             if parse_live_daemon_pid(&status)?.is_none() {

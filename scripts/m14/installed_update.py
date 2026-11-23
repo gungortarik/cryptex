@@ -351,7 +351,7 @@ def exercise(packages, work, runtime, env):
         expected = ([(1, 1), (2, 2)], [(2, 2), (2, 1), (2, 2)], [(2, 2), (2, 2)], [(2, 2)] * 3, [(2, 2)] * 3)[index]
         checks = report["checks"]
         if [(c["desktop_protocol"], c["daemon_protocol"]) for c in checks] != expected:
-            raise RuntimeError(f"Unexpected IPC handshake sequence: {checks}")
+            raise RuntimeError(f"Transaction {index} returned {report['outcome']} with unexpected IPC handshake sequence: {checks}")
         if [c["status"] for c in checks] != ["incompatible" if a != b else "connected" for a, b in expected]:
             raise RuntimeError("Unexpected update decision evidence")
         if report["outcome"] != ("updated", "rolled_back", "recovered", "rolled_back_timeout", "rolled_back_failed_probe")[index]:

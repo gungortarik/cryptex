@@ -52,6 +52,8 @@ jobs:
         run: ./scripts/m17/windows_update_rehearsal.ps1
       - name: Verify that unrelated IPC failures cannot qualify as a protocol rejection
         run: cargo test --locked -p cryptexd --lib health_protocol_mismatch_requires_an_explicit_correlated_rejection
+      - name: Verify a slow, clean daemon stop during an update probe
+        run: cargo test --locked -p cryptex-desktop --features m14-installed-update-check update_probe_waits_for_clean_daemon_drain
       - name: Lint the installed update observer and desktop client
         run: cargo clippy --locked -p cryptex-updater -p cryptex-desktop --features m14-installed-update-check -- -D warnings
       - uses: actions/upload-artifact@v4

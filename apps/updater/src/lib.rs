@@ -7,6 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 pub const PROBE: &str = "--cryptex-update-probe";
 
 #[derive(Debug, Deserialize, Serialize)]

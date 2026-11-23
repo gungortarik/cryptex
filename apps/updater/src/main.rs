@@ -115,7 +115,7 @@ fn probe(layout: &Layout, package: &Path, digest: &str) -> io::Result<Probe> {
     #[cfg(unix)]
     command.wrap(process_wrap::std::ProcessGroup::leader());
     let mut child = command.spawn()?;
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let deadline = Instant::now() + cryptex_updater::PROBE_TIMEOUT;
     let stdout = child
         .stdout()
         .take()

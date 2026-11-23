@@ -1,6 +1,6 @@
 use super::{
-    ProbeState, default_runtime_root_path, start_daemon_for_desktop_launch,
-    stop_daemon_for_user_quit,
+    DaemonStop, ProbeState, default_runtime_root_path, record_daemon_stopped,
+    start_daemon_for_desktop_launch, stop_supervised_daemon_for,
 };
 use cryptex_updater::Health;
 use cryptexd::ipc::{HealthProtocolMismatch, desktop_health_ping};
@@ -70,7 +70,10 @@ pub(super) fn probe() -> Result<(), String> {
         }
         Ok(health)
     });
-    stop_daemon_for_user_quit(&state, "update_probe_stop")?;
+    // The updater owns this probe's process group and bounds the entire handshake.
+    // Let a responsive daemon drain beyond the shorter interactive quit timeout.
+    stop_supervised_daemon_for(&state, DaemonStop::UpdateProbe)?;
+    record_daemon_stopped("update_probe_stop")?;
     if observe()?.lock_held {
         return Err("update daemon did not release its lock".into());
     }
@@ -84,4 +87,45 @@ pub(super) fn probe() -> Result<(), String> {
         serde_json::to_string(&health).map_err(|e| e.to_string())?
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{fs, process::Command, thread, time::Instant};
+
+    #[test]
+    #[ignore = "child process for the delayed clean shutdown test"]
+    fn draining_daemon_fixture() {
+        assert_eq!(env::var("CRYPTEX_TEST_DELAYED_DRAIN").as_deref(), Ok("1"));
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !std::path::Path::new("stop").exists() {
+            assert!(Instant::now() < deadline, "missing stop request");
+            thread::sleep(Duration::from_millis(20));
+        }
+        thread::sleep(Duration::from_secs(4));
+        fs::write("drained", b"ok").unwrap();
+    }
+
+    #[test]
+    fn update_probe_waits_for_clean_daemon_drain() {
+        let root = tempfile::tempdir().unwrap();
+        let child = Command::new(env::current_exe().unwrap())
+            .args([
+                "--ignored",
+                "--exact",
+                "update_health::tests::draining_daemon_fixture",
+            ])
+            .current_dir(root.path())
+            .env("CRYPTEX_TEST_DELAYED_DRAIN", "1")
+            .spawn()
+            .unwrap();
+        let state = ProbeState::default();
+        *state.runtime_root.lock().unwrap() = Some(root.path().to_path_buf());
+        *state.supervised_pid.lock().unwrap() = Some(child.id());
+        *state.child.lock().unwrap() = Some(child);
+        stop_supervised_daemon_for(&state, DaemonStop::UpdateProbe).unwrap();
+        assert_eq!(fs::read(root.path().join("drained")).unwrap(), b"ok");
+        assert!(state.supervised_pid.lock().unwrap().is_none());
+    }
 }
