@@ -8,6 +8,11 @@ mod backup_test;
     test,
     any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
 ))]
+mod cortex_backup_test;
+#[cfg(all(
+    test,
+    any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+))]
 pub(crate) mod physical;
 #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 pub(crate) mod receipt;

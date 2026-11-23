@@ -7647,11 +7647,25 @@ pub(crate) mod tests {
         .expect("rebuild M4 knowledge state");
         drop(db);
 
-        let context = SearchContext {
-            admission: crate::runtime_admission::RuntimeAdmission::detached_for_tests(&root),
+        let context = fixture_search_context(&root, store.clone());
+        SearchFixture {
+            root,
+            brain_id: TEST_BRAIN_ID.into(),
+            device,
+            store,
+            context,
+        }
+    }
+
+    pub(super) fn fixture_search_context(
+        root: &Path,
+        store: Arc<dyn SecureStore>,
+    ) -> SearchContext {
+        SearchContext {
+            admission: crate::runtime_admission::RuntimeAdmission::detached_for_tests(root),
             operation: None,
-            runtime_root: root.clone(),
-            store: store.clone(),
+            runtime_root: root.to_owned(),
+            store,
             environment: SecureStoreEnvironment::Dev,
             public_consent: Default::default(),
             expected_desktop: Arc::new(
@@ -7675,13 +7689,6 @@ pub(crate) mod tests {
             transport_device_id_override: Some(
                 "AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA".into(),
             ),
-        };
-        SearchFixture {
-            root,
-            brain_id: TEST_BRAIN_ID.into(),
-            device,
-            store,
-            context,
         }
     }
 

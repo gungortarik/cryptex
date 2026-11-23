@@ -68,10 +68,13 @@ pub(in crate::knowledge_materialization) fn verified_members(
         .security_history
         .records()
         .iter()
-        .filter_map(|record| match record {
-            AuthenticatedSecurityRecord::V1(event) => Some((event.event_id.as_str(), event)),
-            _ => None,
+        .filter(|record| {
+            matches!(
+                record,
+                AuthenticatedSecurityRecord::V1(_) | AuthenticatedSecurityRecord::PurgeBridge(..)
+            )
         })
+        .map(|record| (record.event_id(), record))
         .collect();
     let mut selected = BTreeMap::new();
     let mut signer = None;
@@ -90,7 +93,7 @@ pub(in crate::knowledge_materialization) fn verified_members(
             .get(file.strip_suffix(".json").ok_or(Error::CortexEvidence)?)
             .ok_or(Error::CortexEvidence)?;
         let key = keys
-            .trusted_daemon_key(&event.device_id, event.signing_key_id.as_str())
+            .trusted_daemon_key(event.device_id(), event.signing_key_id().as_str())
             .ok_or(Error::CortexEvidence)?;
         let bytes = read(root, &name)?;
         total += bytes.len();
@@ -98,19 +101,31 @@ pub(in crate::knowledge_materialization) fn verified_members(
             return Err(Error::CortexEvidence);
         }
         let source: Source = verify(&bytes, &key)?;
-        let EventPayload::MemoryNote(note) = &event.payload;
         if source.schema != evidence::SCHEMA
             || source.brain_id != brain
-            || source.device_id != event.device_id
-            || source.event_id != event.event_id
-            || source.content_hash != event.content_hash.as_str()
-            || source.approval.classification != event.classification
-            || source.approval.source_sha256
-                != format!("{:x}", Sha256::digest(note.text.as_bytes()))
+            || source.device_id != event.device_id()
+            || source.event_id != event.event_id()
+            || source.content_hash != event.content_hash().as_str()
         {
             return Err(Error::CortexEvidence);
         }
-        let identity = (&event.device_id, key);
+        match event {
+            AuthenticatedSecurityRecord::V1(note) => {
+                let EventPayload::MemoryNote(body) = &note.payload;
+                if source.approval.classification != note.classification
+                    || source.approval.source_sha256
+                        != format!("{:x}", Sha256::digest(body.text.as_bytes()))
+                {
+                    return Err(Error::CortexEvidence);
+                }
+            }
+            // The backup snapshot verified the separate owner approval. The bridge's
+            // logical content_hash() binds this signed receipt to the original note.
+            AuthenticatedSecurityRecord::PurgeBridge(_, _, _, class)
+                if class.is_none_or(|c| c == source.approval.classification) => {}
+            _ => return Err(Error::CortexEvidence),
+        }
+        let identity = (event.device_id(), key);
         if signer.as_ref().is_some_and(|prior| prior != &identity)
             || selected
                 .insert(source.approval.capture_id.clone(), source)
@@ -130,7 +145,7 @@ pub(in crate::knowledge_materialization) fn verified_members(
     if decision.schema != evidence::DECISION_SCHEMA
         || decision.choice != Choice::Accepted
         || decision.brain_id != brain
-        || &decision.device_id != device
+        || decision.device_id != device
         || decision.review_sha256
             != evidence::review_digest(&report).map_err(|_| Error::CortexEvidence)?
     {

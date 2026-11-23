@@ -32,7 +32,7 @@ pub(crate) use restore::reconstruct_files;
 pub(crate) use restore::reconstruct_selected;
 pub(crate) use restore::verify_manual;
 
-pub(super) fn snapshot(
+pub(crate) fn snapshot(
     root: &Path,
     brain: &str,
     anchor: &LocalTrustAnchor,

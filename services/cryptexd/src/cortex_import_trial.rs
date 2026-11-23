@@ -1,5 +1,11 @@
 //! Feature-gated import rehearsals. The daemon allocates the writable trial profiles.
 use super::{LifecycleError, random_uuid_v4};
+#[cfg(all(
+    test,
+    feature = "m11-installed-search-check",
+    any(windows, target_os = "macos")
+))]
+mod purge_backup_fixture;
 use cryptexd::secure_store::SecureStore;
 #[cfg(any(windows, target_os = "macos"))]
 mod cutover;

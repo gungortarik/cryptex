@@ -8,6 +8,9 @@ on:
       - 'services/cryptexd/src/cortex_import_trial.rs'
       - 'services/cryptexd/src/cortex_evidence.rs'
       - 'services/cryptexd/src/cortex_import_trial/**'
+      - 'services/cryptexd/src/knowledge_materialization/backup/cortex.rs'
+      - 'services/cryptexd/src/ipc/purge_review/cortex_backup_test.rs'
+      - 'scripts/m16/cortex_purge_backup.py'
       - 'services/cryptexd/src/capture.rs'
       - '.github/workflows/m15-cortex-inventory.yml'
       - 'Cargo.toml'
@@ -22,7 +25,7 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,3 +43,12 @@ jobs:
           CRYPTEX_INVENTORY_BIN: target/debug/cryptex-cortex-inventory${{ runner.os == 'Windows' && '.exe' || '' }}
           CRYPTEX_M15_DAEMON: target/debug/cryptexd${{ runner.os == 'Windows' && '.exe' || '' }}
         run: python -B tools/cortex-inventory/test_capture.py -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci --prefix tools/m11-backup-spike --ignore-scripts
+      - name: Restore surviving Cortex notes after confirmed purge and source loss
+        run: python -B scripts/m16/cortex_purge_backup.py
