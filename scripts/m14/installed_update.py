@@ -393,8 +393,45 @@ def exercise(packages, work, runtime, env):
             raise RuntimeError("NSIS left the application binaries installed")
         install(packages[1], active)
     else:
-        active.rename(work / "removed.app")
-        run("ditto", packages[1][1], active)
+        # The normal packaged Mac command removes only the reviewed application
+        # and its matching per-user next-login registration. Preserve a neighbor.
+        agents = Path.home() / "Library/LaunchAgents"
+        agents.mkdir(parents=True, exist_ok=True)
+        login = agents / "Cryptex.plist"
+        neighbor = agents / f"cryptex-ci-{uuid.uuid4()}.plist"
+        if os.path.lexists(login):
+            raise RuntimeError("Expected no existing Cryptex registration in the disposable account")
+        foreign = plistlib.dumps({"Label": "unrelated", "ProgramArguments": ["/usr/bin/true"]})
+        neighbor.write_bytes(foreign)
+        login.write_bytes(foreign)
+        fingerprint = run(tool, "fingerprint", active, text=True, capture_output=True).stdout.strip()
+        removal = [tool, "remove-installed-app", fingerprint]
+        refuse([tool, "remove-installed-app", "0" * 64], b"differs from its approved digest")
+        refuse(removal, b"login entry does not belong to this installation")
+        if not active.is_dir() or login.read_bytes() != foreign or neighbor.read_bytes() != foreign:
+            raise RuntimeError("Refused Mac removal changed an application or login entry")
+        login.write_bytes(plistlib.dumps({"Label": "Cryptex", "ProgramArguments": [str(desktop), "--cryptex-background"],
+                                         "RunAtLoad": True}))
+        import fcntl
+        with (state / "desktop.lock").open("rb") as session:
+            fcntl.flock(session, fcntl.LOCK_SH)
+            refuse(removal, b"quit Cryptex before updating")
+        with journal.open("xb"):
+            try:
+                refuse(removal, b"finish the pending update recovery")
+            finally:
+                journal.unlink()
+        if not active.is_dir() or not login.is_file() or neighbor.read_bytes() != foreign:
+            raise RuntimeError("Busy Mac removal changed the installation or startup entry")
+        for has_login in (True, False):
+            run(*removal, env=env, timeout=90)
+            if os.path.lexists(active) or os.path.lexists(login) or neighbor.read_bytes() != foreign:
+                raise RuntimeError(f"Mac removal left the wrong installation state (registered={has_login})")
+            run("ditto", packages[1][1], active)
+            if verify_note(daemon, runtime) != original_note:
+                raise RuntimeError("Mac reinstall lost the verified signed note")
+        print("mac_removal=verified with_and_without_login=true unrelated_entry_preserved=true "
+              "signed_note_verified_after_reinstall=true", flush=True)
     run(tool, "admit", active, packages[1][1].parent / "release.cms", env=env, timeout=45)
     if verify_note(daemon, runtime) != original_note:
         raise RuntimeError("Reinstall changed the signed note or its verification evidence")

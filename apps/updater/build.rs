@@ -33,7 +33,11 @@ fn main() {
         "macos" => {
             let verifier = "../../services/cryptexd/src/m8_owner_channel/native/inventory.c";
             println!("cargo:rerun-if-changed={verifier}");
-            build.file("native/macos.c").file(verifier);
+            build
+                .file("native/macos.c")
+                .file("native/macos_trash.m")
+                .file(verifier);
+            println!("cargo:rustc-link-lib=framework=Foundation");
             println!("cargo:rustc-link-lib=framework=Security");
             println!("cargo:rustc-link-lib=framework=CoreFoundation");
         }

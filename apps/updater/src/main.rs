@@ -1,4 +1,6 @@
 //! Apply an explicitly staged local package while the user has quit Desktop.
+#[cfg(target_os = "macos")]
+mod mac_removal;
 mod release;
 use cryptex_updater::{Health, Layout, PROBE, desktop};
 use process_wrap::std::{ChildWrapper, CommandWrap};
@@ -376,6 +378,13 @@ fn main() -> io::Result<()> {
         [command, package, receipt] if command == "admit" => {
             release::admit(&Layout::current()?, Path::new(package), Path::new(receipt))
         }
+        #[cfg(target_os = "macos")]
+        [command, digest] if command == "remove-installed-app" => mac_removal::remove(
+            &Layout::current()?,
+            digest
+                .to_str()
+                .ok_or_else(|| error("expected approved package SHA-256"))?,
+        ),
         [command, digest] if command == "apply" => {
             let hash = digest
                 .to_str()
