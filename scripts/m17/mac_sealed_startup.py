@@ -3,7 +3,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import platform
 import shutil
 import subprocess
 import sys
@@ -11,19 +10,14 @@ import tempfile
 
 from update_fixture import ROOT, image, receipt, signer
 
-sys.path.insert(0, str(ROOT / "scripts/m8"))
-from mac_lan_setup import inventory
+from prepare_mac_inventory import prepare, write_inventory
 
 
 def run(*args, **kwargs):
     return subprocess.run(list(args), check=True, **kwargs)
 
 
-def inspect_image(args, _stage, timeout):
-    return run(*args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=timeout).stdout
-
-
-def exercise(root, release):
+def exercise(root, revision):
     config = json.loads((ROOT / "apps/desktop/src-tauri/tauri.bundle.conf.json").read_text())
     config["bundle"]["resources"]["../dist"] = "frontend"
     overlay = root / "bundle.json"
@@ -47,16 +41,13 @@ def exercise(root, release):
     def slot():
         return installed.parent / ("cryptex-release-" + hashlib.sha256(desktop.read_bytes()).hexdigest())
 
-    def publish(release_id):
-        metadata = slot()
-        metadata.mkdir()
-        manifest = metadata / "inventory.json"
-        signature = metadata / "inventory.cms"
-        contents = inventory(installed, platform.machine(), release_id, inspect_image, sealed=True)
-        if "Contents/Resources/frontend/index.html" not in {item["path"] for item in contents["files"]}:
-            raise RuntimeError("Installed release is missing its protected frontend")
-        manifest.write_bytes(json.dumps(contents, separators=(",", ":")).encode())
-        run(os.environ["CX_UPDATE_CI_CMS_HELPER"], pin, manifest, signature, timeout=60)
+    helper = Path(os.environ["CX_UPDATE_CI_CMS_HELPER"])
+
+    def publish():
+        digest = hashlib.sha256(desktop.read_bytes()).hexdigest()
+        result = prepare(installed, revision, pin, digest, helper, installed.parent)
+        if result != slot():
+            raise RuntimeError("Unexpected signed inventory slot")
 
     def startup(case, refusal=None):
         runtime = root / case
@@ -73,8 +64,14 @@ def exercise(root, release):
                 if f"local_signed_{check}=passed" not in result.stdout.splitlines():
                     raise RuntimeError(f"Missing installed {check} evidence")
 
-    publish(release)
+    publish()
     run("/usr/bin/codesign", "--verify", "--strict", installed)
+    try:
+        publish()
+    except FileExistsError:
+        pass
+    else:
+        raise RuntimeError("Existing inventory was overwritten")
     startup("connected")
     window = subprocess.run(["/usr/bin/swift", ROOT / "scripts/m8/mac_ui_quit_check.swift", desktop],
                             capture_output=True, text=True, timeout=120)
@@ -102,7 +99,7 @@ def exercise(root, release):
         shutil.copyfile(original_slot / name, candidate_slot / name)
     startup("stale-inventory", "local_signed_startup_Inventory")
     candidate_slot.rename(root / "stale-metadata")
-    publish(release)
+    publish()
     startup("new-release")
     installed.rename(installed.with_suffix(".app.pending"))
     previous.rename(installed)
@@ -146,7 +143,18 @@ def exercise(root, release):
     image(daemon, "com.cryptex.unrelated")
     image(installed, "com.cryptex.desktop")
     run("/usr/bin/codesign", "--verify", "--strict", installed)
-    publish(release)
+    # The owner preparation command must refuse this daemon before publication.
+    try:
+        publish()
+    except subprocess.CalledProcessError:
+        pass
+    else:
+        raise RuntimeError("Owner inventory signer accepted an unrelated daemon")
+    if slot().exists():
+        raise RuntimeError("Rejected owner preparation published an inventory")
+    # Independently exercise the receive-side check with a deliberately signed fixture.
+    slot().mkdir()
+    write_inventory(installed, revision, pin, helper, slot())
     startup("replaced-role", "local_signed_startup_Image")
     print("Verified sealed installation, live startup/restart, stale channel refusal, protected UI,"
           " stale inventory refusal and replaced role refusal.")
@@ -157,4 +165,4 @@ if __name__ == "__main__":
         revision = os.environ["GITHUB_SHA"]
         os.environ["CRYPTEX_M17_SIGNER_DER"] = os.environ["CRYPTEX_UPDATE_SIGNER_DER"]
         os.environ["CRYPTEX_M17_SOURCE_REVISION"] = revision
-        exercise(Path(work).resolve(), "cryptex-m17-" + revision)
+        exercise(Path(work).resolve(), revision)

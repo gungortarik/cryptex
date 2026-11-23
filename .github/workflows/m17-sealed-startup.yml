@@ -8,6 +8,8 @@ on:
       - 'scripts/m17/mac_sealed_startup.py'
       - 'scripts/m17/mac_reopened_window.swift'
       - 'scripts/m17/sign_owner_update.py'
+      - 'scripts/m17/prepare_mac_inventory.py'
+      - 'scripts/m17/verify_first_install_mac.py'
       - 'apps/updater/**'
       - 'scripts/m17/update_fixture.py'
       - 'scripts/m8/mac_lan_setup.py'
