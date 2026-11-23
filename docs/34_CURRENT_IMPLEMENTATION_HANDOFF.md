@@ -4,6 +4,8 @@
 
 The owner intends to use Cryptex on their own Mac and Windows VM. The [beta checklist](../checklists/BETA_RELEASE_GATE.md) now links the M16 recovery and hardening results. The package work starts at `207dd15` with the bundled frontend and vendored Unicode attribution. The [installed package rehearsal](https://github.com/gungortarik/cryptex/actions/runs/45249384781) checks the installed notice bytes.
 
+The [owner-signed release updater](https://github.com/gungortarik/cryptex/actions/runs/45273508734) passed five update/rollback transactions per platform at `28c92b8` using OS-held disposable keys. Both installations preserved their signed note. The [Mac startup review](proposals/m17-personal-device-signing.md#macos-startup-after-installation) records why the development inventory cannot be inserted into an already sealed release bundle. Detached inventory verification and live peer binding in the ordinary app remain open.
+
 Paid publisher credentials and invited-user distribution have not been selected. The existing [Mac image policy](proposals/m8-macos-release-image-policy.md) supports an independently pinned local certificate for controlled development and has separate release activation conditions. M17 needs a verified owner-operated signing and upgrade path for each OS, the remaining native dependency and transport notices, final candidate checks, and explicit release approval. Personal data enrollment is still on hold pending verification of a corrected official transport.
 
 The [personal-device signing proposal](proposals/m17-personal-device-signing.md) covers the first install, update and rollback trust decisions. The [M17 package record](../evidence/m17/personal-packaging.md) tracks installation, notice and official transport checks.
