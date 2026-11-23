@@ -3,6 +3,7 @@
   "bundle": {
     "active": true,
     "resources": {
+      "binaries/build-provenance.json": "build-provenance.json",
       "binaries/rust-notices.json": "notices/rust.json",
       "../dist/notices/frontend.json": "notices/frontend.json",
       "../node_modules/@tauri-apps/api/LICENSE-MIT": "notices/tauri-api/LICENSE-MIT",

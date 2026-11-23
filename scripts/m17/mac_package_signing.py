@@ -44,6 +44,8 @@ def main():
         installed = root / "Applications/Cryptex.app"
         installed.parent.mkdir()
         command("/usr/bin/ditto", bundle, installed)
+        command(sys.executable, "-B", ROOT / "scripts/m17/check_installed_provenance.py",
+                installed / "Contents/Resources/build-provenance.json")
         verifier = [sys.executable, "-B", ROOT / "scripts/m17/verify_first_install_mac.py", installed]
         command(*verifier, owner_pin, release_hash)
         for pin, release, reason in [("0" * 64, release_hash, "Unexpected Cryptex signer"),

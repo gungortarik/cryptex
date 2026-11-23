@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { writeRustNotices } from "./rust-notices.mjs";
+import { writeBuildProvenance } from "./build-provenance.mjs";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const desktopDirectory = path.resolve(scriptDirectory, "..");
@@ -58,6 +59,7 @@ export function prepareSidecar(targetTriple = process.env.TAURI_ENV_TARGET_TRIPL
 
   mkdirSync(path.dirname(paths.stagedBinary), { recursive: true });
   writeRustNotices(repositoryDirectory, triple, host, path.join(path.dirname(paths.stagedBinary), "rust-notices.json"));
+  writeBuildProvenance(repositoryDirectory, triple, path.join(path.dirname(paths.stagedBinary), "build-provenance.json"));
   copyFileSync(paths.builtBinary, paths.stagedBinary);
   if (!triple.includes("windows")) {
     chmodSync(paths.stagedBinary, 0o755);
