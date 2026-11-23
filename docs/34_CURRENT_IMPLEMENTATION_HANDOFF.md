@@ -1,5 +1,9 @@
 # 34 — Current Implementation Handoff
 
+## M15 selection comparison before batch acceptance
+
+At `3c54602`, [Windows and macOS CI](https://github.com/gungortarik/cryptex/actions/runs/45112850638) passed all sixteen daemon capture tests per platform using temporary profiles. The [comparison command](milestones/M15_CORTEX_FRESH_REINGESTION.md#comparing-a-selection-before-owner-acceptance) takes the owner's separate selection for the trial Brain and verifies signed receipts with the export offline. Equal-size batches with a missing and an extra note showed both differences. A changed classification, path, digest or review decision prevented readiness. Wrong-Brain, duplicate and malformed selections and an invalid signature produced no comparison. The saved receipts and canonical packs survived repeated comparison unchanged. Only a nonempty exact match is ready for owner review. Explicit batch acceptance and personal-data cutover are still pending.
+
 ## M15 recovery of an interrupted source receipt
 
 At `e4e766b`, all thirteen daemon capture tests passed on both [Windows and macOS](https://github.com/gungortarik/cryptex/actions/runs/45094172575). The disposable daemon exited after committing one synthetic restricted note and before publishing its source receipt. With the export disconnected, another process verified the signed owner decision and the committed note, then published the missing receipt. Repeated review preserved the receipt bytes and the canonical packs. An altered decision, missing capture evidence, a corrupt existing receipt and an extra receipt each blocked recovery and produced no report. The inventory suite passed all fifteen tests on macOS and fourteen applicable tests on Windows. The next M15 step is to reconcile reviewed import selections with verified source receipts in a temporary Brain before presenting a batch for owner acceptance. Personal-data cutover remains open.
