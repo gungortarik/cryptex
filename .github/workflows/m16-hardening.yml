@@ -3,6 +3,10 @@ on:
   workflow_dispatch:
   push:
     paths:
+      - 'Cargo.lock'
+      - 'Cargo.toml'
+      - 'crates/projection/src/**'
+      - 'services/cryptexd/src/projection.rs'
       - '.github/workflows/m16-hardening.yml'
       - 'services/cryptexd/src/projection_scale_test.rs'
 jobs:

@@ -3,6 +3,8 @@ on:
   workflow_dispatch:
   push:
     paths:
+      - 'Cargo.lock'
+      - 'services/cryptexd/Cargo.toml'
       - '.github/workflows/m16-sync-stress.yml'
       - 'scripts/m16/sync_stress.py'
       - 'scripts/m16/owner_soak.py'
