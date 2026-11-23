@@ -57,7 +57,7 @@ No checkbox may be marked complete without actual evidence from the applicable m
 ## D. Cross-platform product verification
 
 - [ ] macOS release candidate builds and launches.
-  - Evidence:
+  - Evidence: [Sealed macOS install and live peer startup](../evidence/m17/personal-packaging.md#installed-macos-owner-session) in a disposable account. Final owner candidate pending.
 - [ ] Windows release candidate builds and launches.
   - Evidence:
 - [ ] Required platform-native behavior/polish is verified on macOS.
@@ -87,7 +87,7 @@ No checkbox may be marked complete without actual evidence from the applicable m
 ## F. Release artifacts
 
 - [ ] Signed/notarized packaging is complete as appropriate for each platform.
-  - Evidence: [Disposable local signing on both platforms](https://github.com/gungortarik/cryptex/actions/runs/45253534985). The [first-install verifiers](https://github.com/gungortarik/cryptex/actions/runs/45260525337) and [signed updater](https://github.com/gungortarik/cryptex/actions/runs/45257477174) passed with disposable identities. Owner-controlled signing, live Mac role verification and final candidate acceptance remain open.
+  - Evidence: [Disposable local signing on both platforms](https://github.com/gungortarik/cryptex/actions/runs/45253534985). The [first-install verifiers](https://github.com/gungortarik/cryptex/actions/runs/45260525337) and [signed updater](https://github.com/gungortarik/cryptex/actions/runs/45257477174) passed with disposable identities. [Live Mac roles](../evidence/m17/personal-packaging.md#installed-macos-owner-session) were verified with a disposable signer. Owner-controlled signing and final candidate acceptance remain open.
 - [ ] Final third-party notices are included.
   - Evidence: [Frontend, native Rust dependencies and embedded component notices](../evidence/m17/personal-packaging.md). Final installed inventory and transport review are pending.
 - [ ] Syncthing/other bundled dependency notice obligations are satisfied.
