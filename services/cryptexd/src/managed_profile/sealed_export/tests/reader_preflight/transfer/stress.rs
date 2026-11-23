@@ -156,7 +156,19 @@ pub(in crate::managed_profile) fn run() {
                 check_notes(side, &store, expected);
             }
         }
-        "online" => {
+        "online" | "resume" => {
+            if phase == "resume" {
+                assert_eq!(round, 1);
+                for (side, rounds) in [(&a, [1, 0]), (&b, [0, 1])] {
+                    check_notes(side, &store, rounds);
+                }
+                fs::File::create_new(base.join("waiting-for-wake")).unwrap();
+                let deadline = Instant::now() + Duration::from_secs(36 * 60 * 60);
+                while !base.join("allow-reconnect").try_exists().unwrap() {
+                    assert!(Instant::now() < deadline, "owner session expired");
+                    thread::sleep(Duration::from_millis(250));
+                }
+            }
             exchange(&mut a, &b, &store, round);
             exchange(&mut b, &a, &store, round);
             for side in [&a, &b] {

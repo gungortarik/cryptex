@@ -5,6 +5,10 @@ on:
     paths:
       - '.github/workflows/m16-sync-stress.yml'
       - 'scripts/m16/sync_stress.py'
+      - 'scripts/m16/owner_soak.py'
+      - 'scripts/m16/package_soak.py'
+      - 'scripts/m16/suspend_clock.py'
+      - 'scripts/m16/test_suspend_clock.py'
       - 'services/cryptexd/src/managed_profile/sealed_export/tests/reader_preflight/transfer/stress.rs'
 permissions:
   contents: read
@@ -21,12 +25,29 @@ jobs:
         with:
           persist-credentials: false
       - uses: Swatinem/rust-cache@v2
+      - run: python -B scripts/m16/test_suspend_clock.py -v
       - if: runner.os == 'macOS'
-        run: python3 -B scripts/m16/sync_stress.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          packet="$RUNNER_TEMP/m16-packet.zip"
+          python3 -B scripts/m16/package_soak.py "$packet"
+          unzip -q "$packet" -d "$RUNNER_TEMP/m16-extracted"
+          python3 -B "$RUNNER_TEMP/m16-extracted/Cryptex-M16/scripts/m16/owner_soak.py" --smoke
       - if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $packet = Join-Path $env:RUNNER_TEMP 'm16-native'
           python -B scripts/m8/test_lan_cutoff_pair.py --build-windows "$packet"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -M16SyncStress -LanArtifact "$packet"
+          $archive = Join-Path $env:RUNNER_TEMP 'm16-packet.zip'
+          python -B scripts/m16/package_soak.py "$archive" --windows-artifact "$packet"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $unpacked = Join-Path $env:RUNNER_TEMP 'm16-extracted'
+          Expand-Archive -LiteralPath $archive -DestinationPath $unpacked
+          ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -M16SyncStress -LanArtifact (Join-Path $unpacked 'Cryptex-M16')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: m16-soak-${{ runner.os }}-${{ runner.arch }}
+          path: ${{ runner.temp }}/m16-packet.zip
+          if-no-files-found: error

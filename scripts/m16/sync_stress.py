@@ -7,6 +7,7 @@ import platform
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 import xml.etree.ElementTree as ET
 
@@ -18,7 +19,7 @@ from lan_cutoff_packet import build_runner
 ROUNDS = 6
 
 
-def exercise(base, native, binary):
+def exercise(base, native, binary, observe_suspend=None):
     check_hash(native, WIN_HASH if sys.platform == "win32" else MAC_HASH[platform.machine()])
     roots = [base / "A", base / "B"]
     for root in roots:
@@ -27,16 +28,35 @@ def exercise(base, native, binary):
     if ids[0] == ids[1]:
         raise RuntimeError("duplicate transport identity")
 
-    def phase(name, number):
+    def phase(name, number, when_waiting=None):
         env = dict(os.environ, CRYPTEX_TEST_WIRE=str(base), CRYPTEX_TEST_DEVICE_A=ids[0],
                    CRYPTEX_TEST_DEVICE_B=ids[1], CRYPTEX_M16_ROUND=str(number), CRYPTEX_M16_PHASE=name)
         cmd = [binary, "managed_profile::repeated_offline_exchange", "--exact", "--ignored", "--nocapture"]
-        result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=180)
+        with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as log:
+            proc = subprocess.Popen(cmd, env=env, stdout=log, stderr=log)
+            try:
+                if when_waiting:
+                    deadline = time.monotonic() + 90
+                    while not (base / "waiting-for-wake").is_file():
+                        if proc.poll() is not None:
+                            break
+                        if time.monotonic() >= deadline:
+                            raise RuntimeError("profiles did not reach offline checkpoint")
+                        time.sleep(.2)
+                    else:
+                        when_waiting()
+                        (base / "allow-reconnect").touch(exist_ok=False)
+                status = proc.wait(timeout=180)
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                    proc.wait(timeout=10)
+            log.seek(0)
+            output = log.read()
         receipt = f"m16_exchange phase={name} round={number} verified=true"
-        if (result.returncode or receipt not in result.stdout.splitlines()
-                or "1 passed; 0 failed; 0 ignored" not in result.stdout):
+        if status or receipt not in output.splitlines() or "1 passed; 0 failed; 0 ignored" not in output:
             # The controller runs exclusively against synthetic profiles.
-            print(result.stdout, result.stderr, file=sys.stderr)
+            print(output, file=sys.stderr)
             raise RuntimeError(f"sync stress failed in {name} round {number}")
         print(receipt, flush=True)
 
@@ -63,17 +83,30 @@ def exercise(base, native, binary):
         tree.write(path, encoding="utf-8", xml_declaration=True)
         configs.append((root, gui, key))
 
+    suspended_seconds = None
+    def start(stack, i):
+        if stack.enter_context(worker(native, *configs[i])) != ids[i]:
+            raise RuntimeError("transport started with a different identity")
+
     for number in range(ROUNDS + 1):
         if number:
             phase("offline", number)
         with ExitStack() as stack:
-            for i, config in enumerate(configs):
-                if stack.enter_context(worker(native, *config)) != ids[i]:
-                    raise RuntimeError("transport started with a different identity")
-            phase("online", number)
+            start(stack, 0)
+            if number == 1:
+                def reconnect():
+                    nonlocal suspended_seconds
+                    if observe_suspend is not None:
+                        suspended_seconds = observe_suspend()
+                    start(stack, 1)
+                phase("resume", number, reconnect)
+            else:
+                start(stack, 1)
+                phase("online", number)
         # The read runs in a fresh daemon test process with both transports down.
         phase("reopen", number)
     print(f"m16_stress rounds={ROUNDS} verified_notes_per_replica={2 + ROUNDS * 8} peers=2")
+    return suspended_seconds
 
 
 def main():
