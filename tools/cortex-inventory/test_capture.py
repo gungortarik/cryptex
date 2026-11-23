@@ -160,7 +160,7 @@ class ReviewedCaptureTest(unittest.TestCase):
             # securityd resolves the runner's selected default Keychain through
             # its login home. The daemon's trial profile still lives in TMPDIR.
             env["HOME"] = os.environ["HOME"]
-        source_free = mode in ("--provenance", "--compare-selection", "--accept-selection",
+        source_free = mode in ("--provenance", "--compare-selection", "--open-accepted", "--accept-selection",
                                "--cancel-selection", "--remove-trial-key")
         source_args = [] if source_free else [self.source]
         digest_args = [] if review_digest is None else [review_digest]
@@ -383,6 +383,43 @@ class ReviewedCaptureTest(unittest.TestCase):
         self.assertIn(b"source_receipt_signature", self.run_phase(
             "--accept-selection", trial_id, selection, review_digest=digest, expected_exit=None))
         self.assertFalse((root / "cortex-batch-decision.json").exists())
+
+    def test_accepted_brain_rebuilds_guarded_reads_without_export(self):
+        trial_id = str(uuid.uuid4())
+        self.addCleanup(self.run_phase, "--remove-trial-key", trial_id)
+        body = b"second public synthetic note"
+        (self.notes / "b.md").write_bytes(body)
+        other = dict(self.approval, capture_id=str(uuid.uuid4()), classification="public",
+                     source_path="Notes/b.md", source_sha256=hashlib.sha256(body).hexdigest())
+        selection = self.selection(trial_id, other, self.approval)
+        self.run_phase("--batch-create", trial_id, self.approval, other)
+        self.source.rename(self.source.with_name("disconnected-export"))
+        root = self.temp / f"cryptex-m15-restart-{trial_id}"
+        packs = canonical_packs(root)
+        review, = self.run_phase("--compare-selection", trial_id, selection)
+        self.assertIn(b"owner_decision_pending", self.run_phase("--open-accepted", trial_id, selection, expected_exit=None))
+        self.run_phase("--accept-selection", trial_id, selection, review_digest=review["review_sha256"])
+        self.assertIn(b"selection_not_ready", self.run_phase("--open-accepted", trial_id,
+                      self.selection(trial_id, other), expected_exit=None))
+        opened, = self.run_phase("--open-accepted", trial_id, selection)
+        self.assertEqual(opened, {"schema":"cryptex.m15.disposable-cutover.v1", "brain_id":trial_id, "verified_notes":2})
+        (root / "derived" / "projection" / "projection.sqlite").unlink()
+        self.assertEqual(self.run_phase("--open-accepted", trial_id, selection), [opened])
+        self.assertEqual(canonical_packs(root), packs)
+        decision = root / "cortex-batch-decision.json"
+        signed = json.loads(decision.read_bytes())
+        signed["source"]["review_sha256"] = "0" * 64
+        decision.write_text(json.dumps(signed), encoding="utf-8")
+        self.assertIn(b"source_receipt_signature", self.run_phase("--open-accepted", trial_id, selection, expected_exit=None))
+
+    def test_cancelled_brain_blocks_guarded_cutover(self):
+        trial_id = str(uuid.uuid4())
+        self.addCleanup(self.run_phase, "--remove-trial-key", trial_id)
+        self.run_phase("--batch-create", trial_id, self.approval)
+        selection = self.selection(trial_id, self.approval)
+        preview, = self.run_phase("--compare-selection", trial_id, selection)
+        self.run_phase("--cancel-selection", trial_id, selection, review_digest=preview["review_sha256"])
+        self.assertIn(b"batch_not_accepted", self.run_phase("--open-accepted", trial_id, selection, expected_exit=None))
 
     def interrupt_batch(self):
         trial_id = str(uuid.uuid4())

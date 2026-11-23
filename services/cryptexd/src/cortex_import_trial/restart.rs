@@ -91,7 +91,8 @@ pub(super) fn run(
             _ => Err(fault("trial_key_cleanup_unconfirmed")),
         };
     }
-    let selection = if source.is_none() && mode == "--compare-selection" {
+    let open_accepted = mode == "--open-accepted";
+    let selection = if source.is_none() && (mode == "--compare-selection" || open_accepted) {
         Some(super::selection::Selection::read(io::stdin().lock(), id)?)
     } else {
         None
@@ -99,7 +100,9 @@ pub(super) fn run(
     let mode = match mode {
         "--restart-create" => TrialMode::Capture,
         "--exit-before-reply" => TrialMode::ExitBeforeReply,
-        "--provenance" | "--compare-selection" if source.is_none() => TrialMode::Replay,
+        "--provenance" | "--compare-selection" | "--open-accepted" if source.is_none() => {
+            TrialMode::Replay
+        }
         "--restart-replay" => TrialMode::Replay,
         "--batch-create" => TrialMode::Batch,
         "--batch-exit-before-source-receipt" => TrialMode::BatchExitBeforeSourceReceipt,
@@ -155,6 +158,17 @@ pub(super) fn run(
         let sources =
             provenance::verified_sources(&root, &device, &store, &key.signing_key.verifying_key())?;
         let report = match selection {
+            Some(selection) if open_accepted => {
+                let comparison = selection.compare(sources.clone())?;
+                super::decision::require_accepted(
+                    &root,
+                    &key.signing_key.verifying_key(),
+                    &device,
+                    id,
+                    &comparison,
+                )?;
+                super::cutover::open(&root, &store, &device, id, sources)?
+            }
             Some(selection) => {
                 let comparison = selection.compare(sources)?;
                 super::decision::review(&root, &key.signing_key, &device, id, comparison, decision)?

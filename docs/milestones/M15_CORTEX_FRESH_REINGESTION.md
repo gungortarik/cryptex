@@ -91,6 +91,10 @@ cryptexd cortex-import-disposable --cancel-selection TRIAL_UUID REVIEW_SHA256
 
 Under the trial's instance lock, the daemon reopens the signed history, verifies the receipts and recomputes the comparison. Both commands require the reviewed digest and a current exact match. The daemon durably signs one decision for that disposable Brain and returns it in `batch_decision`. Running the comparison again displays the saved decision, including the digest it applies to. Repeating the same choice is idempotent. A conflicting choice requires a new trial. Cancellation ends the trial's approval process and preserves its staged notes and the legacy export. This rehearsal does not activate a personal Brain.
 
+### Opening the accepted disposable Brain
+
+Run `cryptexd cortex-import-disposable --open-accepted TRIAL_UUID` with the same selection JSON on standard input. This reopens the enrolled trial identity, verifies the signed events and source receipts, and requires the signed acceptance of that exact batch. The daemon rebuilds the local projection from canonical packs, reads the complete paginated timeline through the guarded product reader, and compares each returned event identity, content hash, classification and text digest with its receipt. The result contains the Brain ID and verified note count. This verifies local usability after restarting or losing the search index with the original export offline.
+
 ## Completion gate
 
 M15 is complete only when scope items and relevant recovery/privacy/failure tests pass, required CI is green, Definition of Done is satisfied and human review is complete.

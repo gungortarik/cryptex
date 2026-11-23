@@ -2,6 +2,8 @@
 use super::{LifecycleError, random_uuid_v4};
 use cryptexd::secure_store::SecureStore;
 #[cfg(any(windows, target_os = "macos"))]
+mod cutover;
+#[cfg(any(windows, target_os = "macos"))]
 mod decision;
 mod provenance;
 #[cfg(any(windows, target_os = "macos"))]
@@ -193,7 +195,7 @@ pub(super) fn run(args: &[String]) -> Result<(), LifecycleError> {
     if let [flag, id] = args
         && matches!(
             flag.as_str(),
-            "--provenance" | "--compare-selection" | "--remove-trial-key"
+            "--provenance" | "--compare-selection" | "--open-accepted" | "--remove-trial-key"
         )
     {
         return restart::run(None, flag, id, None);

@@ -32,8 +32,8 @@ pub(super) struct Source {
     schema: String,
     brain_id: String,
     device_id: String,
-    event_id: String,
-    content_hash: String,
+    pub(super) event_id: String,
+    pub(super) content_hash: String,
     pub(super) approval: Approval,
 }
 

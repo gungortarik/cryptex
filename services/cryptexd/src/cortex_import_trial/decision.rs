@@ -36,17 +36,16 @@ struct BatchDecision {
     choice: Choice,
 }
 
-pub(super) fn review(
+fn load_decision(
     root: &Path,
-    key: &SigningKey,
+    key: &ed25519_dalek::VerifyingKey,
     device: &DeviceId,
     brain_id: &str,
-    comparison: Comparison,
-    requested: Option<(Choice, &str)>,
-) -> Result<Value, LifecycleError> {
+    comparison: &Comparison,
+) -> Result<Option<BatchDecision>, LifecycleError> {
     let path = root.join(FILE);
-    let mut stored = if provenance::exists(&path)? {
-        let saved: BatchDecision = provenance::read_signed(&path, &key.verifying_key())?;
+    if provenance::exists(&path)? {
+        let saved: BatchDecision = provenance::read_signed(&path, key)?;
         if saved.schema != SCHEMA
             || saved.brain_id != brain_id
             || saved.device_id != device.as_str()
@@ -60,10 +59,40 @@ pub(super) fn review(
         {
             return Err(fault("batch_decision_review_mismatch"));
         }
-        Some(saved)
+        Ok(Some(saved))
     } else {
-        None
-    };
+        Ok(None)
+    }
+}
+
+pub(super) fn require_accepted(
+    root: &Path,
+    key: &ed25519_dalek::VerifyingKey,
+    device: &DeviceId,
+    brain_id: &str,
+    comparison: &Comparison,
+) -> Result<(), LifecycleError> {
+    let digest = comparison
+        .review_sha256
+        .as_ref()
+        .ok_or_else(|| fault("selection_not_ready"))?;
+    let saved = load_decision(root, key, device, brain_id, comparison)?
+        .ok_or_else(|| fault("owner_decision_pending"))?;
+    if saved.choice != Choice::Accepted || &saved.review_sha256 != digest {
+        return Err(fault("batch_not_accepted"));
+    }
+    Ok(())
+}
+
+pub(super) fn review(
+    root: &Path,
+    key: &SigningKey,
+    device: &DeviceId,
+    brain_id: &str,
+    comparison: Comparison,
+    requested: Option<(Choice, &str)>,
+) -> Result<Value, LifecycleError> {
+    let mut stored = load_decision(root, &key.verifying_key(), device, brain_id, &comparison)?;
     if let Some((choice, reviewed)) = requested {
         let current = comparison
             .review_sha256
