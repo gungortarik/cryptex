@@ -1,5 +1,9 @@
 # 34 — Current Implementation Handoff
 
+## M15 explicit owner decision for a disposable batch
+
+At `277df55`, all eighteen daemon capture tests passed on both [Windows and macOS](https://github.com/gungortarik/cryptex/actions/runs/45114621364). An exact nonempty comparison supplies a digest for the owner to review. The [accept and cancel commands](milestones/M15_CORTEX_FRESH_REINGESTION.md#accepting-or-cancelling-a-disposable-batch) reverify the same selection and signed receipts before persisting the chosen outcome. Both outcomes survived reopening. Repeating the same choice kept the signed decision bytes, staged packs, receipts and original export intact. Conflicting choices, invalidated reviews and altered signatures failed. This verifies the decision for a synthetic temporary Brain. Personal-data cutover and milestone acceptance remain open.
+
 ## M15 selection comparison before batch acceptance
 
 At `3c54602`, [Windows and macOS CI](https://github.com/gungortarik/cryptex/actions/runs/45112850638) passed all sixteen daemon capture tests per platform using temporary profiles. The [comparison command](milestones/M15_CORTEX_FRESH_REINGESTION.md#comparing-a-selection-before-owner-acceptance) takes the owner's separate selection for the trial Brain and verifies signed receipts with the export offline. Equal-size batches with a missing and an extra note showed both differences. A changed classification, path, digest or review decision prevented readiness. Wrong-Brain, duplicate and malformed selections and an invalid signature produced no comparison. The saved receipts and canonical packs survived repeated comparison unchanged. Only a nonempty exact match is ready for owner review. Explicit batch acceptance and personal-data cutover are still pending.
