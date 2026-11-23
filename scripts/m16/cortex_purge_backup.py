@@ -28,9 +28,14 @@ def main():
         if item.get("executable") and item["target"]["name"] == "cryptexd":
             kind, = item["target"]["kind"]
             binaries[kind] = item["executable"]
+    env = dict(os.environ, CRYPTEX_M16_IMPORT_FIXTURE=binaries["bin"])
+    command = [binaries["lib"], TEST, "--exact", "--ignored", "--nocapture"]
+    if sys.platform == "win32" and env.get("GITHUB_ACTIONS") == "true":
+        env["CRYPTEX_M16_RECOVERY_BINARY"] = binaries["lib"]
+        command = ["pwsh", "-NoProfile", "-File", "scripts/m8/run-daemon-tests-standard-user-ci.ps1",
+                   "-M16CortexRecovery"]
     run = subprocess.run(
-        [binaries["lib"], TEST, "--exact", "--ignored", "--nocapture"], cwd=ROOT,
-        env=dict(os.environ, CRYPTEX_M16_IMPORT_FIXTURE=binaries["bin"]),
+        command, cwd=ROOT, env=env,
         text=True, stdout=subprocess.PIPE, timeout=180,
     )
     print(run.stdout, end="")

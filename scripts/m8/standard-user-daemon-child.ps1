@@ -96,6 +96,18 @@ function Set-NativeTestPackage {
     }
     $env:CRYPTEX_EXCHANGE_NATIVE_PACKAGE=$nativePackage
 }
+if($p.PSObject.Properties['m16_cortex_recovery'] -and $p.m16_cortex_recovery) {
+    $env:CRYPTEX_M16_IMPORT_FIXTURE=$p.executables[1]
+    $env:Path=(Split-Path -Parent $p.python)+';'+(Split-Path -Parent $p.m16_codec_node)+';'+$env:Path
+    $suite='ipc::purge_review::cortex_backup_test::encrypted_restore_after_cortex_purge'
+    $result=Invoke-TestBinary $p.executables[0] "$suite --exact --ignored --nocapture"
+    Write-Output $result.stdout
+    Write-Output $result.stderr
+    if($result.code -ne 0 -or -not $result.stdout.Contains("test $suite ... ok")){throw 'Cortex purge recovery rehearsal failed.'}
+    @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=1} | ConvertTo-Json |
+        Set-Content -LiteralPath (Join-Path $p.scratch 'result.json') -Encoding UTF8
+    exit 0
+}
 if($p.PSObject.Properties['m13_desktop_shell'] -and $p.m13_desktop_shell) {
     $suite='ipc::tests::maintenance_tests::maintenance_preserves_local_read_and_capture_and_restores_prior_ai_policy'
     $result=Invoke-TestBinary $p.executables[0] "$suite --exact --nocapture"
