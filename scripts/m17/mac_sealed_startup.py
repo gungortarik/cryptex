@@ -11,6 +11,7 @@ import tempfile
 from update_fixture import ROOT, image, receipt, signer
 
 from prepare_mac_inventory import prepare, stage_delivery, write_inventory
+from build_owner_mac_package import fingerprint, package as package_for_owner
 
 
 def run(*args, **kwargs):
@@ -29,19 +30,36 @@ def exercise(root, revision):
         "--features", "m17-sealed-startup-check", "--config", overlay, cwd=ROOT, timeout=1200)
     installed = root / "Applications/Cryptex.app"
     installed.parent.mkdir()
-    run("/usr/bin/ditto", ROOT / "target/release/bundle/macos/Cryptex.app", installed)
+    unsigned = ROOT / "target/release/bundle/macos/Cryptex.app"
+    run("cargo", "build", "--locked", "--release", "-p", "cryptex-updater", cwd=ROOT, timeout=900)
+    updater = ROOT / "target/release/cryptex-updater"
+    image(updater, "com.cryptex.updater")
+    public_der = Path(os.environ["CRYPTEX_M17_SIGNER_DER"])
+    pin = hashlib.sha256(public_der.read_bytes()).hexdigest()
+    helper = Path(os.environ["CX_UPDATE_CI_CMS_HELPER"])
+    delivery = root / "signed-mac-delivery"
+    approved_input = fingerprint(updater, unsigned)
+    try:
+        package_for_owner(unsigned, "0" * 64, revision, public_der, pin, updater, helper, delivery)
+    except ValueError as error:
+        if "Different unsigned application" not in str(error):
+            raise
+    else:
+        raise RuntimeError("Signed an unapproved application")
+    if delivery.exists():
+        raise RuntimeError("Rejected signing request left a delivery")
+    signed = package_for_owner(unsigned, approved_input, revision, public_der, pin, updater, helper,
+                               delivery, os.environ["CX_NATIVE_TEST_KEYCHAIN"])
+    if fingerprint(updater, unsigned) != approved_input:
+        raise RuntimeError("Owner signing changed the approved build input")
+    run("/usr/bin/ditto", delivery / "Cryptex.app", installed)
     desktop = installed / "Contents/MacOS/cryptex-desktop"
     daemon = desktop.with_name("cryptexd")
-    image(daemon, "com.cryptex.daemon")
-    image(installed, "com.cryptex.desktop")
     run("/usr/bin/codesign", "--verify", "--strict", "--all-architectures", installed)
-    pin = hashlib.sha256(Path(os.environ["CRYPTEX_M17_SIGNER_DER"]).read_bytes()).hexdigest()
     run(sys.executable, "-B", ROOT / "scripts/m17/verify_first_install_mac.py", installed,
         pin, hashlib.sha256(desktop.read_bytes()).hexdigest())
     def slot():
         return installed.parent / ("cryptex-release-" + hashlib.sha256(desktop.read_bytes()).hexdigest())
-
-    helper = Path(os.environ["CX_UPDATE_CI_CMS_HELPER"])
 
     def publish():
         digest = hashlib.sha256(desktop.read_bytes()).hexdigest()
@@ -80,7 +98,7 @@ def exercise(root, revision):
         raise RuntimeError("A valid signature with the wrong source revision was published")
     if slot().exists():
         raise RuntimeError("Wrong revision occupied the approved slot")
-    publish()
+    stage_delivery(installed, delivery / slot().name, pin, signed["desktop_sha256"], installed.parent)
     run("/usr/bin/codesign", "--verify", "--strict", installed)
     try:
         publish()
@@ -123,14 +141,14 @@ def exercise(root, revision):
         raise RuntimeError("Rollback did not select the original inventory")
     startup("restored-release")
     pending = installed.with_suffix(".app.pending")
-    run("cargo", "build", "--locked", "--release", "-p", "cryptex-updater", cwd=ROOT, timeout=900)
-    updater = ROOT / "target/release/cryptex-updater"
-    image(updater, "com.cryptex.updater")
     isolated = dict(os.environ, HOME=str(root))
     approved = {}
     for label, package in (("original", installed), ("candidate", pending)):
         statement = root / f"{label}.cms"
-        receipt(updater, package, statement)
+        if label == "original":
+            shutil.copyfile(delivery / "update.cms", statement)
+        else:
+            receipt(updater, package, statement)
         run(updater, "admit", package, statement, env=isolated, timeout=90)
         approved[label] = run(updater, "fingerprint", package, capture_output=True, text=True).stdout.strip()
 
