@@ -1,8 +1,10 @@
 # 34 — Current Implementation Handoff
 
-## M16 hardening in progress
+## M16 hardening complete
 
-The [hardening campaign](../evidence/m16/hardening.md) records two native reconstructions of 500,000 signed notes per platform, six offline/reconnect cycles per pair, and encrypted cross-platform recovery. The sleep packet product revision is `6a40f00`. Both owner sleep receipts passed for that revision: at least 38 seconds on the Mac and 69 seconds in the Windows VM, with 50 notes verified per replica on each platform. At `53019de` a test-only change also measured the guarded reader and two vault publications for 10,000 reopened notes on each platform. At `7cd3651`, Windows and macOS restored both surviving notes from an encrypted backup after an accepted Cortex note was purged and the disposable source profile was removed. Review the advisories in the pinned transport and complete final candidate checks and human review. Personal onboarding remains at M17.
+On November 23, 2026 the owner reviewed candidate `d06eaf5` and approved closure conditional on native CI and the final technical review. All 13 candidate workflows passed on Windows and macOS, with 33 successful jobs. The [acceptance record](../evidence/m16/hardening.md#final-candidate-review) covers scale and reconstruction, repeated offline sync, physical sleep observations, recovery after an accepted Cortex purge, security review and installed-app checks.
+
+M17 is the next milestone. Personal onboarding and distribution for personal use remain on hold until a corrected official Syncthing release passes the [recorded checks](../evidence/m16/hardening.md#personal-use-release-hold) on both platforms.
 
 ## M15 closed for disposable Cortex imports
 

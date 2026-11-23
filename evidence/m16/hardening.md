@@ -1,22 +1,22 @@
 # M16 hardening campaign
 
-M16 is open. The implementation baseline is the M15 closeout at `50869d6`. The campaign uses disposable identities and synthetic records. Each run below identifies the revision it executed. Acceptance requires a reviewed candidate, both native platforms, recorded limits and the [Definition of Done](../../docs/21_DEFINITION_OF_DONE.md).
+M16 closed on November 23, 2026 at reviewed product revision `d06eaf5`. The implementation baseline was the M15 closeout at `50869d6`. The campaign used disposable identities and synthetic records. The [final candidate review](#final-candidate-review) records the native checks, human acceptance and personal-use hold.
 
 ## Failure coverage
 
 The section numbers refer to the [failure matrix](../../docs/17_TEST_AND_FAILURE_MATRIX.md). Earlier acceptance records identify existing checks that must be considered in the final review.
 
-| Sections | Failure or boundary | Runtime evidence and outstanding work |
+| Sections | Failure or boundary | Runtime evidence |
 | --- | --- | --- |
-| 8, 9 | Interrupted canonical write, incompatible or damaged record, checkpoint loss, stale index and rebuild | [Storage baseline](../m2/m2-closeout-l1-l2-f4-f6-20261007.md), [projection baseline](../m3/m3-final-review-20261008.md), [M16 signed-pack reconstruction](https://github.com/gungortarik/cryptex/actions/runs/45119773599). All six scale jobs passed. |
+| 8, 9 | Interrupted canonical write, incompatible or damaged record, checkpoint loss, stale index and rebuild | [Storage failure checks](../m2/m2-closeout-l1-l2-f4-f6-20261007.md), [native storage verification](../m2/m2-final-ci-gate-20261008.md), [projection baseline](../m3/m3-final-review-20261008.md), [M16 signed-pack reconstruction](https://github.com/gungortarik/cryptex/actions/runs/45119773599). All six scale jobs passed. |
 | 10 | Storage layout and platform-specific scale | [Original append, filesystem and LAN measurements](../m0/p0-1/README.md), [M16 reader and reconstruction](https://github.com/gungortarik/cryptex/actions/runs/45121866739), and [guarded search and vault publication](https://github.com/gungortarik/cryptex/actions/runs/45122988170). Fixture generation time is excluded from reader measurements. |
 | 11 | Window close, login, duplicate writer, service crash, reconnect and failed update | [Installed platform review](../m14/platform-closeout-review.md) includes real temporary-account receipts. [Installed update rehearsal](https://github.com/gungortarik/cryptex/actions/runs/45119157833). |
-| 12, 15 | Local endpoint, role, capability, incompatible or malformed request, restricted retrieval and explicit consent | [General CI and cross-account Windows ACL](https://github.com/gungortarik/cryptex/actions/runs/45120098263), [local MCP rehearsal](https://github.com/gungortarik/cryptex/actions/runs/45119158085), [prior endpoint review](../m1/m1-final-review-20261007.md). Final review must also trace renderer and Doctor outputs. |
+| 12, 15 | Local endpoint, role, capability, incompatible or malformed request, restricted retrieval and explicit consent | [General CI and cross-account Windows ACL](https://github.com/gungortarik/cryptex/actions/runs/45120098263), [local MCP rehearsal](https://github.com/gungortarik/cryptex/actions/runs/45119158085), [Windows endpoint and ACL measurements](../m0/p0-3/windows-cross-account-acl-20261002.md). The final review below traces renderer and Doctor outputs. |
 | 13, 14 | Managed transport isolation, unavailable peer, delayed delivery, duplicate replay, restriction and repeated reconnect | [Trust and replication review](../m8/m8-final-candidate-review-20261118.md), [packaged repeated partition run](https://github.com/gungortarik/cryptex/actions/runs/45120714690). Both [owner sleep observations](#offline-and-system-sleep) passed. |
 | 16 | Interrupted backup, large object, damaged generation, wrong recovery key, restore and reconstruction after source loss | [Large-object and installed recovery](https://github.com/gungortarik/cryptex/actions/runs/45119158424), [independent Kit recovery and accepted import evidence](../m15/cortex-import-review.md#final-acceptance), [bidirectional rejection and retry with patched dependencies](https://github.com/gungortarik/cryptex/actions/runs/45121906178). |
-| 17 | Purged history, stale replica, shared attachment, unreachable copies | [Forget and purge rehearsal](https://github.com/gungortarik/cryptex/actions/runs/45119157942), [scope of cleanup](../m10/forget-purge-closeout-review.md). Review interactions with backups and accepted imports. |
+| 17 | Purged history, stale replica, shared attachment, unreachable copies | [Forget and purge rehearsal](https://github.com/gungortarik/cryptex/actions/runs/45119157942), [scope of cleanup](../m10/forget-purge-closeout-review.md). The [post-purge restore](#restore-after-purging-an-accepted-cortex-note) verifies the interaction with accepted imports. |
 | 18, 19 | Displayed health during service loss, maintenance and restoration, privacy of diagnostics | [Desktop and Doctor rehearsal](https://github.com/gungortarik/cryptex/actions/runs/45121923267), [desktop review](../m13/desktop-shell.md) and the decoder and redaction tests below. An endpoint alone cannot establish remote durability. |
-| 20–23 | Required CI, traceable receipts, complete hardening scope | The Mac and Windows VM sleep receipts passed. Final platform CI, material risk review and human acceptance remain open. |
+| 20–23 | Required CI, traceable receipts, complete hardening scope | The Mac and Windows VM sleep receipts passed. The [final candidate review](#final-candidate-review) records completed CI, risk disposition and owner acceptance. |
 
 ## Reproduction
 
@@ -24,7 +24,7 @@ The section numbers refer to the [failure matrix](../../docs/17_TEST_AND_FAILURE
 - **Repeated partitions.** Run the M16 repeated offline sync workflow. Each OS hosts two authenticated native transports bound to loopback. A disposable standard account runs the Windows test. The same pair retains its enrolled identities across six cycles of four new notes per author. Each phase starts a fresh daemon test process. After each online publication the receiver retries the same signed pack, compares the canonical bytes, and checks guarded search again after both transports exit. This exercises 48 new notes plus two genesis notes.
 - **Encrypted peer recovery.** Run the M11 cross-platform restore workflow. The recipient tries a truncated ciphertext and a valid generation with a different disposable Kit. It checks for any newly published or residual staging entries after each failure. It then uses the original generation and correct Kit at the same destination, verifies the signed inventory through the daemon and checks the reconstructed notes. Only synthetic ciphertext and public exchange material cross CI hosts.
 
-## Results and open gates
+## Results
 
 ### Signed history measurements
 
@@ -107,7 +107,7 @@ The [Windows and macOS rehearsal](https://github.com/gungortarik/cryptex/actions
 
 Losing all import evidence before creating a recovery selection can eliminate the evidence identifying Cortex origin. The post-purge recovery rehearsal covers a profile with its signed source receipts, batch decision and independent recovery selection intact. [M15 evidence and limits](../m15/cortex-import-review.md#evidence-and-limits)
 
-The final review also needs current evidence for privilege boundaries, dependency and native-package provenance, redaction, and the distinctions between a locally ready transport, completed replication and verified recovery. [Risk register](../../docs/22_RISK_REGISTER.md)
+The [risk register](../../docs/22_RISK_REGISTER.md) tracks the package decision. The [candidate review](#final-candidate-review) covers privilege boundaries, redaction, package checks and the distinction between local readiness, completed replication and verified recovery.
 
 ### Personal-use release hold
 
@@ -123,10 +123,12 @@ The owner reviewed [the changes from M15 to `d06eaf5`](https://github.com/gungor
 
 The repeat OSV scan of 727 public Rust crate/version pairs reported zero affected versions in the normal/build graphs for the desktop, daemon and updater on Windows x64 and macOS arm64. The synthetic codec trial and out-of-graph findings remain as documented above. Production-dependency audits of the pnpm workspace, local MCP tool and backup tool each reported zero findings. The Windows run of the status, connection and capture policy tests passed all 27 cases. Doctor renders a fixed message for each health outcome and a last-check timestamp. Its engine controls operate through the owned-child check. The Home view labels remote storage unverified. [Doctor rendering](../../apps/desktop/src/App.tsx) · [Engine control evidence](../m13/desktop-shell.md#product-interactions)
 
-The following checks were requested for the reviewed commit. Each link identifies an exact-candidate run; the closeout requires checking the completed native jobs.
+All 13 workflows at the reviewed revision completed successfully, with 33 successful native jobs. General CI ran both platform readiness jobs and the Windows cross-account IPC check. The six signed-history jobs exercised the three sizes on both platforms. The two cross-platform restore jobs exchanged encrypted generations in both directions. The four backup jobs covered the native codec and the installed desktop rehearsal on both platforms. These results satisfy the owner's conditional approval for M16. The separate personal-use decision remains in force.
 
 | Area | Runs |
 | --- | --- |
 | Build, privileges and installed UI | [General CI](https://github.com/gungortarik/cryptex/actions/runs/45241873464), [installed update](https://github.com/gungortarik/cryptex/actions/runs/45241878473), [release package smoke](https://github.com/gungortarik/cryptex/actions/runs/45241883226), [desktop shell](https://github.com/gungortarik/cryptex/actions/runs/45241887445) |
 | Storage, scale and transport | [Signed history](https://github.com/gungortarik/cryptex/actions/runs/45241784252), [repeated partitions](https://github.com/gungortarik/cryptex/actions/runs/45241784035), [installed backup](https://github.com/gungortarik/cryptex/actions/runs/45241783920), [cross-platform restore](https://github.com/gungortarik/cryptex/actions/runs/45241902996) |
 | Data access and recovery | [Historical reader](https://github.com/gungortarik/cryptex/actions/runs/45241919854), [attachments](https://github.com/gungortarik/cryptex/actions/runs/45241914364), [forget/purge](https://github.com/gungortarik/cryptex/actions/runs/45241907337), [MCP consent](https://github.com/gungortarik/cryptex/actions/runs/45241892729), [Cortex import and purge recovery](https://github.com/gungortarik/cryptex/actions/runs/45241783915) |
+
+For 500,000 signed notes on the final candidate, the missing/corrupt projection rebuilds took 96,199/95,173 ms on Windows and 114,584/101,681 ms on macOS. Reopened queries took 3 ms on Windows and 1 ms on macOS. The 10,000-note guarded run found all ten expected hits and verified both vault publications on each platform. The physical sleep evidence belongs to `6a40f00`; the final candidate repeated the automated partition rehearsal. [Final scale logs](https://github.com/gungortarik/cryptex/actions/runs/45241784252) · [Physical sleep receipts](#offline-and-system-sleep)
