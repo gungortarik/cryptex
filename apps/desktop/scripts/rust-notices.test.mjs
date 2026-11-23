@@ -34,3 +34,20 @@ test("release inventory covers the native desktop and daemon and retains exact n
     }
   }
 });
+
+test("the standalone updater ships its own locked notice set", () => {
+  const root = fileURLToPath(new URL("../../../", import.meta.url));
+  const host = hostTripleFromRustc(execFileSync("rustc", ["-vV"], { encoding: "utf8" }));
+  const report = collectRustNotices(root, host, host, ["cryptex-updater"]);
+  const names = new Set(report.packages.map(pkg => pkg.name));
+  for (const name of ["process-wrap", "sha2", "cc"]) assert.ok(names.has(name), name);
+  assert.ok(!names.has("tauri"));
+  for (const pkg of report.packages) {
+    assert.ok(pkg.documents.length, pkg.name);
+    for (const doc of pkg.documents) {
+      const data = report.documents[doc.sha256];
+      const bytes = data.text === undefined ? Buffer.from(data.base64, "base64") : Buffer.from(data.text);
+      assert.equal(createHash("sha256").update(bytes).digest("hex"), doc.sha256);
+    }
+  }
+});

@@ -417,7 +417,10 @@ def main():
             target = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")).resolve()
             shutil.copy2(target / "debug" / ("cryptex-updater" + SUFFIX), packages_dir)
             update_fixture.image(packages_dir / ("cryptex-updater" + SUFFIX), "com.cryptex.updater")
+            notices = packages_dir / "updater-notices.json"
+            run("node", ROOT / "scripts/m17/updater_notices.mjs", notices)
             with tarfile.open(packages_dir / "cryptex-local-updater.tar.gz", "w:gz") as archive:
+                archive.add(notices, arcname="notices/rust.json")
                 archive.add(packages_dir / ("cryptex-updater" + SUFFIX), arcname="cryptex-updater" + SUFFIX)
             packages = build_packages(packages_dir)
         for _, artifact, daemon_hash in packages:

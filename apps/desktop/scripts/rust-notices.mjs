@@ -19,11 +19,12 @@ function noticeDocument(directory, name, texts, expectedHash) {
   return { name: relative.split(path.sep).join("/"), sha256 };
 }
 
-export function collectRustNotices(root, triple, hostTriple = triple) {
+export function collectRustNotices(root, triple, hostTriple = triple, products = ["cryptex-desktop", "cryptexd"]) {
+  const features = products.includes("cryptex-desktop") ? ["--features", "tauri/custom-protocol"] : [];
   const filter = triple === hostTriple ? ["--filter-platform", triple] : [];
-  const metadata = JSON.parse(cargo(root, ["metadata", "--locked", "--format-version", "1", ...filter, "--features", "tauri/custom-protocol"]));
-  const tree = cargo(root, ["tree", "--locked", "--target", triple, "-p", "cryptex-desktop", "-p", "cryptexd",
-    "--features", "tauri/custom-protocol", "--edges", "normal,build", "--prefix", "none", "--format", "{p}"]);
+  const metadata = JSON.parse(cargo(root, ["metadata", "--locked", "--format-version", "1", ...filter, ...features]));
+  const tree = cargo(root, ["tree", "--locked", "--target", triple, ...products.flatMap(name => ["-p", name]),
+    ...features, "--edges", "normal,build", "--prefix", "none", "--format", "{p}"]);
   const packages = new Map();
   for (const pkg of metadata.packages) {
     const key = `${pkg.name} v${pkg.version}`;
