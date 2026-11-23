@@ -18,6 +18,12 @@ Keep signed application binaries separate from the Brain, OS credentials, backup
 
 The standalone updater takes the independently approved public certificate at build time through `CRYPTEX_UPDATE_SIGNER_DER`. A build without that certificate refuses admission. The `fingerprint` operation measures the installed directory. An attached CMS statement binds the full directory digest, OS and CPU architecture. The `admit` operation validates that statement and the two native executables before saving a receipt. The normal `apply` operation rechecks the selected and retained images against their receipts. The owner-selected digest identifies the requested update. It grants no signing authority. [Installed update evidence](../../evidence/m17/personal-packaging.md#signed-updates)
 
+## macOS startup after installation
+
+The controlled [development packager](../../scripts/m8/mac_lan_setup.py) signs two executables, copies the web assets into `Contents/Resources/frontend`, and writes the signed startup inventory into Resources. The ordinary [Tauri package](../../apps/desktop/src-tauri/tauri.bundle.conf.json) seals the complete bundle and embeds the frontend. Copying the development inventory into the finished application changes sealed resources. Generating it before the seal would record the desktop image before its final signature.
+
+For a personal-release rehearsal, generate the inventory from the final signed bundle and keep the signed inventory outside that bundle. Verify it against the independently provisioned certificate, release and architecture, then use the existing [verified snapshot and role hashes](../../services/cryptexd/src/m8_owner_channel/release_inventory.rs) for each live peer. Include a protected frontend in the rehearsal package before signing so the owner UI reads exactly the bytes that were verified. Updates and rollback need to select the matching inventory with their corresponding package. Exercise a stale inventory and a replaced peer before enabling the ordinary owner channel. This is a proposed rehearsal, with activation subject to native evidence and release review.
+
 ## Scope and release decision
 
 Private CI jobs use disposable identities and synthetic data. Their certificates expire or are discarded. The release decision requires a verified owner-controlled installation on both target systems, the beta checklist and explicit approval. The [transport hold](../../evidence/m16/hardening.md#personal-use-release-hold) remains in force independently of package signing.
