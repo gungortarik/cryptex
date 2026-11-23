@@ -76,6 +76,10 @@ def verify_notices(resources):
     for source, destination in config["bundle"]["resources"].items():
         if destination.startswith("notices/") and digest(resources / destination) != digest(config_dir / source):
             raise RuntimeError(f"Installed attribution differs from packaging input: {destination}")
+    native = json.loads((resources / "notices/rust.json").read_bytes())
+    native_packages = {entry["name"] for entry in native["packages"]}
+    if not {"tauri", "libsqlite3-sys", "ed25519-dalek"}.issubset(native_packages) or not native["documents"]:
+        raise RuntimeError("Installed native dependency inventory is incomplete")
     entries = json.loads((resources / "notices/frontend.json").read_bytes())
     packages = {entry["name"] for entry in entries}
     required = {"react", "react-dom", "scheduler", "@tauri-apps/api"}

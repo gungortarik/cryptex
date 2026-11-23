@@ -3,6 +3,8 @@ import { chmodSync, copyFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { writeRustNotices } from "./rust-notices.mjs";
+
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const desktopDirectory = path.resolve(scriptDirectory, "..");
 const repositoryDirectory = path.resolve(desktopDirectory, "..", "..");
@@ -41,7 +43,8 @@ export function sidecarBuildPaths(repositoryRoot, targetTriple, targetDirectory)
 }
 
 export function prepareSidecar(targetTriple = process.env.TAURI_ENV_TARGET_TRIPLE) {
-  const triple = targetTriple ?? hostTripleFromRustc(execFileSync("rustc", ["-vV"], { encoding: "utf8" }));
+  const host = hostTripleFromRustc(execFileSync("rustc", ["-vV"], { encoding: "utf8" }));
+  const triple = targetTriple ?? host;
   const cargoTargetDirectory = process.env.CARGO_TARGET_DIR
     ? path.resolve(repositoryDirectory, process.env.CARGO_TARGET_DIR)
     : undefined;
@@ -54,6 +57,7 @@ export function prepareSidecar(targetTriple = process.env.TAURI_ENV_TARGET_TRIPL
   );
 
   mkdirSync(path.dirname(paths.stagedBinary), { recursive: true });
+  writeRustNotices(repositoryDirectory, triple, host, path.join(path.dirname(paths.stagedBinary), "rust-notices.json"));
   copyFileSync(paths.builtBinary, paths.stagedBinary);
   if (!triple.includes("windows")) {
     chmodSync(paths.stagedBinary, 0o755);

@@ -3,6 +3,7 @@
   "bundle": {
     "active": true,
     "resources": {
+      "binaries/rust-notices.json": "notices/rust.json",
       "../dist/notices/frontend.json": "notices/frontend.json",
       "../node_modules/@tauri-apps/api/LICENSE-MIT": "notices/tauri-api/LICENSE-MIT",
       "../node_modules/@tauri-apps/api/LICENSE-APACHE-2.0": "notices/tauri-api/LICENSE-APACHE-2.0",
