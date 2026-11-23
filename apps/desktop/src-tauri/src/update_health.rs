@@ -1,7 +1,8 @@
+#[cfg(not(all(target_os = "macos", feature = "m17-sealed-startup-check")))]
 use super::{
-    DaemonStop, ProbeState, default_runtime_root_path, record_daemon_stopped,
-    start_daemon_for_desktop_launch, stop_supervised_daemon_for,
+    DaemonStop, record_daemon_stopped, start_daemon_for_desktop_launch, stop_supervised_daemon_for,
 };
+use super::{ProbeState, default_runtime_root_path};
 use cryptex_updater::Health;
 use cryptexd::ipc::{HealthProtocolMismatch, desktop_health_ping};
 use std::{env, time::Duration};
@@ -14,8 +15,11 @@ pub(super) fn owned_health(state: &ProbeState) -> Result<Health, String> {
         .as_ref()
         .ok_or("Desktop did not start this daemon")?
         .id();
-    let lock = cryptexd::instance::observe_instance(&default_runtime_root_path()?)
-        .map_err(|e| e.to_string())?;
+    health_for_child(&default_runtime_root_path()?, pid)
+}
+
+fn health_for_child(runtime: &std::path::Path, pid: u32) -> Result<Health, String> {
+    let lock = cryptexd::instance::observe_instance(runtime).map_err(|e| e.to_string())?;
     if !lock.lock_held || lock.holder_pid != Some(pid) {
         return Err("daemon does not own the profile lock".into());
     }
@@ -46,10 +50,47 @@ pub(super) fn probe() -> Result<(), String> {
     if env::args_os().len() != 2 || env::var_os("CRYPTEXD_BIN").is_some() {
         return Err("update probes require the installed sidecar".into());
     }
-    let runtime = default_runtime_root_path()?;
     let _session = cryptex_updater::Layout::current()
         .and_then(|layout| layout.probe_session())
         .map_err(|e| e.to_string())?;
+    let health = measure()?;
+    println!(
+        "{}",
+        serde_json::to_string(&health).map_err(|e| e.to_string())?
+    );
+    Ok(())
+}
+
+#[cfg(all(target_os = "macos", feature = "m17-sealed-startup-check"))]
+fn measure() -> Result<Health, String> {
+    use cryptexd::local_signed_startup::Prepared;
+    let scratch = tempfile::Builder::new()
+        .prefix("cryptex-update-")
+        .tempdir()
+        .map_err(|_| "update_probe_runtime")?;
+    let runtime = scratch
+        .path()
+        .canonicalize()
+        .map_err(|_| "update_probe_runtime")?;
+    let prepared = Prepared::current_desktop(Duration::from_secs(10)).map_err(|e| e.to_string())?;
+    let command = super::daemon_hold_command(&prepared.daemon_path(), &runtime)?;
+    let daemon = prepared
+        .launch(command, &runtime.join("ready"))
+        .map_err(|e| e.to_string())?;
+    let pid = daemon
+        .owned_child_id()
+        .ok_or("missing authenticated child")?;
+    let health = health_for_child(&runtime, pid);
+    daemon
+        .shutdown(&runtime.join("stop"))
+        .map_err(|e| e.to_string())?;
+    scratch.close().map_err(|_| "update_probe_cleanup")?;
+    health
+}
+
+#[cfg(not(all(target_os = "macos", feature = "m17-sealed-startup-check")))]
+fn measure() -> Result<Health, String> {
+    let runtime = default_runtime_root_path()?;
     let observe = || cryptexd::instance::observe_instance(&runtime).map_err(|e| e.to_string());
     if observe()?.lock_held {
         return Err("quit the running Desktop and daemon before updating".into());
@@ -82,11 +123,7 @@ pub(super) fn probe() -> Result<(), String> {
     if health.status == "incompatible" {
         super::installed_update_check::hold_rejected_reply(&runtime)?;
     }
-    println!(
-        "{}",
-        serde_json::to_string(&health).map_err(|e| e.to_string())?
-    );
-    Ok(())
+    Ok(health)
 }
 
 #[cfg(test)]

@@ -9,7 +9,7 @@ import subprocess
 import sys
 import tempfile
 
-from update_fixture import ROOT, image, signer
+from update_fixture import ROOT, image, receipt, signer
 
 sys.path.insert(0, str(ROOT / "scripts/m8"))
 from mac_lan_setup import inventory
@@ -67,7 +67,8 @@ def exercise(root, release):
                     or "=passed" in result.stdout or (runtime.exists() and any(runtime.iterdir()))):
                 raise RuntimeError(f"{case} did not produce the expected refusal: {result.returncode} {result.stderr[-1024:]}")
         else:
-            result.check_returncode()
+            if result.returncode:
+                raise RuntimeError(f"{case} refused signed startup: {result.returncode} {result.stderr[-1024:]}")
             for check in ("startup", "restart", "old_channel_refused", "cleanup"):
                 if f"local_signed_{check}=passed" not in result.stdout.splitlines():
                     raise RuntimeError(f"Missing installed {check} evidence")
@@ -108,6 +109,40 @@ def exercise(root, release):
     if slot() != original_slot:
         raise RuntimeError("Rollback did not select the original inventory")
     startup("restored-release")
+    pending = installed.with_suffix(".app.pending")
+    run("cargo", "build", "--locked", "--release", "-p", "cryptex-updater", cwd=ROOT, timeout=900)
+    updater = ROOT / "target/release/cryptex-updater"
+    image(updater, "com.cryptex.updater")
+    isolated = dict(os.environ, HOME=str(root))
+    approved = {}
+    for label, package in (("original", installed), ("candidate", pending)):
+        statement = root / f"{label}.cms"
+        receipt(updater, package, statement)
+        run(updater, "admit", package, statement, env=isolated, timeout=90)
+        approved[label] = run(updater, "fingerprint", package, capture_output=True, text=True).stdout.strip()
+
+    def apply(expected_outcome, selected, expected_checks):
+        process = run(updater, "apply", approved["candidate"], stdout=subprocess.PIPE,
+                      text=True, env=isolated, timeout=150)
+        report = json.loads(process.stdout)
+        if (report["outcome"] != expected_outcome or len(report["checks"]) != expected_checks
+                or any(check["status"] != "connected" for check in report["checks"])):
+            raise RuntimeError(f"Unexpected signed update result: {report}")
+        if run(updater, "fingerprint", installed, capture_output=True, text=True).stdout.strip() != approved[selected]:
+            raise RuntimeError("Updater selected an unexpected installed image")
+        run("/usr/bin/swift", ROOT / "scripts/m17/mac_reopened_window.swift", desktop,
+            str(report["reopened_pid"]), timeout=90)
+        print(f"sealed_updater={expected_outcome} verified_reopened_image={selected}", flush=True)
+
+    # The updater has valid owner receipts for both images. Only the detached
+    # live-peer inventory is missing when the candidate first becomes active.
+    held = root / "held-inventory"
+    candidate_slot.rename(held)
+    apply("rolled_back_failed_probe", "original", 3)
+    startup("updater-restored")
+    held.rename(candidate_slot)
+    apply("updated", "candidate", 2)
+    startup("updater-selected")
     image(daemon, "com.cryptex.unrelated")
     image(installed, "com.cryptex.desktop")
     run("/usr/bin/codesign", "--verify", "--strict", installed)

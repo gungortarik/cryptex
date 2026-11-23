@@ -6,6 +6,9 @@ on:
     paths:
       - '.github/workflows/m17-sealed-startup.yml'
       - 'scripts/m17/mac_sealed_startup.py'
+      - 'scripts/m17/mac_reopened_window.swift'
+      - 'scripts/m17/sign_owner_update.py'
+      - 'apps/updater/**'
       - 'scripts/m17/update_fixture.py'
       - 'scripts/m8/mac_lan_setup.py'
       - 'apps/desktop/scripts/prepare-cryptexd-sidecar.mjs'
