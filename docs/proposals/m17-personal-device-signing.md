@@ -2,6 +2,12 @@
 
 Status: proposed release profile. The owner chose these two devices as the audience. The disposable signing tests exercise native package formats. Enrollment of a long-lived signing key and use of personal data require separate owner action.
 
+## Audience and cost
+
+For the owner's Mac and Windows VM, use an independently verified local signing certificate on each platform. This path has no certificate subscription fee. The Windows package is a per-user installer and the Mac delivery contains the sealed application. The hosted rehearsals use disposable identities. A certificate created for a CI job must never be enrolled on either personal device.
+
+Public distribution would require a separate decision about publisher identity and OS trust. Apple's [Developer Program](https://developer.apple.com/programs/enroll/) and Microsoft's [Artifact Signing](https://azure.microsoft.com/en-us/products/artifact-signing/) are optional services for that decision. Neither is a prerequisite for this two-device rehearsal.
+
 ## First installation
 
 Choose the per-user NSIS installer on Windows and the application bundle on macOS. Each platform uses its own code-signing identity. Generate the private key on an owner-controlled machine and keep it in the platform's protected key store. Release signing is separate from note signing and Recovery Kit approval. No service, installer or updater receives the private key.
@@ -9,6 +15,16 @@ Choose the per-user NSIS installer on Windows and the application bundle on macO
 Record the public certificate's SHA-256 fingerprint on the machine that created it. Verify the first installer or bundle against that fingerprint through an independent local channel before opening it. A certificate supplied beside a download cannot enroll itself. Preserve normal OS security policy. A local signer does not confer Apple notarization or a public Windows publisher identity. The Mac daemon and Desktop still require the live role and image checks of the [existing image policy](m8-macos-release-image-policy.md).
 
 For first-install verification, use the verifier from a trusted checkout. Keep two SHA-256 values from the signing machine: the public certificate's DER fingerprint and the release hash. On Windows the release hash covers the signed NSIS executable. Run `verify_first_install_windows.ps1 -Installer PATH -SignerSha256 PIN -ReleaseSha256 HASH` in PowerShell. On Mac the release hash covers the signed `Contents/MacOS/cryptex-desktop`. Run `python3 verify_first_install_mac.py PATH.app PIN HASH`. This checks the bundle seal and the signer of each architecture of Desktop and its daemon. Both [verifiers](../../scripts/m17/) perform inspection before installation. They leave certificate trust and user profiles untouched.
+
+### Packaging Windows images with the owner's certificate
+
+Build the reviewed checkout with `pnpm --filter @cryptex/desktop tauri:package-smoke`. Record the SHA-256 hashes of the approved release Desktop executable and staged daemon. Use PowerShell 7 on the signing machine with the code-signing identity available in the current user's personal certificate store.
+
+```powershell
+./scripts/m17/build_owner_windows_installer.ps1 CERTIFICATE_SHA256 DESKTOP_SHA256 DAEMON_SHA256 OUTPUT_INSTALLER.exe
+```
+
+The command makes private copies of both reviewed build products and uses the selected identity for signing. It verifies the resulting NSIS before publishing to the new output path and returns its SHA-256. The signing command leaves certificate enrollment to the owner. Confirm the release fingerprint independently on the receiving device using the first-install verifier above.
 
 ## Updates and rollback
 
@@ -24,7 +40,17 @@ The controlled [development packager](../../scripts/m8/mac_lan_setup.py) signs t
 
 The sealed installation rehearsal generates a signed inventory after signing the bundle. A protected copy of the frontend is included before signing. Desktop and the daemon verify the detached inventory against the independently provisioned certificate, source revision and architecture, and authenticate each live peer against the [verified snapshot and role hashes](../../services/cryptexd/src/m8_owner_channel/release_inventory.rs). The [ordinary window launch](https://github.com/gungortarik/cryptex/actions/runs/45276597822) used a fresh profile and verified its synthetic note on exit. The feature refuses an existing-profile launch.
 
-The release updater must make the matching signed inventory available for each image before probing it and keep the retained image's inventory available through rollback. The owner installation and release review remain outstanding.
+The receiving machine stages the signed inventory for each image. The updater probes the selected image against its own inventory and reconnects to the retained image on rollback. [Installed transaction results](../../evidence/m17/personal-packaging.md#sealed-macos-update-and-rollback). The owner installation and release review remain outstanding.
+
+### Building the Mac delivery
+
+Use the approved build, the public DER certificate and its independently recorded SHA-256. The trusted updater's `fingerprint` command measures the entire input application. On the signing Mac the following command writes a new delivery directory using the corresponding Keychain identity.
+
+```sh
+python3 scripts/m17/build_owner_mac_package.py APP APPROVED_INPUT_SHA256 SOURCE_COMMIT PUBLIC_DER CERTIFICATE_SHA256 NEW_DELIVERY_DIRECTORY --updater TRUSTED_UPDATER --mac-helper HELPER
+```
+
+The directory contains the signed `Cryptex.app`, its signed startup inventory, the updater receipt `update.cms`, and `release.json` with the resulting fingerprints to record on the signing machine. The receiving device verifies the image and stages the inventory before update. The current sealed build opens temporary profiles.
 
 ### Preparing and receiving a Mac inventory
 
