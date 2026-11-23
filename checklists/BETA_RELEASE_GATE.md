@@ -22,23 +22,23 @@ No checkbox may be marked complete without actual evidence from the applicable m
 
 ## B. Recovery confidence
 
-- [ ] Encrypted backup creation is implemented and verified.
-  - Evidence:
-- [ ] Backup verification goes beyond successful upload/write.
-  - Evidence:
-- [ ] Sandbox restore rehearsal has passed.
-  - Evidence:
-- [ ] Recovery Kit can restore required backup decryption capability.
-  - Evidence:
+- [x] Encrypted backup creation is implemented and verified.
+  - Evidence: [Windows and macOS native backup and installed restore](https://github.com/gungortarik/cryptex/actions/runs/45241783920)
+- [x] Backup verification goes beyond successful upload/write.
+  - Evidence: [The receiving OS rejects damaged ciphertext and the wrong Kit, then verifies restored signed records](https://github.com/gungortarik/cryptex/actions/runs/45241902996)
+- [x] Sandbox restore rehearsal has passed.
+  - Evidence: [Reconstruction after the source profile was removed](https://github.com/gungortarik/cryptex/actions/runs/45241783915)
+- [x] Recovery Kit can restore required backup decryption capability.
+  - Evidence: [Bidirectional recovery with disposable Kits](https://github.com/gungortarik/cryptex/actions/runs/45241902996)
 - [ ] Recovery Kit can bootstrap the first trusted device after total device loss.
   - Evidence:
-- [ ] Backup/restore drills required by M16 have passed.
-  - Evidence:
+- [x] Backup/restore drills required by M16 have passed.
+  - Evidence: [M16 closeout](../evidence/m16/hardening.md#final-candidate-review)
 
 ## C. Security and privacy
 
-- [ ] M16 security review is complete.
-  - Evidence:
+- [x] M16 security review is complete.
+  - Evidence: [Technical review, conditional owner approval and personal-use hold](../evidence/m16/hardening.md#final-candidate-review)
 - [ ] No custom cryptography has been introduced.
   - Evidence:
 - [ ] Renderer/webview remains least privilege.
@@ -66,23 +66,23 @@ No checkbox may be marked complete without actual evidence from the applicable m
   - Evidence:
 - [ ] DPI/Retina/theme/accessibility requirements are verified as applicable.
   - Evidence:
-- [ ] Packaging smoke has passed on both platforms.
-  - Evidence:
+- [x] Packaging smoke has passed on both platforms.
+  - Evidence: [M16 installed package smoke on Windows and macOS](https://github.com/gungortarik/cryptex/actions/runs/45241883226). Repeat for the final M17 candidate.
 
 ## E. Hardening
 
-- [ ] Complete failure matrix required by M16 has passed.
-  - Evidence:
-- [ ] Large-scale tests have passed.
-  - Evidence:
-- [ ] Sync stress testing has passed.
-  - Evidence:
-- [ ] Sleep/wake/offline/reconnect soak has passed.
-  - Evidence:
+- [x] Complete failure matrix required by M16 has passed.
+  - Evidence: [M16 failure matrix and reviewed limits](../evidence/m16/hardening.md#failure-coverage)
+- [x] Large-scale tests have passed.
+  - Evidence: [10,000, 100,000 and 500,000 signed records on both platforms](https://github.com/gungortarik/cryptex/actions/runs/45241784252)
+- [x] Sync stress testing has passed.
+  - Evidence: [Repeated native transport partitions with verification](https://github.com/gungortarik/cryptex/actions/runs/45241784035)
+- [x] Sleep/wake/offline/reconnect soak has passed.
+  - Evidence: [Mac and Windows VM kernel-observed sleep receipts](../evidence/m16/hardening.md#offline-and-system-sleep)
 - [ ] Backup/restore drills have passed.
   - Evidence:
 - [ ] No known high-severity blocker remains open for the release scope.
-  - Evidence:
+  - Evidence: [Personal-use release hold for managed Syncthing](../evidence/m16/hardening.md#personal-use-release-hold).
 
 ## F. Release artifacts
 

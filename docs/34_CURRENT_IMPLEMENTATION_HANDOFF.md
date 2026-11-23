@@ -1,5 +1,11 @@
 # 34 — Current Implementation Handoff
 
+## M17 personal-device release preparation
+
+The owner intends to use Cryptex on their own Mac and Windows VM. The [beta checklist](../checklists/BETA_RELEASE_GATE.md) now links the M16 recovery and hardening results. The package work starts at `207dd15` with the bundled frontend and vendored Unicode attribution. The [installed package rehearsal](https://github.com/gungortarik/cryptex/actions/runs/45249384781) checks the installed notice bytes.
+
+Paid publisher credentials and invited-user distribution have not been selected. The existing [Mac image policy](proposals/m8-macos-release-image-policy.md) supports an independently pinned local certificate for controlled development and has separate release activation conditions. M17 needs a verified owner-operated signing and upgrade path for each OS, the remaining native dependency and transport notices, final candidate checks, and explicit release approval. Personal data enrollment is still on hold pending verification of a corrected official transport.
+
 ## M16 hardening complete
 
 On November 23, 2026 the owner reviewed candidate `d06eaf5` and approved closure conditional on native CI and the final technical review. All 13 candidate workflows passed on Windows and macOS, with 33 successful jobs. The [acceptance record](../evidence/m16/hardening.md#final-candidate-review) covers scale and reconstruction, repeated offline sync, physical sleep observations, recovery after an accepted Cortex purge, security review and installed-app checks.
