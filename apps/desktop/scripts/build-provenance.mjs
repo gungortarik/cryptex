@@ -1,14 +1,15 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const inputs = ["Cargo.lock", "pnpm-lock.yaml", "rust-toolchain.toml", ".node-version", "package.json"];
 
 export function sourceRevision(root) {
   const options = { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] };
-  const checkout = spawnSync("git", ["rev-parse", "--show-toplevel"], options);
-  if (checkout.status !== 0 || path.relative(realpathSync(root), realpathSync(checkout.stdout.trim()))) {
+  // Let Git establish root membership. Windows may spell the same directory with a short name.
+  const checkout = spawnSync("git", ["rev-parse", "--show-prefix"], options);
+  if (checkout.status !== 0 || checkout.stdout.trimEnd() !== "") {
     return { commit: null, clean: false };
   }
   const head = spawnSync("git", ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"], options);
