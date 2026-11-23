@@ -7,7 +7,8 @@
 
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, BinaryHeap};
-use std::time::Instant;
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
 
 use cryptex_core::validate::{Rfc3339UtcInstant, rfc3339_utc_instant};
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
@@ -369,9 +370,7 @@ fn search_events_internal(
     Ok(out)
 }
 
-/// Run a bounded search with SQLite VM cancellation. The progress hook is
-/// always removed before returning so a timed-out guarded query cannot affect
-/// a later M3 projection operation using the same connection.
+/// Run a bounded search with SQLite VM cancellation scoped to this call.
 pub fn search_events_until(
     conn: &Connection,
     query: &SearchQuery,
@@ -411,19 +410,26 @@ fn with_query_deadline<T>(
     if Instant::now() >= deadline {
         return Err(ProjectionError::OperationDeadlineExceeded);
     }
-    conn.progress_handler(1_000, Some(move || Instant::now() >= deadline))?;
-    let result = query();
-    let deadline_expired = Instant::now() >= deadline;
-    let clear_result = conn.progress_handler(0, None::<fn() -> bool>);
-    if deadline_expired {
-        clear_result?;
-        return Err(ProjectionError::OperationDeadlineExceeded);
-    }
-    match (result, clear_result) {
-        (Ok(detail), Ok(())) => Ok(detail),
-        (Err(error), _) => Err(error),
-        (_, Err(error)) => Err(error.into()),
-    }
+    let interrupt = conn.get_interrupt_handle();
+    std::thread::scope(|scope| {
+        let (finished, wait) = mpsc::channel::<()>();
+        std::thread::Builder::new().spawn_scoped(scope, move || {
+            let mut remaining = deadline.saturating_duration_since(Instant::now());
+            while wait.recv_timeout(remaining) == Err(mpsc::RecvTimeoutError::Timeout) {
+                interrupt.interrupt();
+                // SQLite ignores an interrupt between statements. Cover subsequent
+                // statements in this same call until the caller drops the sender.
+                remaining = Duration::from_millis(1);
+            }
+        })?;
+        let result = query();
+        drop(finished);
+        if Instant::now() >= deadline {
+            Err(ProjectionError::OperationDeadlineExceeded)
+        } else {
+            result
+        }
+    })
 }
 
 /// Max-heap element: larger (instant, event_id) sorts greater so the worst kept
@@ -498,6 +504,33 @@ mod tests {
         MemoryNotePayload,
     };
     use cryptex_events::hex::{ContentHashHex, SignatureHex, SigningKeyId};
+
+    #[test]
+    fn deadline_interrupts_sql_in_flight_and_releases_the_connection() {
+        let conn = Connection::open_in_memory().unwrap();
+        let deadline = Instant::now() + Duration::from_millis(100);
+        let mut sqlite_interrupted = false;
+        let result = with_query_deadline(&conn, Some(deadline), || {
+            let count = conn.query_row(
+                "WITH RECURSIVE numbers(n) AS (VALUES(1) UNION ALL
+                 SELECT n + 1 FROM numbers WHERE n < 100000000) SELECT max(n) FROM numbers",
+                [],
+                |row| row.get::<_, i64>(0),
+            );
+            sqlite_interrupted = matches!(&count, Err(e) if e.sqlite_error_code() == Some(rusqlite::ErrorCode::OperationInterrupted));
+            Ok(count?)
+        });
+        assert!(matches!(
+            result,
+            Err(ProjectionError::OperationDeadlineExceeded)
+        ));
+        assert!(sqlite_interrupted);
+        assert_eq!(
+            conn.query_row("SELECT 1", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+    }
 
     #[test]
     fn expired_search_deadline_returns_no_hits_and_does_not_poison_connection() {

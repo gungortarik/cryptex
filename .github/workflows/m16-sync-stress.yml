@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'Cargo.lock'
+      - 'crates/projection/src/**'
       - 'services/cryptexd/Cargo.toml'
       - '.github/workflows/m16-sync-stress.yml'
       - 'scripts/m16/sync_stress.py'
