@@ -2,7 +2,7 @@
 
 ## M16 hardening in progress
 
-The [hardening campaign](../evidence/m16/hardening.md) records two native reconstructions of 500,000 signed notes per platform, six offline/reconnect cycles per pair, and encrypted cross-platform recovery. The patched product revision is `6a40f00`. The owner sleep packets identify that exact revision; only receipts from an observed system suspend count for this gate. At `53019de` a test-only change also measured the guarded reader and two vault publications for 10,000 reopened notes on each platform. Resolve or explicitly disposition the Cortex purge/backup interaction and the advisories in the pinned transport, then obtain final human review. Personal onboarding remains at M17.
+The [hardening campaign](../evidence/m16/hardening.md) records two native reconstructions of 500,000 signed notes per platform, six offline/reconnect cycles per pair, and encrypted cross-platform recovery. The sleep packet product revision is `6a40f00`. Both owner sleep receipts passed for that revision: at least 38 seconds on the Mac and 69 seconds in the Windows VM, with 50 notes verified per replica on each platform. At `53019de` a test-only change also measured the guarded reader and two vault publications for 10,000 reopened notes on each platform. At `7cd3651`, Windows and macOS restored both surviving notes from an encrypted backup after an accepted Cortex note was purged and the disposable source profile was removed. Review the advisories in the pinned transport and complete final candidate checks and human review. Personal onboarding remains at M17.
 
 ## M15 closed for disposable Cortex imports
 

@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "revision": "6a40f00367962ccad4dc0fc7b4ae949086263659",
+  "runner_sha256": "d84057aaa8ce21a1acde037722cd6d3299f3709e1413e9f5f90d430c9e16cf45",
+  "platform": "Darwin",
+  "architecture": "arm64",
+  "scope": "two-local-disposable-peers",
+  "suspended_seconds_lower_bound": 38,
+  "rounds": 6,
+  "verified_notes_per_replica": 50,
+  "retained_instance_resume": true,
+  "cold_read": true
+}
