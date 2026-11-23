@@ -28,25 +28,30 @@ try {
     $ownsTrustEntry = $true
     Write-Output 'Installing the public CI signing certificate in the disposable VM'
     Import-Certificate -CertStoreLocation Cert:\LocalMachine\Root -FilePath $publicPath | Out-Null
-    $config = Join-Path $fixture.FullName 'signing.json'
-    @{bundle=@{windows=@{certificateThumbprint=$cert.Thumbprint; digestAlgorithm='sha256'}}} |
-        ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $config
     $staged = @(Get-ChildItem -LiteralPath "$repo/apps/desktop/src-tauri/binaries" -Filter 'cryptexd-*.exe')
     if ($staged.Count -ne 1) { throw 'Expected one staged daemon' }
-    $null = Set-AuthenticodeSignature -FilePath $staged[0].FullName -Certificate $cert -HashAlgorithm SHA256
-    Assert-ImageSigner $staged[0].FullName $pin
-    Write-Output 'Staged daemon signature verified; building NSIS'
-    Push-Location -LiteralPath "$repo/apps/desktop"
-    try {
-        pnpm exec tauri bundle --ci --bundles nsis --config src-tauri/tauri.bundle.conf.json --config $config
-        if ($LASTEXITCODE -ne 0) { throw 'Signed NSIS packaging failed' }
-    } finally { Pop-Location }
-    $installers = @(Get-ChildItem -LiteralPath "$repo/target/release/bundle/nsis" -Filter '*-setup.exe')
-    if ($installers.Count -ne 1) { throw 'Expected one signed NSIS installer' }
-    $installer = $installers[0].FullName
-    Assert-ImageSigner $installer $pin
+    $desktop = Join-Path $repo 'target/release/cryptex-desktop.exe'
+    $desktopHash = (Get-FileHash -LiteralPath $desktop).Hash
+    $daemonHash = (Get-FileHash -LiteralPath $staged[0].FullName).Hash
+    $installer = Join-Path $fixture.FullName 'owner-setup.exe'
+    $package = Join-Path $PSScriptRoot 'build_owner_windows_installer.ps1'
+    foreach ($case in @(
+        @{ pin = $pin; daemon = ('0' * 64); reason = 'Unsigned build differs from the approved image hashes' },
+        @{ pin = ('0' * 64); daemon = $daemonHash; reason = 'Expected one Windows signing identity with the approved certificate SHA-256' }
+    )) {
+        try {
+            & $package $case.pin $desktopHash $case.daemon $installer
+            throw 'Unapproved Windows packaging accepted'
+        } catch {
+            if ($_.Exception.Message -ne $case.reason) { throw }
+        }
+        if (Test-Path -LiteralPath $installer) { throw 'Refused packaging published an installer' }
+    }
+    $report = & $package $pin $desktopHash $daemonHash $installer
+    if ($report.Installer -ne $installer -or (Get-FileHash -LiteralPath $desktop).Hash -ne $desktopHash -or
+        (Get-FileHash -LiteralPath $staged[0].FullName).Hash -ne $daemonHash) { throw 'Approved build inputs changed' }
+    $release = $report.ReleaseSha256
     $verifyInstaller = Join-Path $PSScriptRoot 'verify_first_install_windows.ps1'
-    $release = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash
     & $verifyInstaller $installer $pin $release
     foreach ($case in @(
         @{ signer = ('0' * 64); release = $release; reason = 'Unexpected Cryptex signer' },
