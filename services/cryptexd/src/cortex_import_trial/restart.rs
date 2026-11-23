@@ -58,7 +58,12 @@ impl SecureStore for TrialKey<'_> {
     }
 }
 
-pub(super) fn run(source: Option<&Path>, mode: &str, id: &str) -> Result<(), LifecycleError> {
+pub(super) fn run(
+    source: Option<&Path>,
+    mode: &str,
+    id: &str,
+    decision: Option<(super::decision::Choice, &str)>,
+) -> Result<(), LifecycleError> {
     parse_uuid_str(id).map_err(|_| fault("invalid_trial_id"))?;
     let temp = match source {
         Some(source) => trial_temp(source)?,
@@ -143,13 +148,17 @@ pub(super) fn run(source: Option<&Path>, mode: &str, id: &str) -> Result<(), Lif
             .map_err(|_| fault("trial_device_missing"))?;
         DeviceId::new(local.device_id).map_err(|_| fault("trial_device_failed"))?
     };
-    let (key, public) =
-        cryptexd::event_signing_key::load_existing_event_verifying_key(&store, DEV, &root, &device)
+    let key =
+        cryptexd::event_signing_key::load_existing_event_signing_key(&store, DEV, &root, &device)
             .map_err(|_| fault("trial_key_unavailable"))?;
     let Some(source) = source else {
-        let sources = provenance::verified_sources(&root, &device, &store, &public)?;
+        let sources =
+            provenance::verified_sources(&root, &device, &store, &key.signing_key.verifying_key())?;
         let report = match selection {
-            Some(selection) => selection.compare(sources)?,
+            Some(selection) => {
+                let comparison = selection.compare(sources)?;
+                super::decision::review(&root, &key.signing_key, &device, id, comparison, decision)?
+            }
             None => json!({"schema":"cryptex.cortex.provenance.v1", "sources":sources}),
         };
         return emit(&mut io::stdout().lock(), &report).map_err(Into::into);
@@ -157,7 +166,8 @@ pub(super) fn run(source: Option<&Path>, mode: &str, id: &str) -> Result<(), Lif
     emit(
         &mut io::stdout().lock(),
         &json!({"pid":std::process::id(), "brain_id":id,
-          "device_id":device.as_str(), "signing_key_id":key.signing_key_id}),
+          "device_id":device.as_str(), "signing_key_id":key.public.signing_key_id}),
     )?;
+    drop(key);
     session(source, &root, &device, &store, mode)
 }

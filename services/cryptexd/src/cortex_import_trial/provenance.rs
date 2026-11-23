@@ -161,7 +161,7 @@ impl Source {
     }
 }
 
-fn publish(
+pub(super) fn publish(
     root: &Path,
     directory: &Path,
     name: &str,
@@ -206,7 +206,7 @@ fn read_bytes(path: &Path) -> Result<Vec<u8>, LifecycleError> {
     Ok(bytes)
 }
 
-fn read_signed<T: serde::de::DeserializeOwned + Serialize>(
+pub(super) fn read_signed<T: serde::de::DeserializeOwned + Serialize>(
     path: &Path,
     key: &VerifyingKey,
 ) -> Result<T, LifecycleError> {
@@ -221,7 +221,7 @@ fn read_signed<T: serde::de::DeserializeOwned + Serialize>(
     Ok(receipt.source)
 }
 
-fn exists(path: &Path) -> Result<bool, LifecycleError> {
+pub(super) fn exists(path: &Path) -> Result<bool, LifecycleError> {
     match fs::symlink_metadata(path) {
         Ok(_) => Ok(true),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),

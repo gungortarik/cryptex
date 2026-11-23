@@ -78,6 +78,19 @@ The daemon verifies the whole batch using the same checks and interrupted-receip
 
 Exit code zero means a comparison report is available. Check `ready_for_owner_review` before presenting the batch for final approval. It is true only for a nonempty selection whose receipts match exactly. Running the comparison leaves final acceptance pending.
 
+### Accepting or cancelling a disposable batch
+
+First run `--compare-selection` with the intended selection. Inspect the matched notes, their classifications and the receipt identities. A nonempty exact match returns `review_sha256` for that comparison. While the decision is pending, `batch_decision` is null. Keep this digest from the review you actually inspected.
+
+Choose one of the following commands and supply the same selection JSON on standard input. Replace `TRIAL_UUID` and `REVIEW_SHA256` with the values from your review.
+
+```text
+cryptexd cortex-import-disposable --accept-selection TRIAL_UUID REVIEW_SHA256
+cryptexd cortex-import-disposable --cancel-selection TRIAL_UUID REVIEW_SHA256
+```
+
+Under the trial's instance lock, the daemon reopens the signed history, verifies the receipts and recomputes the comparison. Both commands require the reviewed digest and a current exact match. The daemon durably signs one decision for that disposable Brain and returns it in `batch_decision`. Running the comparison again displays the saved decision, including the digest it applies to. Repeating the same choice is idempotent. A conflicting choice requires a new trial. Cancellation ends the trial's approval process and preserves its staged notes and the legacy export. This rehearsal does not activate a personal Brain.
+
 ## Completion gate
 
 M15 is complete only when scope items and relevant recovery/privacy/failure tests pass, required CI is green, Definition of Done is satisfied and human review is complete.

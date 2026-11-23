@@ -154,20 +154,23 @@ class ReviewedCaptureTest(unittest.TestCase):
         self.assertEqual(replies[0]["status"], "needs_review")
         self.assertNotIn("review_sha256", replies[0]["review"])
 
-    def run_phase(self, mode, trial_id, *decisions, expected_exit=0):
+    def run_phase(self, mode, trial_id, *decisions, expected_exit=0, review_digest=None):
         env = self.env.copy()
         if sys.platform == "darwin" and os.environ.get("GITHUB_ACTIONS") == "true":
             # securityd resolves the runner's selected default Keychain through
             # its login home. The daemon's trial profile still lives in TMPDIR.
             env["HOME"] = os.environ["HOME"]
-        source_args = [] if mode in ("--provenance", "--compare-selection", "--remove-trial-key") else [self.source]
-        run = subprocess.run([DAEMON, "cortex-import-disposable", *source_args, mode, trial_id],
+        source_free = mode in ("--provenance", "--compare-selection", "--accept-selection",
+                               "--cancel-selection", "--remove-trial-key")
+        source_args = [] if source_free else [self.source]
+        digest_args = [] if review_digest is None else [review_digest]
+        run = subprocess.run([DAEMON, "cortex-import-disposable", *source_args, mode, trial_id, *digest_args],
                              input=b"".join(json.dumps(d).encode() + b"\n" for d in decisions),
                              capture_output=True, cwd=self.profile, env=env, timeout=90)
         self.assertNotIn(b"private body marker", run.stdout + run.stderr)
         if expected_exit is None:
             self.assertNotEqual(run.returncode, 0)
-            if mode in ("--provenance", "--compare-selection"):
+            if source_free:
                 self.assertEqual(run.stdout, b"")
             return run.stderr
         self.assertEqual(run.returncode, expected_exit, run.stderr)
@@ -314,6 +317,72 @@ class ReviewedCaptureTest(unittest.TestCase):
         self.assertFalse(report["ready_for_owner_review"])
         self.assertEqual(report["missing"], [self.approval])
         self.assertEqual(report["extra"], [])
+
+    def test_explicit_accept_and_cancel_survive_restart(self):
+        before = snapshot(self.source)
+        for action, expected, opposite in (("--accept-selection", "accepted", "--cancel-selection"),
+                                           ("--cancel-selection", "cancelled", "--accept-selection")):
+            with self.subTest(expected=expected):
+                trial_id = str(uuid.uuid4())
+                self.addCleanup(self.run_phase, "--remove-trial-key", trial_id)
+                self.run_phase("--batch-create", trial_id, self.approval)
+                root = self.temp / f"cryptex-m15-restart-{trial_id}"
+                path = root / "cortex-batch-decision.json"
+                packs = canonical_packs(root)
+                receipts = snapshot(root / "cortex-source-receipts")
+                selection = self.selection(trial_id, self.approval)
+                preview, = self.run_phase("--compare-selection", trial_id, selection)
+                self.assertTrue(preview["ready_for_owner_review"])
+                self.assertIsNone(preview["batch_decision"])
+                self.assertFalse(path.exists())
+                digest = preview["review_sha256"]
+                self.assertRegex(digest, r"^[0-9a-f]{64}$")
+                completed, = self.run_phase(action, trial_id, selection, review_digest=digest)
+                self.assertEqual(completed["batch_decision"]["choice"], expected)
+                self.assertEqual(completed["batch_decision"]["review_sha256"], digest)
+                self.assertEqual(completed["batch_decision"]["brain_id"], trial_id)
+                self.assertFalse(completed["ready_for_owner_review"])
+                saved = path.read_bytes()
+                self.assertEqual(self.run_phase("--compare-selection", trial_id, selection), [completed])
+                different, = self.run_phase("--compare-selection", trial_id, self.selection(trial_id))
+                self.assertFalse(different["ready_for_owner_review"])
+                self.assertIsNone(different["batch_decision"])
+                self.assertEqual(self.run_phase(action, trial_id, selection, review_digest=digest), [completed])
+                error = self.run_phase(opposite, trial_id, selection, review_digest=digest, expected_exit=None)
+                self.assertIn(b"batch_decision_conflict", error)
+                self.assertEqual(path.read_bytes(), saved)
+                self.assertEqual(canonical_packs(root), packs)
+                self.assertEqual(snapshot(root / "cortex-source-receipts"), receipts)
+                altered = json.loads(saved)
+                altered["source"]["choice"] = "cancelled" if expected == "accepted" else "accepted"
+                path.write_text(json.dumps(altered), encoding="utf-8")
+                self.assertIn(b"source_receipt_signature", self.run_phase(
+                    "--compare-selection", trial_id, selection, expected_exit=None))
+        self.assertEqual(snapshot(self.source), before)
+
+    def test_final_decision_rechecks_selection_digest_and_signed_receipts(self):
+        trial_id = str(uuid.uuid4())
+        self.addCleanup(self.run_phase, "--remove-trial-key", trial_id)
+        _, note, _ = self.run_phase("--batch-create", trial_id, self.approval)
+        self.source.rename(self.source.with_name("disconnected-export"))
+        root = self.temp / f"cryptex-m15-restart-{trial_id}"
+        selection = self.selection(trial_id, self.approval)
+        preview, = self.run_phase("--compare-selection", trial_id, selection)
+        digest = preview["review_sha256"]
+        changed = self.selection(trial_id, dict(self.approval, classification="public"))
+        for action in ("--accept-selection", "--cancel-selection"):
+            for manifest, token, issue in ((selection, "0" * 64, b"stale_selection_review"),
+                                           (changed, digest, b"selection_not_ready"),
+                                           (self.selection(trial_id), digest, b"selection_not_ready")):
+                error = self.run_phase(action, trial_id, manifest, review_digest=token, expected_exit=None)
+                self.assertIn(issue, error)
+        evidence = root / "cortex-source-receipts" / (note["event_id"] + ".json")
+        receipt = json.loads(evidence.read_bytes())
+        receipt["source"]["approval"]["source_path"] = "Notes/substitution.md"
+        evidence.write_text(json.dumps(receipt), encoding="utf-8")
+        self.assertIn(b"source_receipt_signature", self.run_phase(
+            "--accept-selection", trial_id, selection, review_digest=digest, expected_exit=None))
+        self.assertFalse((root / "cortex-batch-decision.json").exists())
 
     def interrupt_batch(self):
         trial_id = str(uuid.uuid4())

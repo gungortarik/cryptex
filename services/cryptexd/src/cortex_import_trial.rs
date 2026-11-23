@@ -1,6 +1,8 @@
 //! Feature-gated import rehearsals. The daemon allocates the writable trial profiles.
 use super::{LifecycleError, random_uuid_v4};
 use cryptexd::secure_store::SecureStore;
+#[cfg(any(windows, target_os = "macos"))]
+mod decision;
 mod provenance;
 #[cfg(any(windows, target_os = "macos"))]
 mod restart;
@@ -181,17 +183,24 @@ fn emit(output: &mut impl Write, value: &Value) -> io::Result<()> {
 
 pub(super) fn run(args: &[String]) -> Result<(), LifecycleError> {
     #[cfg(any(windows, target_os = "macos"))]
+    if let [flag, id, digest] = args
+        && let Some(choice) = decision::Choice::from_flag(flag)
+    {
+        ContentHashHex::parse(digest).map_err(|_| fault("invalid_review_digest"))?;
+        return restart::run(None, "--compare-selection", id, Some((choice, digest)));
+    }
+    #[cfg(any(windows, target_os = "macos"))]
     if let [flag, id] = args
         && matches!(
             flag.as_str(),
             "--provenance" | "--compare-selection" | "--remove-trial-key"
         )
     {
-        return restart::run(None, flag, id);
+        return restart::run(None, flag, id, None);
     }
     #[cfg(any(windows, target_os = "macos"))]
     if let [source, mode, trial_id] = args {
-        return restart::run(Some(Path::new(source)), mode, trial_id);
+        return restart::run(Some(Path::new(source)), mode, trial_id, None);
     }
     let [source] = args else {
         return Err(LifecycleError::Usage(

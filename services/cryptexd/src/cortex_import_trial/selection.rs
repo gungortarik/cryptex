@@ -5,6 +5,7 @@ use cryptex_cortex_inventory::mapped_note_name;
 use cryptex_events::ContentHashHex;
 use serde::Deserialize;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, HashSet},
     io::Read,
@@ -58,7 +59,7 @@ impl Selection {
         Ok(selection)
     }
 
-    pub(super) fn compare(self, sources: Vec<Source>) -> Result<Value, LifecycleError> {
+    pub(super) fn compare(self, sources: Vec<Source>) -> Result<Comparison, LifecycleError> {
         let mut receipts = BTreeMap::new();
         let selected_count = self.selected.len();
         let receipt_count = sources.len();
@@ -83,10 +84,26 @@ impl Selection {
         let extra: Vec<_> = receipts.into_values().collect();
         let ready =
             selected_count > 0 && missing.is_empty() && extra.is_empty() && changed.is_empty();
-        Ok(json!({
+        let report = json!({
             "schema":"cryptex.cortex.selection-comparison.v1", "brain_id":self.brain_id,
             "ready_for_owner_review":ready, "selected_count":selected_count, "verified_count":receipt_count,
             "matched":matched, "missing":missing, "extra":extra, "changed":changed
-        }))
+        });
+        let review_sha256 = if ready {
+            let bytes =
+                serde_json_canonicalizer::to_vec(&report).map_err(|_| fault("review_encoding"))?;
+            Some(format!("{:x}", Sha256::digest(bytes)))
+        } else {
+            None
+        };
+        Ok(Comparison {
+            report,
+            review_sha256,
+        })
     }
+}
+
+pub(super) struct Comparison {
+    pub report: Value,
+    pub review_sha256: Option<String>,
 }
