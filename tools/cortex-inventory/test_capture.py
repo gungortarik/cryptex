@@ -236,6 +236,75 @@ class ReviewedCaptureTest(unittest.TestCase):
         (directory / "orphan.json").write_bytes(original)
         self.assertIn(b"source_receipt_inventory_mismatch", self.run_phase("--provenance", trial_id, expected_exit=None))
 
+    def interrupt_batch(self):
+        trial_id = str(uuid.uuid4())
+        self.addCleanup(self.run_phase, "--remove-trial-key", trial_id)
+        before = snapshot(self.source)
+        header, = self.run_phase("--batch-exit-before-source-receipt", trial_id, self.approval,
+                                 expected_exit=87)
+        self.assertEqual(snapshot(self.source), before)
+        self.source.rename(self.source.with_name("disconnected-export"))
+        root = self.temp / f"cryptex-m15-restart-{trial_id}"
+        receipt = (root / "derived" / "capture_receipts" / trial_id / header["device_id"] /
+                   (self.approval["capture_id"] + ".json"))
+        self.assertEqual(json.loads(receipt.read_bytes())["state"], "committed")
+        self.assertTrue((root / "cortex-pending-source.json").is_file())
+        self.assertEqual(list((root / "cortex-source-receipts").iterdir()), [])
+        return trial_id, root, receipt
+
+    def test_interrupted_batch_repairs_only_source_receipt_offline(self):
+        trial_id, root, capture = self.interrupt_batch()
+        stored = json.loads(capture.read_bytes())
+        packs = canonical_packs(root)
+        self.assertTrue(packs)
+        pending = root / "cortex-pending-source.json"
+        intent = pending.read_bytes()
+        report, = self.run_phase("--provenance", trial_id)
+        source, = report["sources"]
+        self.assertEqual(source["approval"], self.approval)
+        self.assertEqual(source["brain_id"], trial_id)
+        self.assertEqual(source["event_id"], stored["event_id"])
+        self.assertFalse(pending.exists())
+        receipt = root / "cortex-source-receipts" / (stored["event_id"] + ".json")
+        published = receipt.read_bytes()
+        self.assertEqual(json.loads(published)["source"], source)
+        # This is also the disk state if the process exits after receipt
+        # publication but before removing its signed intent.
+        pending.write_bytes(intent)
+        for _ in range(2):
+            self.assertEqual(self.run_phase("--provenance", trial_id), [report])
+            self.assertEqual(receipt.read_bytes(), published)
+            self.assertEqual(canonical_packs(root), packs)
+            self.assertFalse(pending.exists())
+
+    def test_interrupted_batch_refuses_unverifiable_evidence(self):
+        trial_id, root, capture = self.interrupt_batch()
+        packs = canonical_packs(root)
+        pending = root / "cortex-pending-source.json"
+        original = pending.read_bytes()
+        altered = json.loads(original)
+        altered["source"]["approval"]["source_path"] = "Notes/other.md"
+        pending.write_text(json.dumps(altered), encoding="utf-8")
+        directory = root / "cortex-source-receipts"
+        self.assertIn(b"source_receipt_signature", self.run_phase("--provenance", trial_id, expected_exit=None))
+        self.assertEqual(list(directory.iterdir()), [])
+        pending.write_bytes(original)
+        stored = capture.read_bytes()
+        capture.unlink()
+        self.assertIn(b"source_commit_unverified", self.run_phase("--provenance", trial_id, expected_exit=None))
+        self.assertEqual(list(directory.iterdir()), [])
+        capture.write_bytes(stored)
+        path = directory / (json.loads(stored)["event_id"] + ".json")
+        path.write_bytes(b"{}")
+        self.assertIn(b"source_receipt_invalid", self.run_phase("--provenance", trial_id, expected_exit=None))
+        self.assertEqual(path.read_bytes(), b"{}")
+        path.unlink()
+        (directory / "extra.json").write_bytes(b"{}")
+        self.assertIn(b"source_receipt_inventory_mismatch", self.run_phase("--provenance", trial_id, expected_exit=None))
+        self.assertFalse(path.exists())
+        self.assertEqual(pending.read_bytes(), original)
+        self.assertEqual(canonical_packs(root), packs)
+
     def test_restart_replays_one_signed_note(self):
         source_before = snapshot(self.source)
         trial_id, first, receipt, report = self.start_retained_trial()

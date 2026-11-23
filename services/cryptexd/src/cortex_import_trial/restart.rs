@@ -92,6 +92,7 @@ pub(super) fn run(source: Option<&Path>, mode: &str, id: &str) -> Result<(), Lif
         "--provenance" if source.is_none() => TrialMode::Replay,
         "--restart-replay" => TrialMode::Replay,
         "--batch-create" => TrialMode::Batch,
+        "--batch-exit-before-source-receipt" => TrialMode::BatchExitBeforeSourceReceipt,
         _ => return Err(fault("invalid_restart_operation")),
     };
     let store = TrialKey {
@@ -100,7 +101,10 @@ pub(super) fn run(source: Option<&Path>, mode: &str, id: &str) -> Result<(), Lif
         create: mode != TrialMode::Replay,
     };
     match mode {
-        TrialMode::Capture | TrialMode::ExitBeforeReply | TrialMode::Batch => {
+        TrialMode::Capture
+        | TrialMode::ExitBeforeReply
+        | TrialMode::Batch
+        | TrialMode::BatchExitBeforeSourceReceipt => {
             #[cfg(unix)]
             {
                 use std::os::unix::fs::DirBuilderExt;

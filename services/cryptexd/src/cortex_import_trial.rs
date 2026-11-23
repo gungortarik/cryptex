@@ -30,6 +30,7 @@ enum TrialMode {
     ExitBeforeReply,
     Replay,
     Batch,
+    BatchExitBeforeSourceReceipt,
 }
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -124,7 +125,7 @@ fn capture(
         }
         if saved.is_none() {
             if let Some(batch) = batch.as_mut() {
-                batch.reserve(&approval);
+                batch.reserve(root, &approval)?;
             } else if !bind(root, &path, &approval).map_err(|_| fault("approval_storage_failed"))? {
                 return Ok(json!({"status":"rejected","issue":"approval_conflict"}));
             }
@@ -143,8 +144,12 @@ fn capture(
                 std::process::exit(86)
             }
             CaptureOutcome::Committed(commit) => {
+                if mode == TrialMode::BatchExitBeforeSourceReceipt {
+                    std::process::exit(87);
+                }
                 if let Some(batch) = batch {
                     batch.record(root, &approval, &commit)?;
+                    batch.finish(root, &approval.capture_id)?;
                 }
                 json!({
                 "status":"committed", "approval":approval, "event_id":commit.event_id,
@@ -152,6 +157,11 @@ fn capture(
                 })
             }
             CaptureOutcome::Rejected { code, .. } => {
+                if saved.is_none()
+                    && let Some(batch) = batch
+                {
+                    batch.finish(root, &approval.capture_id)?;
+                }
                 json!({"status":"rejected","issue":format!("{code:?}")})
             }
             CaptureOutcome::Uncertain { reason, .. } => {
@@ -233,7 +243,10 @@ fn session(
 ) -> Result<(), LifecycleError> {
     let mut input = io::stdin().lock();
     let mut output = io::stdout().lock();
-    let mut batch = if mode == TrialMode::Batch {
+    let mut batch = if matches!(
+        mode,
+        TrialMode::Batch | TrialMode::BatchExitBeforeSourceReceipt
+    ) {
         Some(provenance::Batch::create(root, device, store)?)
     } else {
         None
