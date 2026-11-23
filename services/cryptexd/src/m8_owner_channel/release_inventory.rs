@@ -16,7 +16,7 @@ use sha2::{Digest, Sha256};
 
 const MAX_INVENTORY: usize = 1024 * 1024;
 const MAX_FILES: usize = 4096;
-const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
+pub(super) const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_BUNDLE_BYTES: u64 = 256 * 1024 * 1024;
 
 unsafe extern "C" {

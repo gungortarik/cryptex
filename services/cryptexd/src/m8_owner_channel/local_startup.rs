@@ -134,11 +134,19 @@ impl Release {
             return Err(Error::Image);
         }
         #[cfg(feature = "m17-sealed-startup-check")]
-        let (location, manifest, signature) = (
-            root.parent().ok_or(Error::Image)?.join(RELEASE),
-            "inventory.json",
-            "inventory.cms",
-        );
+        let (location, manifest, signature) = {
+            // This is the release identity checked before first installation.
+            // The subsequent signed inventory and both live image checks still
+            // authenticate the selected bundle, including after a slot rename.
+            let main_image = read_input(&root, DESKTOP, super::release_inventory::MAX_FILE_BYTES)
+                .map_err(|_| Error::Inventory)?;
+            let slot = format!("cryptex-release-{:x}", Sha256::digest(main_image));
+            (
+                root.parent().ok_or(Error::Image)?.join(slot),
+                "inventory.json",
+                "inventory.cms",
+            )
+        };
         #[cfg(not(feature = "m17-sealed-startup-check"))]
         let (location, manifest, signature) = (
             root.clone(),

@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -43,17 +44,18 @@ def exercise(root, release):
     pin = hashlib.sha256(Path(os.environ["CRYPTEX_M17_SIGNER_DER"]).read_bytes()).hexdigest()
     run(sys.executable, "-B", ROOT / "scripts/m17/verify_first_install_mac.py", installed,
         pin, hashlib.sha256(desktop.read_bytes()).hexdigest())
-    metadata = installed.parent / release
-    metadata.mkdir()
-    manifest = metadata / "inventory.json"
-    signature = metadata / "inventory.cms"
+    def slot():
+        return installed.parent / ("cryptex-release-" + hashlib.sha256(desktop.read_bytes()).hexdigest())
 
     def publish(release_id):
+        metadata = slot()
+        metadata.mkdir()
+        manifest = metadata / "inventory.json"
+        signature = metadata / "inventory.cms"
         contents = inventory(installed, platform.machine(), release_id, inspect_image, sealed=True)
         if "Contents/Resources/frontend/index.html" not in {item["path"] for item in contents["files"]}:
             raise RuntimeError("Installed release is missing its protected frontend")
         manifest.write_bytes(json.dumps(contents, separators=(",", ":")).encode())
-        signature.unlink(missing_ok=True)
         run(os.environ["CX_UPDATE_CI_CMS_HELPER"], pin, manifest, signature, timeout=60)
 
     def startup(case, refusal=None):
@@ -81,8 +83,31 @@ def exercise(root, release):
                              capture_output=True, text=True, timeout=30)
     if refused.returncode != 2 or "sealed_rehearsal_arguments" not in refused.stderr.splitlines() or (root / "unused").exists():
         raise RuntimeError("Sealed rehearsal accepted an existing-profile launch")
-    publish(release + "-other")
+    original_slot = slot()
+    previous = installed.with_suffix(".app.previous")
+    installed.rename(previous)
+    run("/usr/bin/ditto", previous, installed)
+    notice = installed / "Contents/Resources/notices/frontend.json"
+    with notice.open("ab") as out:
+        out.write(b"\n")
+    image(installed, "com.cryptex.desktop")
+    run("/usr/bin/codesign", "--verify", "--strict", installed)
+    candidate_slot = slot()
+    if candidate_slot == original_slot:
+        raise RuntimeError("Sealed resource change retained the previous release identity")
+    # Both images have the same source revision, publisher and roles.
+    candidate_slot.mkdir()
+    for name in ("inventory.json", "inventory.cms"):
+        shutil.copyfile(original_slot / name, candidate_slot / name)
     startup("stale-inventory", "local_signed_startup_Inventory")
+    candidate_slot.rename(root / "stale-metadata")
+    publish(release)
+    startup("new-release")
+    installed.rename(installed.with_suffix(".app.pending"))
+    previous.rename(installed)
+    if slot() != original_slot:
+        raise RuntimeError("Rollback did not select the original inventory")
+    startup("restored-release")
     image(daemon, "com.cryptex.unrelated")
     image(installed, "com.cryptex.desktop")
     run("/usr/bin/codesign", "--verify", "--strict", installed)
