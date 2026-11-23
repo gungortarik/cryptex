@@ -115,6 +115,14 @@ pub(in crate::managed_profile) fn run() {
     match phase.as_str() {
         "enroll" => {
             for side in [&mut a, &mut b] {
+                crate::incoming_publication::recover_live_with_instance(
+                    &side.root,
+                    &mut side.instance,
+                    &store,
+                    ENV,
+                )
+                .unwrap();
+                side.guard = Side::transport_guard(&side.instance, &side.root);
                 assert_eq!(side.tick(&store).copied, 1);
             }
         }
