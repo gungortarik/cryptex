@@ -48,7 +48,7 @@ impl Evidence {
                 capture_id: "35027d23-6788-4d0f-8ef5-80c08e9faaaa".into(),
                 source_path: "Notes/imported.md".into(),
                 source_sha256: format!("{:x}", Sha256::digest(note.text.as_bytes())),
-                classification: event.classification.clone(),
+                classification: event.classification,
                 review_sha256: None,
             },
         };
@@ -145,6 +145,20 @@ fn ordinary_and_cortex_backup_inventories_roundtrip() {
     .unwrap();
     assert!(!old_copy.path().join(evidence::DECISION_FILE).exists());
     let receipts = Evidence::enroll(&root, &device, &key, &store);
+    let decision_path = root.join(evidence::DECISION_FILE);
+    let mut decision: Receipt<BatchDecision> = serde_json::from_slice(&receipts.decision).unwrap();
+    decision.source.choice = Choice::Cancelled;
+    fs::write(&decision_path, signed(&decision.source, &key)).unwrap();
+    assert!(matches!(
+        backup::prepare(&root, &store, SecureStoreEnvironment::Dev, 1),
+        Err(crate::backup_inventory::Error::CortexEvidence)
+    ));
+    fs::remove_file(&decision_path).unwrap();
+    assert!(matches!(
+        backup::prepare(&root, &store, SecureStoreEnvironment::Dev, 1),
+        Err(crate::backup_inventory::Error::CortexEvidence)
+    ));
+    fs::write(decision_path, &receipts.decision).unwrap();
     let accepted = prepare();
     let (accepted_dir, accepted_inventory) = unpack(&accepted);
     assert_eq!(format(&accepted_inventory), "cryptex.backup.inventory.v3");
