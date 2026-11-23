@@ -82,6 +82,15 @@ At `6a40f00` the repeat scan checked 727 public crate/version pairs across the t
 
 The two `6a40f00` soak archives passed their extracted native smoke checks. Their Syncthing executables matched the established Windows x64 and Apple arm64 SHA-256 pins; both bundled license and authors files compared byte-for-byte with the monitored inventory. The exercises bind transport peers locally. [Patched package CI](https://github.com/gungortarik/cryptex/actions/runs/45121866737) · [Upstream source and notice inventory](../../third_party/syncthing/2.1.5/README.md)
 
+For verification of the physical run, both owner ZIPs were compared with fresh downloads from Actions run 45121866737. For each download the enclosing artifact matched GitHub's published SHA-256. The inner ZIP matched the copy delivered to the owner, and the independently hashed daemon test executable matched its build manifest.
+
+| Physical packet | Actions artifact ID | Owner ZIP SHA-256 | Expected receipt field `runner_sha256` |
+| --- | --- | --- | --- |
+| Windows x64 | 14794531146 | `9c6aaf9e448184e4adb9bed366310f9728ffac05a5e19b3f974f79301e33c00f` | `dadacb04bb0ad30cf1dd1e08f581d41f2fc49eb4c204c7a8dd7c7700168abb33` |
+| macOS arm64 | 14794370826 | `5364f469dbc9049a05387e7dc0691a43f2344a13907e1094ff3abfc501da5e7a` | `d84057aaa8ce21a1acde037722cd6d3299f3709e1413e9f5f90d430c9e16cf45` |
+
+Compare each owner-returned schema 1 receipt with its platform, runner and full revision `6a40f00367962ccad4dc0fc7b4ae949086263659`. A completed run reports at least five kernel-observed suspended seconds, both retained-instance resume and cold read, six rounds and 50 verified notes per replica. The JSON is an owner-supplied test observation; the build digests identify its claimed executable. [Receipt producer](../../scripts/m16/owner_soak.py)
+
 At `0cf55da`, the packaged two-peer smoke completed six disconnect/reconnect rounds on both platforms. It verified all 50 notes per replica after a cold read. An owner receipt additionally requires a suspend observed by the kernel while the retained peer is alive. Sampling brackets bound the actual suspended duration from below. A stopped user process or a change of wall clock does not count. Each package uses two local synthetic peers. [Native package smoke](https://github.com/gungortarik/cryptex/actions/runs/45120714690) · [Apple continuous clock](https://developer.apple.com/documentation/kernel/1646199-mach_continuous_time) · [Windows interrupt time](https://learn.microsoft.com/en-us/windows/win32/sysinfo/interrupt-time)
 
 ### Remaining decisions and observations
