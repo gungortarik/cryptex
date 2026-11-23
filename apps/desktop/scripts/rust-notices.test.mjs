@@ -17,6 +17,14 @@ test("release inventory covers the native desktop and daemon and retains exact n
   const keys = report.packages.map(pkg => pkg.name + " v" + pkg.version);
   assert.deepEqual(keys, [...new Set(keys)].sort());
   assert.ok(report.packages.find(pkg => pkg.name === "tauri").documents.length > 0);
+  const embedded = name => report.packages.find(pkg => pkg.name === name).documents.map(doc => doc.name);
+  assert.ok(embedded("libsqlite3-sys").includes("sqlite/3.54.1/source-notice.txt"));
+  if (host.includes("windows")) {
+    const sdk = embedded("webview2-com-sys");
+    for (const name of ["LICENSE.txt", "NOTICE.txt"]) {
+      assert.ok(sdk.includes("microsoft-webview2/1.0.3800.47/" + name));
+    }
+  }
   for (const pkg of report.packages) {
     assert.ok(pkg.documents.length, pkg.name);
     for (const doc of pkg.documents) {

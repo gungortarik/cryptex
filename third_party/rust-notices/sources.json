@@ -20,6 +20,13 @@
       "source": "https://raw.githubusercontent.com/madsmtm/objc2/8852b424193ca41602281b3d7540d7c8ed51e49a/LICENSE.md"
     }
   ],
+  "libsqlite3-sys-0.39.1": [
+    {
+      "file": "sqlite/3.54.1/source-notice.txt",
+      "sha256": "6e8ef07d41500027908f8c75237e87683f3845f4004319c2ece1f227949a4cb2",
+      "source": "https://docs.rs/crate/libsqlite3-sys/0.39.1/source/sqlite3/sqlite3.h"
+    }
+  ],
   "objc2-0.6.4": [
     {
       "file": "objc2/7f976f7e9c-LICENSE.md",
@@ -121,6 +128,16 @@
       "file": "webview2-rs/0dcf41516e-LICENSE",
       "sha256": "0dcf41516e608bbcb6cdc5229feb7b86fe4a643b85e7df251133c93408fdac73",
       "source": "https://raw.githubusercontent.com/wravery/webview2-rs/edc2caf886175ccaebe86078c9cfe1ae2a187328/LICENSE"
+    },
+    {
+      "file": "microsoft-webview2/1.0.3800.47/LICENSE.txt",
+      "sha256": "0af8f1b807512aae39c2ac1aa4d0cae65cabecb6fd554b8439a5162a0d6eca55",
+      "source": "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/1.0.3800.47/microsoft.web.webview2.1.0.3800.47.nupkg#LICENSE.txt"
+    },
+    {
+      "file": "microsoft-webview2/1.0.3800.47/NOTICE.txt",
+      "sha256": "106423785c5b7eba0a8e61d1837f2132e9c828e20ad530f565d981c1df60dd90",
+      "source": "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/1.0.3800.47/microsoft.web.webview2.1.0.3800.47.nupkg#NOTICE.txt"
     }
   ]
 }
