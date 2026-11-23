@@ -89,9 +89,9 @@ No checkbox may be marked complete without actual evidence from the applicable m
 - [ ] Signed/notarized packaging is complete as appropriate for each platform.
   - Evidence: [Disposable local signing on both platforms](https://github.com/gungortarik/cryptex/actions/runs/45253534985). The owner-controlled release identity, signed updater and final candidate remain open.
 - [ ] Final third-party notices are included.
-  - Evidence:
+  - Evidence: [Frontend, native Rust dependencies and embedded component notices](../evidence/m17/personal-packaging.md). Final installed inventory and transport review are pending.
 - [ ] Syncthing/other bundled dependency notice obligations are satisfied.
-  - Evidence:
+  - Evidence: [Official transport archive contents and source references](https://github.com/gungortarik/cryptex/actions/runs/45258102534). Installed-payload verification awaits selection of the corrected transport.
 - [ ] Release artifacts are traceable to repository-controlled source and pinned dependencies.
   - Evidence:
 - [ ] Final release checklist has been reviewed by the human owner.

@@ -18,6 +18,18 @@ At `784cfba`, both native jobs passed. The Windows runner verified the NSIS inst
 
 Before a personal install, the owner needs to verify the release signer's fingerprint through an independent local channel. The final packaging and updater review must cover the installed payload and the previously working version used for rollback. CI fixture identities are discarded at the end of each job. No real-profile installation or key enrollment has taken place in these rehearsals.
 
+## Signed updates
+
+At `aae6626` the installed updater on Windows x64 and Mac arm64 admitted three independently signed fixture images. It checked a CMS statement covering the OS, architecture and SHA-256 digest of the complete installed image, then checked the platform signatures of Desktop and its daemon against the certificate compiled into the updater. A receipt from another signer and a receipt for a different image failed admission. A substituted receipt blocked both a fresh update and reopening the retained image after interruption.
+
+Both native reports recorded a compatible update, rollback on protocol mismatch, recovery after interruption and rollback on timeout. Every reopened Desktop connected to its own daemon and the synthetic signed note still verified. The private CI keys belonged to disposable signing accounts. [Signed update and rollback reports](https://github.com/gungortarik/cryptex/actions/runs/45256804724)
+
+At `53dbe05` both platforms repeated those four cases and returned to the working image when the candidate exited before reporting health. All five transactions verified the same signed note. On Windows the standard account ran the NSIS uninstaller and reinstalled the working version. On Mac the temporary account moved the installed application bundle out of Applications and reinstalled the working bundle. On both systems the reinstalled image passed admission and verified the original note and its unchanged signed pack. [Update and reinstall reports](https://github.com/gungortarik/cryptex/actions/runs/45257477174)
+
+Both [signed installation jobs at `55517f1`](https://github.com/gungortarik/cryptex/actions/runs/45257927925) passed with the updated embedded dependency notices.
+
 ## Official transport inspection
 
 The [two-platform binary inspection](https://github.com/gungortarik/cryptex/actions/runs/45252879619) at `bc24732` matched the published archive digests for official version 2.1.7. Both binaries report Go 1.27.3 and the same four in-range findings recorded in M16. The report also contains the historical GO-2022-0888 finding, whose affected range predates this version. Inspection downloads the executables to temporary storage, performs static analysis and leaves the installed transport untouched. The job can be dispatched again when upstream publishes a stable release. Its success records a completed inspection. Decisions about personal use remain with the owner under the M16 hold.
+
+The [repeat inspection at `0c94466`](https://github.com/gungortarik/cryptex/actions/runs/45258102534) recorded the exact upstream license and author file digests for both archives and returned the same four in-range findings. Verification of a corrected release, its dependency notices, native compatibility and rollback remains outstanding.

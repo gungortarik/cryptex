@@ -8,6 +8,8 @@ Paid publisher credentials and invited-user distribution have not been selected.
 
 The [personal-device signing proposal](proposals/m17-personal-device-signing.md) covers the first install, update and rollback trust decisions. The [M17 package record](../evidence/m17/personal-packaging.md) tracks installation, notice and official transport checks.
 
+On both platforms the [signed updater rehearsal](https://github.com/gungortarik/cryptex/actions/runs/45256804724) exercised refusal of an untrusted receipt, compatible replacement, interrupted activation and verified rollback. The [transport recheck](https://github.com/gungortarik/cryptex/actions/runs/45258102534) still found the same four in-range advisories in the latest inspected official binaries. The owner-controlled first install and personal data cutover remain pending.
+
 ## M16 hardening complete
 
 On November 23, 2026 the owner reviewed candidate `d06eaf5` and approved closure conditional on native CI and the final technical review. All 13 candidate workflows passed on Windows and macOS, with 33 successful jobs. The [acceptance record](../evidence/m16/hardening.md#final-candidate-review) covers scale and reconstruction, repeated offline sync, physical sleep observations, recovery after an accepted Cortex purge, security review and installed-app checks.
