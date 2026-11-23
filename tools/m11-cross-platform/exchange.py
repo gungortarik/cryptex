@@ -12,7 +12,7 @@ import tempfile
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "m11-backup-spike"))
-from daemon_roundtrip import BRAIN_IDENTITY, envelope, unpack, write_generation
+from daemon_roundtrip import BRAIN_IDENTITY, envelope, open_payload, unpack, write_generation
 from rehearse import FIXTURE, NODE
 
 
@@ -82,6 +82,32 @@ def send(root, platform):
     envelope("encrypt", [root / "peer-public/recipient.asc"], private / "content.zip", output / "backup-v2.pgp")
 
 
+def rehearse_failed_recovery(root, kit, backup):
+    """Exercise the prior failures against the same selected peer generation."""
+    with tempfile.TemporaryDirectory(dir=root) as tmp:
+        work = Path(tmp)
+        source = backup.read_bytes()
+        if len(source) < 2:
+            raise ValueError("Missing cross-platform backup fixture")
+        damaged = work / "truncated.pgp"
+        damaged.write_bytes(source[:len(source) // 2])
+        wrong_kit = work / "different-kit"
+        wrong_kit.mkdir()
+        # Both keypairs were independently generated for this disposable run.
+        shutil.copyfile(root / "private/writer.sec", wrong_kit / "recovery.sec")
+        before = set(root.iterdir())
+        for recipient, candidate in [(kit, damaged), (wrong_kit, backup)]:
+            try:
+                open_payload(recipient, candidate, root / "opened")
+            except subprocess.CalledProcessError:
+                if set(root.iterdir()) != before:
+                    raise RuntimeError("Failed recovery left a partial destination")
+            else:
+                raise RuntimeError("Unusable recovery input was accepted")
+        if backup.read_bytes() != source:
+            raise RuntimeError("A failed recovery changed the selected generation")
+
+
 def receive(root, peer):
     verified = root / "verified.zip"
     envelope("decrypt-verify", [root / "private/recipient.sec", root / "peer-public/writer.asc"],
@@ -92,12 +118,14 @@ def receive(root, peer):
     if {p.relative_to(restore).as_posix(): p.read_bytes() for p in restore.rglob("*") if p.is_file()} != expected:
         raise ValueError("Restored peer inventory mismatch")
     print(f"m11_cross_restore=passed from={peer} members={len(expected)} signer=verified")
-    from daemon_roundtrip import open_payload
     kit = root / "local-kit"
     kit.mkdir()
     shutil.copyfile(root / "private/recipient.sec", kit / "recovery.sec")
-    open_payload(kit, root / "incoming/backup-v2.pgp", root / "opened")
+    backup = root / "incoming/backup-v2.pgp"
+    rehearse_failed_recovery(root, kit, backup)
+    open_payload(kit, backup, root / "opened")
     native(root, "restore", peer)
+    print(f"m16_cross_recovery from={peer} truncated=refused different_kit=refused partial_outputs=0 retry=verified")
 
 
 def fetch(root, kind, peer):
