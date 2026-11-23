@@ -1,0 +1,46 @@
+name: M17 disposable personal-device signing
+on:
+  workflow_dispatch:
+  push:
+    branches: ['codex/m17-release-candidate']
+    paths:
+      - '.github/workflows/m17-owner-signing.yml'
+      - 'scripts/m17/**'
+      - 'scripts/m8/test_mac_local_signing_ci.py'
+permissions:
+  contents: read
+jobs:
+  signed-package:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '26.0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pnpm install --frozen-lockfile
+      - if: runner.os == 'macOS'
+        run: |
+          python -B scripts/m8/test_mac_local_signing_runner.py
+          pnpm --filter @cryptex/desktop tauri:package --bundles app
+          python -B scripts/m17/mac_package_signing.py
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          pnpm --filter @cryptex/desktop tauri:package-smoke
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./scripts/m17/windows_package_signing.ps1

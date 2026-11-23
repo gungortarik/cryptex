@@ -1,4 +1,5 @@
 """CI-only local-certificate-positive native exchange. No product activation."""
+from contextlib import contextmanager
 import os
 from pathlib import Path
 import secrets
@@ -12,7 +13,8 @@ from mac_identity_preflight import PreflightError, checked, run_bounded
 from mac_local_startup_ci import run_real_startup_checks
 
 
-def main():
+@contextmanager
+def disposable_signing_identity():
     if (sys.platform != "darwin" or os.environ.get("GITHUB_ACTIONS") != "true"
             or os.environ.get("RUNNER_ENVIRONMENT") != "github-hosted"
             or os.environ.get("RUNNER_OS") != "macOS"):
@@ -87,22 +89,7 @@ def main():
                 # run_bounded intentionally uses a minimal system PATH.
                 "RUSTC": rustc,
             })
-            args = [cargo, "test", "--locked", "-p", "cryptexd",
-                    "--lib", "m8_owner_channel::native::tests::native_supervised_channel_roundtrip_and_refusals",
-                    "--", "--exact", "--test-threads=1"]
-            outcome = run_bounded(args, 180)
-            if outcome.code or outcome.timed_out or outcome.limited or outcome.pipe_failed:
-                # Disposable fixture diagnostics only. Never print private
-                # material, passwords or a reusable certificate selector.
-                diagnostic = outcome.output.replace(password, "[redacted]").replace(
-                    fingerprint, "[fixture]").replace(str(root), "[fixture-root]")
-                print(diagnostic[:8192], file=sys.stderr)
-            result = checked(lambda *_: outcome, [], "local_certificate_native_exchange", 180)
-            if "1 passed; 0 failed" not in result or "0 passed; 0 failed" in result:
-                raise PreflightError("native_test_inventory_mismatch")
-            print("local_certificate_native_exchange=passed")
-            run_real_startup_checks(root, checked, run_bounded, cargo, openssl,
-                                    keychain, password, fingerprint)
+            yield root, keychain, password, fingerprint, cargo, openssl
         finally:
             for name, value in saved.items():
                 if value is None:
@@ -122,6 +109,27 @@ def main():
     if root.exists():
         raise PreflightError("ci_fixture_directory_cleanup_failed")
     print("local_certificate_fixture_cleanup=passed")
+
+
+def main():
+    with disposable_signing_identity() as identity:
+        root, keychain, password, fingerprint, cargo, openssl = identity
+        args = [cargo, "test", "--locked", "-p", "cryptexd",
+                "--lib", "m8_owner_channel::native::tests::native_supervised_channel_roundtrip_and_refusals",
+                "--", "--exact", "--test-threads=1"]
+        outcome = run_bounded(args, 180)
+        if outcome.code or outcome.timed_out or outcome.limited or outcome.pipe_failed:
+            # Disposable fixture diagnostics only. Never print private
+            # material, passwords or a reusable certificate selector.
+            diagnostic = outcome.output.replace(password, "[redacted]").replace(
+                fingerprint, "[fixture]").replace(str(root), "[fixture-root]")
+            print(diagnostic[:8192], file=sys.stderr)
+        result = checked(lambda *_: outcome, [], "local_certificate_native_exchange", 180)
+        if "1 passed; 0 failed" not in result or "0 passed; 0 failed" in result:
+            raise PreflightError("native_test_inventory_mismatch")
+        print("local_certificate_native_exchange=passed")
+        run_real_startup_checks(root, checked, run_bounded, cargo, openssl,
+                                keychain, password, fingerprint)
 
 
 if __name__ == "__main__":
