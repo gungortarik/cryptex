@@ -31,8 +31,19 @@ def sign(updater, package, digest, signer, output, mac_helper=None):
         subprocess.run(args, check=True, timeout=120)
         if not 0 < receipt.stat().st_size <= 65536:
             raise ValueError("Signed release receipt outside updater limits")
-        # Publish the complete file without overwriting a concurrent operator's receipt.
-        os.link(receipt, output)
+        # A hard link to the private signing directory would retain its Windows
+        # ACL. Create the public receipt under the publication directory instead.
+        staged = tempfile.NamedTemporaryFile(dir=output.parent, delete=False)
+        pending = Path(staged.name)
+        try:
+            with staged:
+                staged.write(receipt.read_bytes())
+            if sys.platform == "win32":
+                os.rename(pending, output)  # Windows refuses an existing destination.
+            else:
+                os.link(pending, output)
+        finally:
+            pending.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
