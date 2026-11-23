@@ -40,11 +40,11 @@ No checkbox may be marked complete without actual evidence from the applicable m
 - [x] M16 security review is complete.
   - Evidence: [Technical review, conditional owner approval and personal-use hold](../evidence/m16/hardening.md#final-candidate-review)
 - [ ] No custom cryptography has been introduced.
-  - Evidence:
+  - Evidence: Release receipt and executable verification use [Windows CryptoAPI and Authenticode](../apps/updater/native/windows.c) and [Apple Security](../apps/updater/native/macos.c) with the [existing CMS decoder](../services/cryptexd/src/m8_owner_channel/native/inventory.c). Include these adapters in final candidate review.
 - [ ] Renderer/webview remains least privilege.
-  - Evidence:
+  - Evidence: The [M16 webview and IPC review](../evidence/m16/hardening.md#security-and-recovery-review) covers the shipped CSP and explicit invoke list. Neither changed between M16 and `03857d4`.
 - [ ] UI code has no arbitrary shell or unrestricted filesystem access.
-  - Evidence:
+  - Evidence: The [Desktop invocation review](../evidence/m16/hardening.md#security-and-recovery-review) applies to the same renderer source at `03857d4`. The updater runs as a separate native executable.
 - [ ] Secrets/private keys use appropriate OS secure storage.
   - Evidence:
 - [x] Restricted memory remains excluded from AI by default.
@@ -52,7 +52,7 @@ No checkbox may be marked complete without actual evidence from the applicable m
 - [x] Purge/recovery are not autonomous AI tools.
   - Evidence: [Authenticated client discovery and three-tool catalog](../evidence/m12/local-mcp-review.md).
 - [ ] Logs/diagnostics do not expose memory bodies, secrets, credentials or recovery material by default.
-  - Evidence:
+  - Evidence: [Reviewed health and diagnostic surfaces](../evidence/m16/hardening.md#security-and-recovery-review). All 27 status, connection and capture policy tests passed on Windows at `03857d4`. Final candidate log review remains open.
 
 ## D. Cross-platform product verification
 
@@ -100,9 +100,9 @@ No checkbox may be marked complete without actual evidence from the applicable m
 ## G. Runtime truthfulness
 
 - [ ] Health/Doctor surfaces reflect actual observed runtime state.
-  - Evidence:
+  - Evidence: [Disposable desktop health, maintenance and native owner controls at `3b0fd56`](https://github.com/gungortarik/cryptex/actions/runs/45263640097). Repeat with the signed final configuration.
 - [ ] Configured/Ready/Active/Verified/Attention distinctions are preserved where applicable.
-  - Evidence:
+  - Evidence: [Guarded desktop status and privacy review](../evidence/m16/hardening.md#final-candidate-review). The Windows policy tests at `03857d4` rejected remote-durability claims based only on local activity.
 - [ ] No major subsystem is represented as working solely because it is configured.
   - Evidence:
 
@@ -111,7 +111,7 @@ No checkbox may be marked complete without actual evidence from the applicable m
 - [ ] Backup/recovery confidence is sufficient for real personal Brain onboarding.
   - Evidence:
 - [ ] Cortex fresh re-ingestion M15 acceptance/cutover is complete where applicable.
-  - Evidence:
+  - Evidence: [M15 accepted the synthetic cutover and restored signed receipts](../evidence/m15/cortex-import-review.md). The owner has not authorized import of the personal export.
 - [ ] Real personal memory is not introduced before this gate is authorized.
   - Evidence:
 

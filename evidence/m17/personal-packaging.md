@@ -32,6 +32,16 @@ At `53dbe05` both platforms repeated those four cases and returned to the workin
 
 Both [signed installation jobs at `55517f1`](https://github.com/gungortarik/cryptex/actions/runs/45257927925) passed with the updated embedded dependency notices.
 
+The standalone updater archives at `45d2855` each contain the signed executable and its own native dependency notice inventory. Reading the two uploaded archives confirmed the SHA-256 of every referenced notice for 44 locked Windows packages and 37 Mac packages. Both installed update rehearsals passed. [Native updater archives and tests](https://github.com/gungortarik/cryptex/actions/runs/45264154857)
+
+At `03857d4` the real per-user Windows NSIS uninstaller removed its binaries and the matching seeded Cryptex startup registration, preserving an adjacent unrelated value in a disposable account. M14 separately verified startup registration at login. [Windows removal result](https://github.com/gungortarik/cryptex/actions/runs/45264593092/job/138008025382)
+
+## Update probe shutdown
+
+In the Windows install at `2f6e8c9`, the candidate's service took longer than the interactive three-second stop window. Desktop force-stopped it and returned a probe failure in place of the expected protocol-mismatch reply. The updater restored the working image. The log does not identify which internal service operation consumed those three seconds. [Windows failure](https://github.com/gungortarik/cryptex/actions/runs/45260956476/job/137995247047)
+
+At `3b0fd56` the updater still enforces one 30-second deadline on the probe and its process tree. The update path allows the owned service to drain within that deadline and requires a successful exit and release of the instance lock before reporting health. A regression test exercised a child that completed cleanup four seconds after receiving its stop request. Both native jobs passed it. On both platforms the five installed update/recovery transactions verified the original signed note, including after reinstallation. [Windows and macOS receipts](https://github.com/gungortarik/cryptex/actions/runs/45263639901)
+
 ## Official transport inspection
 
 The [two-platform binary inspection](https://github.com/gungortarik/cryptex/actions/runs/45252879619) at `bc24732` matched the published archive digests for official version 2.1.7. Both binaries report Go 1.27.3 and the same four in-range findings recorded in M16. The report also contains the historical GO-2022-0888 finding, whose affected range predates this version. Inspection downloads the executables to temporary storage, performs static analysis and leaves the installed transport untouched. The job can be dispatched again when upstream publishes a stable release. Its success records a completed inspection. Decisions about personal use remain with the owner under the M16 hold.
