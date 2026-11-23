@@ -41,6 +41,13 @@ def publish(stage, destination):
         raise OSError(code, os.strerror(code), destination)
 
 
+def output_directory(bundle, directory):
+    output = directory.resolve(strict=True)
+    if not output.is_dir() or output.is_relative_to(bundle.resolve(strict=True)):
+        raise ValueError("Choose an output directory outside the sealed application")
+    return output
+
+
 def approved_snapshot(bundle, scratch, pin, approved_image):
     snapshot = scratch / "approved.app"
     subprocess.run(["/usr/bin/ditto", bundle, snapshot], check=True, timeout=120)
@@ -51,6 +58,7 @@ def approved_snapshot(bundle, scratch, pin, approved_image):
 def prepare(bundle, revision, pin, approved_image, helper, output):
     if not re.fullmatch("[0-9a-f]{40}", revision):
         raise ValueError("Expected the full reviewed source revision")
+    output = output_directory(bundle, output)
     verify(bundle, pin, approved_image)
     destination = output / ("cryptex-release-" + approved_image.lower())
     if os.path.lexists(destination):
@@ -87,6 +95,7 @@ def read_pair(directory):
 def stage_delivery(bundle, source, pin, approved_image, output):
     # Run the read-only verifier only in a private copy of the approved sealed
     # app. The verification path never starts the service or opens a profile.
+    output = output_directory(bundle, output)
     verify(bundle, pin, approved_image)
     name = "cryptex-release-" + approved_image.lower()
     destination = output / name

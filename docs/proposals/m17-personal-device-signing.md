@@ -26,6 +26,22 @@ The sealed installation rehearsal generates a signed inventory after signing the
 
 The release updater must make the matching signed inventory available for each image before probing it and keep the retained image's inventory available through rollback. The owner installation and release review remain outstanding.
 
+### Preparing and receiving a Mac inventory
+
+On the signing Mac, identify the final signed application, the reviewed build commit, the public certificate's DER SHA-256, and the approved signed Desktop executable SHA-256. With the reviewed Keychain helper on this machine, run the following from the checkout using existing output directories.
+
+```sh
+python3 scripts/m17/prepare_mac_inventory.py prepare APP CERTIFICATE_SHA256 IMAGE_SHA256 OUTPUT SOURCE_COMMIT --mac-helper HELPER
+```
+
+Transfer the sealed application and the resulting `cryptex-release-IMAGE_SHA256` directory together. Keep the approved fingerprints available through the independent owner channel. On the receiving Mac, place the metadata into the per-user application directory with the following command before applying the separately signed package update.
+
+```sh
+python3 scripts/m17/prepare_mac_inventory.py stage APP CERTIFICATE_SHA256 IMAGE_SHA256 "$HOME/Applications" DELIVERED_INVENTORY_DIRECTORY
+```
+
+The receiving tool verifies a private copy of the package and asks its read-only entry point to authenticate the exact inventory bytes and protected frontend. It then publishes both files together. Repeating the operation accepts an identical pair and preserves any conflicting existing slot. This path is available in the sealed rehearsal build. Personal-profile activation still requires the release decision.
+
 ## Scope and release decision
 
 Private CI jobs use disposable identities and synthetic data. Their certificates expire or are discarded. The release decision requires a verified owner-controlled installation on both target systems, the beta checklist and explicit approval. The [transport hold](../../evidence/m16/hardening.md#personal-use-release-hold) remains in force independently of package signing.

@@ -64,6 +64,13 @@ def exercise(root, revision):
                 if f"local_signed_{check}=passed" not in result.stdout.splitlines():
                     raise RuntimeError(f"Missing installed {check} evidence")
 
+    try:
+        prepare(installed, revision, pin, hashlib.sha256(desktop.read_bytes()).hexdigest(), helper, daemon.parent)
+    except ValueError as error:
+        if "outside the sealed application" not in str(error):
+            raise
+    else:
+        raise RuntimeError("Signer accepted an output directory inside the sealed application")
     publish()
     run("/usr/bin/codesign", "--verify", "--strict", installed)
     try:

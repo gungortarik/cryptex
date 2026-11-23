@@ -161,7 +161,7 @@ mod tests {
         *state.runtime_root.lock().unwrap() = Some(root.path().to_path_buf());
         *state.supervised_pid.lock().unwrap() = Some(child.id());
         *state.child.lock().unwrap() = Some(child);
-        stop_supervised_daemon_for(&state, DaemonStop::UpdateProbe).unwrap();
+        crate::stop_supervised_daemon_for(&state, crate::DaemonStop::UpdateProbe).unwrap();
         assert_eq!(fs::read(root.path().join("drained")).unwrap(), b"ok");
         assert!(state.supervised_pid.lock().unwrap().is_none());
     }
