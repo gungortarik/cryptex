@@ -51,3 +51,14 @@ jobs:
           name: cryptex-m17-owner-input
           path: ${{ runner.temp }}/owner-input/
           if-no-files-found: error
+      - name: Compile the self-contained owner launcher
+        shell: pwsh
+        run: ./scripts/m17/windows_owner_trial/build.ps1 "$env:RUNNER_TEMP/owner-input" "$env:RUNNER_TEMP/KUR.exe"
+      - name: Verify first install and repeat as a temporary standard user
+        shell: pwsh
+        run: ./scripts/m17/windows_owner_trial/test.ps1 "$env:RUNNER_TEMP/KUR.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cryptex-M17-Windows-Ilk-Kurulum
+          path: ${{ runner.temp }}/KUR.exe
+          if-no-files-found: error
