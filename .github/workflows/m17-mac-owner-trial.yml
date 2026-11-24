@@ -1,0 +1,45 @@
+name: M17 Mac owner first installation
+on:
+  workflow_dispatch:
+  push:
+    branches: ['codex/m17-release-candidate']
+    paths: ['.github/workflows/m17-mac-owner-trial.yml', 'scripts/m17/mac_owner_trial/**']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  trial:
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      BUILD_RUN: '45485652498'
+      BUILD_REVISION: e90c2abb597af8c78f7643d6641d82f6f86f26b5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Retrieve the verified build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          cd "$RUNNER_TEMP"
+          gh run watch "$BUILD_RUN" --repo "$GITHUB_REPOSITORY" --interval 20 --exit-status
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN" > build.json
+          jq -e --arg rev "$BUILD_REVISION" '.head_sha == $rev and .conclusion == "success" and .path == ".github/workflows/m17-mac-owner-input.yml"' build.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN/artifacts" > artifacts.json
+          artifact=$(jq -er '[.artifacts[] | select(.name=="m17-owner-mac-arm64-input" and (.expired|not))] | select(length==1) | first' artifacts.json)
+          id=$(jq -er '.id' <<< "$artifact")
+          digest=$(jq -er '.digest | select(test("^sha256:[0-9a-f]{64}$")) | ltrimstr("sha256:")' <<< "$artifact")
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > outer.zip
+          echo "$digest  outer.zip" | shasum -a 256 -c -
+          unzip -q outer.zip Application.zip
+      - name: Build Finder package
+        run: bash scripts/m17/mac_owner_trial/package.sh
+      - name: Exercise the delivered ZIP in a standard account
+        run: bash scripts/m17/mac_owner_trial/test.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: m17-mac-owner-tested
+          path: ${{ runner.temp }}/Cryptex-M17-Mac-Ilk-Kurulum.zip
+          if-no-files-found: error
