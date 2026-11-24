@@ -1,4 +1,5 @@
 """Inspect both official release binaries without installing or launching either one."""
+import base64
 import hashlib
 import json
 from pathlib import Path
@@ -22,7 +23,8 @@ def upstream_notices(package, stem):
         contents = package.read(matches[0])
         if not contents.decode("utf-8").strip():
             raise ValueError(f"Empty upstream notice: {name}")
-        result[name] = {"bytes": len(contents), "sha256": hashlib.sha256(contents).hexdigest()}
+        result[name] = {"bytes": len(contents), "sha256": hashlib.sha256(contents).hexdigest(),
+                        "contents_base64": base64.b64encode(contents).decode("ascii")}
     return result
 
 
@@ -72,7 +74,14 @@ def inspect(release, target, executable, directory):
     build = json.loads(subprocess.check_output(["go", "version", "-m", "-json", binary], timeout=30))
     if build.get("Main", {}).get("Path") != "github.com/syncthing/syncthing" or not build.get("Deps"):
         raise ValueError("Missing official executable dependency inventory")
-    return {"target": target, "archive_sha256": expected.removeprefix("sha256:"), "upstream_notices": notices,
+    settings = {item["Key"]: item["Value"] for item in build["Settings"]}
+    go_os, go_arch = {"macos-arm64": ("darwin", "arm64"), "windows-amd64": ("windows", "amd64")}[target]
+    if (settings.get("GOOS"), settings.get("GOARCH")) != (go_os, go_arch):
+        raise ValueError("Official executable build target differs from its archive")
+    with binary.open("rb") as stream:
+        binary_hash = hashlib.file_digest(stream, "sha256").hexdigest()
+    return {"target": target, "archive_sha256": expected.removeprefix("sha256:"),
+            "executable_sha256": binary_hash, "upstream_notices": notices,
             "linked_modules": build["Deps"],
             "source": f"https://github.com/{REPOSITORY}/tree/{tag}", **findings(out.stdout)}
 

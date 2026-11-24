@@ -59,7 +59,47 @@ def documents_for(args):
     return path, version, checksum, documents
 
 
-def main(inspection, output):
+def release_notice(tag, target, modules, texts, source_notices):
+    """Plain-text distribution copy; keep each original document's bytes intact."""
+    target_name = target["target"]
+    headings = [f"Syncthing {tag} — {target_name}",
+                f"Official archive SHA-256: {target['archive_sha256']}",
+                f"Executable SHA-256: {target['executable_sha256']}", "", "Linked Go modules"]
+    documents = {}
+
+    def include(label, data, expected):
+        if hashlib.sha256(data).hexdigest() != expected:
+            raise ValueError(f"Notice hash mismatch for {label}")
+        if expected not in documents:
+            documents[expected] = ([], data)
+        documents[expected][0].append(label)
+
+    for filename in ("LICENSE.txt", "AUTHORS.txt"):
+        record = target["upstream_notices"][filename]
+        data = base64.b64decode(record["contents_base64"], validate=True)
+        if len(data) != record["bytes"]:
+            raise ValueError(f"Upstream notice size mismatch for {filename}")
+        include(f"Syncthing {tag}/{filename}", data, record["sha256"])
+
+    for url, data in source_notices:
+        key = hashlib.sha256(data).hexdigest()
+        include(url, data, key)
+    for module in modules:
+        if target_name not in module["targets"]:
+            continue
+        label = f"{module['module']}@{module['version']}"
+        headings.append(label)
+        if not module["documents"]:
+            headings.append("  No notice file found in the inspected module source.")
+        for name, key in sorted(module["documents"].items()):
+            include(f"{label}/{name}", base64.b64decode(texts[key], validate=True), key)
+    chunks = ["\n".join(headings).encode("utf-8")]
+    for key, (labels, data) in documents.items():
+        chunks.append(("\n".join(labels) + f"\nSHA-256: {key}\n\n").encode("utf-8") + data)
+    return b"\n\n".join(chunks) + b"\n"
+
+
+def main(inspection, output, distribution=None):
     report = json.loads(Path(inspection).read_bytes())
     tag = report["release"]
     if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag):
@@ -92,12 +132,15 @@ def main(inspection, output):
                     texts[key] = base64.b64encode(data).decode("ascii")
             records.append({"module": p, "version": v, "sum": h, "targets": sorted(modules[p, v, h]),
                             "documents": names})
-    sources = [source_file(repo, revision, "gui/default/syncthing/core/aboutModalView.html")]
+    about = source_file(repo, revision, "gui/default/syncthing/core/aboutModalView.html")
+    sources = [about]
+    go_notices = {}
     for go_version in sorted({target["go_version"] for target in report["targets"]}):
         if not re.fullmatch(r"go[0-9]+\.[0-9]+\.[0-9]+", go_version):
             raise ValueError("Expected a released Go toolchain in the official binary")
         go_revision = source_commit("golang/go", go_version)
-        sources.extend(source_file("golang/go", go_revision, name) for name in ("LICENSE", "PATENTS"))
+        go_notices[go_version] = [source_file("golang/go", go_revision, name) for name in ("LICENSE", "PATENTS")]
+        sources.extend(go_notices[go_version])
     upstream = {}
     for url, data in sources:
         key = hashlib.sha256(data).hexdigest()
@@ -109,6 +152,16 @@ def main(inspection, output):
                                        "documents_base64": texts, "missing_module_notices": missing},
                                       sort_keys=True) + "\n", encoding="utf-8")
     print(f"{len(records)} linked module versions, {len(texts)} distinct notice files, {len(missing)} without notice files")
+    if distribution is not None:
+        from scan_transport import TARGETS
+        if sorted(t["target"] for t in report["targets"]) != sorted(TARGETS):
+            raise ValueError("Expected both official release targets")
+        rendered = {t["target"]: release_notice(tag, t, records, texts, [about, *go_notices[t["go_version"]]])
+                    for t in report["targets"]}
+        directory = Path(distribution)
+        directory.mkdir()
+        for target, contents in rendered.items():
+            (directory / f"Syncthing-{target}-NOTICES.txt").write_bytes(contents)
 
 
 if __name__ == "__main__":

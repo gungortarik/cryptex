@@ -1,3 +1,4 @@
+import base64
 import json
 import hashlib
 import io
@@ -12,7 +13,8 @@ class ScanTests(unittest.TestCase):
             for name, payload in [("AUTHORS.txt", b"contributors\r\n"), ("LICENSE.txt", b"terms\r\n")]:
                 archive.writestr("release/" + name, payload)
             self.assertEqual(upstream_notices(archive, "release")["LICENSE.txt"],
-                             {"bytes": 7, "sha256": hashlib.sha256(b"terms\r\n").hexdigest()})
+                             {"bytes": 7, "sha256": hashlib.sha256(b"terms\r\n").hexdigest(),
+                              "contents_base64": base64.b64encode(b"terms\r\n").decode("ascii")})
 
     def test_notice_must_belong_to_the_inspected_release(self):
         with zipfile.ZipFile(io.BytesIO(), "w") as archive:

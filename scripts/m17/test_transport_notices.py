@@ -5,10 +5,31 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-from transport_notices import documents_for, main, module_ref
+from transport_notices import documents_for, main, module_ref, release_notice
 
 
 class NoticeTests(unittest.TestCase):
+    def test_distribution_copy_matches_target_and_keeps_original_bytes(self):
+        upstream = b"upstream terms\r\n"
+        upstream_record = {"contents_base64": base64.b64encode(upstream).decode(),
+                           "bytes": len(upstream), "sha256": hashlib.sha256(upstream).hexdigest()}
+        target = {"target": "macos-arm64", "archive_sha256": "a" * 64, "executable_sha256": "b" * 64,
+                  "upstream_notices": {"LICENSE.txt": upstream_record, "AUTHORS.txt": upstream_record}}
+        data = "© example\r\n".encode()
+        key = hashlib.sha256(data).hexdigest()
+        texts = {key: base64.b64encode(data).decode()}
+        mods = [{"module": name, "version": "v1.0.0", "targets": [platform], "documents": {"LICENSE": key}}
+                for name, platform in (("example/mac", "macos-arm64"), ("example/win", "windows-amd64"))]
+        output = release_notice("v2.1.7", target, mods, texts, [])
+        for needle in (b"Syncthing v2.1.7/LICENSE.txt", b"Syncthing v2.1.7/AUTHORS.txt",
+                       b"example/mac@v1.0.0/LICENSE", b"Executable SHA-256: " + b"b" * 64, data):
+            self.assertIn(needle, output)
+        self.assertNotIn(b"example/win", output)
+        self.assertEqual(output.count(upstream), 1)
+        texts[key] = base64.b64encode(b"changed notice").decode()
+        with self.assertRaisesRegex(ValueError, "hash mismatch"):
+            release_notice("v2.1.7", target, mods, texts, [])
+
     def test_source_documents_follow_binary_go_version_and_retain_exact_bytes(self):
         checksum = "h1:" + "a" * 43 + "="
         module = {"Path": "example.com/source", "Version": "v1.2.3", "Sum": checksum}
