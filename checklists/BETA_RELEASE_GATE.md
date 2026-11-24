@@ -57,9 +57,9 @@ No checkbox may be marked complete without actual evidence from the applicable m
 ## D. Cross-platform product verification
 
 - [ ] macOS release candidate builds and launches.
-  - Evidence: [Sealed macOS install and live peer startup](../evidence/m17/personal-packaging.md#installed-macos-owner-session) in a disposable account. Final owner candidate pending.
+  - Evidence: [Sealed macOS install and live peer startup](../evidence/m17/personal-packaging.md#installed-macos-owner-session) in a disposable account. The installed signed 1.0.1 candidate launched and quit in a [disposable account](https://github.com/gungortarik/cryptex/actions/runs/45497413994). Verification of the final release configuration remains open.
 - [ ] Windows release candidate builds and launches.
-  - Evidence: The [owner VM receipt](../evidence/m17/personal-packaging.md#owner-vm-result) covers first installation and native signature checks in the temporary Windows account. Final candidate launch remains open.
+  - Evidence: The [owner VM receipt](../evidence/m17/personal-packaging.md#owner-vm-result) covers first installation and native signature checks in the temporary Windows account. The [signed 1.0.1 candidate](https://github.com/gungortarik/cryptex/actions/runs/45497413994) launched and quit in a temporary standard account. Verification of the final release configuration remains open.
 - [ ] Required platform-native behavior/polish is verified on macOS.
   - Evidence:
 - [ ] Required platform-native behavior/polish is verified on Windows.

@@ -2,7 +2,7 @@
 
 ## M17 personal-device release preparation
 
-The owner approved [the two-device delivery policy and candidate version 1.0.1](proposals/m17-personal-device-signing.md#accepted-delivery-and-version-policy-for-the-two-personal-devices). The trial first-install receipts below precede this numbered candidate.
+The owner approved [the two-device delivery policy and candidate version 1.0.1](proposals/m17-personal-device-signing.md#accepted-delivery-and-version-policy-for-the-two-personal-devices). Native CI verified the [signed 1.0.1 installations and live startup](../evidence/m17/personal-packaging.md#first-numbered-owner-candidate) on both systems. The owner-device first-install receipts below precede this numbered candidate.
 
 The owner supplied passing first-install receipts from the temporary accounts on the [Windows VM](../evidence/m17/personal-packaging.md#owner-vm-result) and [Apple Silicon Mac](../evidence/m17/personal-packaging.md#owner-mac-result). Both matched their approved build inputs. Repeat-run coverage comes from hosted tests. Personal-profile activation and the release decision remain open.
 

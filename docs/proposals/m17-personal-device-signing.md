@@ -1,6 +1,6 @@
 # M17 signing for the owner's Mac and Windows VM
 
-Status: proposed release profile. The owner chose these two devices as the audience. The disposable signing tests exercise native package formats. Enrollment of a long-lived signing key and use of personal data require separate owner action.
+The owner approved the delivery and version policy for these two devices on November 24, 2026. The disposable signing tests exercise native package formats. Enrollment of a long-lived signing key and use of personal data require separate owner action.
 
 ## Audience and cost
 
