@@ -32,12 +32,11 @@ report="$dir/M17-IMZA-SONUC-Darwin.json"
 app="$HOME/Applications/Cryptex-M17-Ilk-Kurulum/Cryptex.app"
 # Headless test accounts have no GUI for the first native Keychain signing prompt.
 # Only this runner's empty, disposable keychain is eligible for the test ACL.
-if ! "$dir/KUR.command"; then
-  [[ -f "$HOME/Library/Application Support/Cryptex-M17-Ilk-Kurulum/owner.der" ]]
-  [[ "$(plutil -extract phase raw "$report")" == imza ]]
-  "$security" set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$pw" "$kc" >/dev/null
-  "$dir/KUR.command"
-fi
+mkdir -m 700 "$HOME/Library/Application Support/Cryptex-M17-Ilk-Kurulum"
+staging="$(mktemp -d "$HOME/.enroll.XXXXXXXX")"
+/bin/bash "$dir/Resources/enroll.sh" "$staging"
+"$security" set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$pw" "$kc" >/dev/null
+"$dir/KUR.command"
 unset pw
 [[ "$(plutil -extract passed raw "$report")" == true ]]
 [[ "$(plutil -extract revision raw "$report")" == "$1" ]]

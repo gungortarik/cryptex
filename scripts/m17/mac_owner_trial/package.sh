@@ -5,6 +5,7 @@ name=Cryptex-M17-Mac-Ilk-Kurulum
 out="$RUNNER_TEMP/$name"
 mkdir -p "$out/Resources"
 install -m 755 "$src/KUR.command" "$out/KUR.command"
+install -m 644 "$src/enroll.sh" "$out/Resources/enroll.sh"
 cp "$RUNNER_TEMP/Application.zip" "$out/Resources/Application.zip"
 archive="$(shasum -a 256 "$out/Resources/Application.zip" | cut -d' ' -f1)"
 sed -e "s/@ARCHIVE@/$archive/g" -e "s/@REVISION@/$BUILD_REVISION/g" "$src/install.sh" > "$out/Resources/install.sh"

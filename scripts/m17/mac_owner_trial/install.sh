@@ -38,23 +38,7 @@ cert="$state/owner.der"
 phase=anahtar
 if [[ ! -e "$cert" && ! -L "$cert" ]]; then
   [[ ! -e "$parent" ]]
-  cat > "$tmp/cert.cnf" <<'CERT'
-[req]
-distinguished_name=dn
-[dn]
-[signer]
-basicConstraints=critical,CA:FALSE
-keyUsage=critical,digitalSignature
-extendedKeyUsage=codeSigning
-CERT
-  key="$(/usr/bin/openssl genrsa 2048)"
-  printf '%s\n' "$key" | /usr/bin/openssl req -new -x509 -key /dev/stdin -sha256 -days 7 \
-    -config "$tmp/cert.cnf" -extensions signer -subj "/CN=Cryptex M17 Mac Trial $(/usr/bin/uuidgen)" \
-    -out "$tmp/public.pem"
-  /usr/bin/openssl x509 -in "$tmp/public.pem" -outform DER -out "$tmp/public.der"
-  printf '%s\n' "$key" | "$kit/keychain" enroll "$tmp/public.der"
-  unset key
-  "$kit/keychain" publish "$tmp/public.der" "$cert"
+  /bin/bash "$kit/enroll.sh" "$tmp"
 fi
 [[ -f "$cert" && ! -L "$cert" ]]
 pin="$(sha "$cert")"
@@ -85,9 +69,10 @@ if [[ ! -e "$parent" ]]; then
   candidate="$tmp/slot/Cryptex.app"
   [[ "$(/usr/bin/plutil -extract source.commit raw "$candidate/Contents/Resources/build-provenance.json")" == "$revision" ]]
   for executable in cryptex-desktop cryptexd; do
-    [[ "$(/usr/bin/lipo -archs "$candidate/Contents/MacOS/$executable")" == arm64 ]]
+    [[ "$(/usr/bin/od -An -tx1 -N8 "$candidate/Contents/MacOS/$executable" | tr -d "[:space:]")" == cffaedfe0c000001 ]]
   done
   phase=imza
+  echo "Mac Anahtar Zinciri izin isterse cryptexm14 hesabinizla imzalamaya izin verin."
   /usr/bin/codesign --force --timestamp=none --options runtime --sign "$selector" \
     --identifier com.cryptex.daemon "$candidate/Contents/MacOS/cryptexd"
   /usr/bin/codesign --force --timestamp=none --options runtime --sign "$selector" \
