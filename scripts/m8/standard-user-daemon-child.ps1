@@ -47,7 +47,20 @@ if($releaseSmoke -or ($p.PSObject.Properties['m14_update_packages'] -and $p.m14_
     $env:RUNNER_TEMP=$p.scratch
     if($releaseSmoke) {
         $observer=Join-Path $p.workspace 'scripts/m14/windows_console_login.py'
-        if($ObserveConsoleLogin) {
+        if($p.m17_signed_smoke) {
+            $record=$p.m17_signed_smoke
+            $verify=Join-Path $p.workspace 'scripts/m17/verify_first_install_windows.ps1'
+            $setup=Join-Path $p.scratch 'signed-setup.exe'
+            & $verify $setup $record.Certificate $record.Setup
+            $destination=Join-Path $env:LOCALAPPDATA 'Programs/Cryptex'
+            if(Test-Path -LiteralPath $destination){throw 'Expected an unused install directory.'}
+            $install=Start-Process -FilePath $setup -ArgumentList @('/S',"/D=$destination") -PassThru -WindowStyle Hidden
+            if(-not $install.WaitForExit(180000)){$install.Kill();throw 'Signed installation timed out.'}
+            if($install.ExitCode -ne 0){throw 'Signed installation failed.'}
+            & $verify (Join-Path $destination 'cryptex-desktop.exe') $record.Certificate $record.Desktop
+            & $verify (Join-Path $destination 'cryptexd.exe') $record.Certificate $record.Daemon
+            & $p.python -B (Join-Path $p.workspace 'scripts/m14/release_smoke.py') --installed $destination
+        } elseif($ObserveConsoleLogin) {
             & $p.python -B $observer observe
         } else {
             & $p.python -B (Join-Path $p.workspace 'scripts/m14/release_smoke.py')

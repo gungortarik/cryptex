@@ -1,10 +1,11 @@
-param([switch]$M16CortexRecovery,[switch]$M16SyncStress,[switch]$M14ReleaseSmoke,[string]$M14UpdatePackages,[switch]$M13DesktopShell,[switch]$DesktopStartupOnly,[switch]$DesktopSessionOnly,[switch]$TransportPolicyOnly,[switch]$LanSetupOnly,[switch]$LanCutoffOnly,[string]$LanArtifact,[switch]$ExchangeNativeOnly,[string]$ExchangePackage,[switch]$LocalVerificationOnly,[string]$M9HistoricalDaemon,[switch]$M9AttachmentBrowser,[ValidateSet('prepare','restore')][string]$M11CrossBackup)
+param([switch]$M16CortexRecovery,[switch]$M16SyncStress,[switch]$M14ReleaseSmoke,[hashtable]$M17SignedSmoke,[string]$M14UpdatePackages,[switch]$M13DesktopShell,[switch]$DesktopStartupOnly,[switch]$DesktopSessionOnly,[switch]$TransportPolicyOnly,[switch]$LanSetupOnly,[switch]$LanCutoffOnly,[string]$LanArtifact,[switch]$ExchangeNativeOnly,[string]$ExchangePackage,[switch]$LocalVerificationOnly,[string]$M9HistoricalDaemon,[switch]$M9AttachmentBrowser,[ValidateSet('prepare','restore')][string]$M11CrossBackup)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 if(([int][bool]$M16CortexRecovery+[int][bool]$M16SyncStress+[int][bool]$M14ReleaseSmoke+[int][bool]$M14UpdatePackages+[int][bool]$M13DesktopShell+[int][bool]$DesktopStartupOnly+[int][bool]$DesktopSessionOnly+[int][bool]$TransportPolicyOnly+[int][bool]$LanSetupOnly+[int][bool]$LanCutoffOnly+[int][bool]$ExchangeNativeOnly+[int][bool]$LocalVerificationOnly+[int][bool]$M9HistoricalDaemon+[int][bool]$M9AttachmentBrowser+[int][bool]$M11CrossBackup) -gt 1){throw 'Choose one scoped suite.'}
 if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows') {
     throw 'Disposable GitHub-hosted Windows runner required.'
 }
+if($M17SignedSmoke -and -not $M14ReleaseSmoke){throw 'Signed package checks require the release smoke suite.'}
 $workspace=(Resolve-Path -LiteralPath $env:GITHUB_WORKSPACE).Path
 $manifest=Join-Path $workspace 'services\cryptexd'
 $python=if($M9HistoricalDaemon -or $M13DesktopShell){(Get-Command python -CommandType Application | Select-Object -First 1).Source}else{$null}
@@ -82,13 +83,16 @@ try {
             }
         }
     }
+    if($M17SignedSmoke) {
+        Copy-Item -LiteralPath $M17SignedSmoke.Installer -Destination (Join-Path $scratch 'signed-setup.exe')
+    }
     $payload=Join-Path $scratch 'tests.json'
-    @{schema=1;m16_cortex_recovery=[bool]$M16CortexRecovery;m16_codec_node=$(if($M16CortexRecovery){$browserNode});m14_release_smoke=[bool]$M14ReleaseSmoke;m14_update_packages=$M14UpdatePackages;m13_desktop_shell=[bool]$M13DesktopShell;m13_browser_node=$(if($M13DesktopShell){$browserNode});m11_cross_backup=$M11CrossBackup;m9_attachment_browser_node=$browserNode;m9_historical_daemon=$M9HistoricalDaemon;m16_sync_stress=[bool]$M16SyncStress;lan_cutoff_only=[bool]$LanCutoffOnly;local_verification_only=[bool]$LocalVerificationOnly;sid=$user.SID.Value;user_name=$userName;scratch=$scratch;manifest=$manifest;executables=$executables;desktop_startup_only=[bool]$DesktopStartupOnly;desktop_session_only=[bool]$DesktopSessionOnly;transport_policy_only=[bool]$TransportPolicyOnly;lan_setup_only=[bool]$LanSetupOnly;lan_artifact=$LanArtifact;exchange_native_only=[bool]$ExchangeNativeOnly;exchange_package=$ExchangePackage;python=$python;workspace=$workspace} |
+    @{schema=1;m16_cortex_recovery=[bool]$M16CortexRecovery;m16_codec_node=$(if($M16CortexRecovery){$browserNode});m14_release_smoke=[bool]$M14ReleaseSmoke;m17_signed_smoke=$M17SignedSmoke;m14_update_packages=$M14UpdatePackages;m13_desktop_shell=[bool]$M13DesktopShell;m13_browser_node=$(if($M13DesktopShell){$browserNode});m11_cross_backup=$M11CrossBackup;m9_attachment_browser_node=$browserNode;m9_historical_daemon=$M9HistoricalDaemon;m16_sync_stress=[bool]$M16SyncStress;lan_cutoff_only=[bool]$LanCutoffOnly;local_verification_only=[bool]$LocalVerificationOnly;sid=$user.SID.Value;user_name=$userName;scratch=$scratch;manifest=$manifest;executables=$executables;desktop_startup_only=[bool]$DesktopStartupOnly;desktop_session_only=[bool]$DesktopSessionOnly;transport_policy_only=[bool]$TransportPolicyOnly;lan_setup_only=[bool]$LanSetupOnly;lan_artifact=$LanArtifact;exchange_native_only=[bool]$ExchangeNativeOnly;exchange_package=$ExchangePackage;python=$python;workspace=$workspace} |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $payload -Encoding UTF8
     $stdout=Join-Path $scratch 'stdout.log'; $stderr=Join-Path $scratch 'stderr.log'
     $bootstrap=Join-Path $PSScriptRoot 'standard-user-daemon-child.ps1'
     $credential=[Management.Automation.PSCredential]::new(('.\'+$userName),$password)
-    $phases=if($M14ReleaseSmoke){'prepare','observe'}else{'suite'}
+    $phases=if($M14ReleaseSmoke -and -not $M17SignedSmoke){'prepare','observe'}else{'suite'}
     foreach($phase in $phases) {
       $arguments='-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -Payload "{1}"' -f $bootstrap,$payload
       if($phase -eq 'observe'){$arguments+=' -ObserveConsoleLogin'}
@@ -116,7 +120,9 @@ try {
     if($M14UpdatePackages) {
         [IO.File]::Copy((Join-Path $scratch 'm14-installed-update.json'),(Join-Path $env:RUNNER_TEMP 'm14-installed-update.json'),$false)
     }
-    if($M14ReleaseSmoke) {
+    if($M17SignedSmoke) {
+        [IO.File]::Copy((Join-Path $scratch 'm17-signed-startup.json'),(Join-Path $env:RUNNER_TEMP 'm17-signed-startup.json'),$false)
+    } elseif($M14ReleaseSmoke) {
         [IO.File]::Copy((Join-Path $scratch 'm14-release-smoke.json'),(Join-Path $env:RUNNER_TEMP 'm14-release-smoke.json'),$false)
         [IO.File]::Copy((Join-Path $scratch 'm14-windows-console-login.json'),(Join-Path $env:RUNNER_TEMP 'm14-windows-console-login.json'),$false)
     }

@@ -62,6 +62,7 @@ def main():
         print("Verified installed macOS owner candidate", info["CFBundleShortVersionString"])
         if info["CFBundleIdentifier"] != bundle_id:
             raise RuntimeError("Unexpected installed bundle identifier")
+        command(sys.executable, "-B", ROOT / "scripts/m14/release_smoke.py", "--installed", installed)
         leaf = (root / "cert.der").read_bytes()
         for image, identifier in [(installed, bundle_id), (installed / daemon_path, daemon_id)]:
             verify(image, identifier, signer, leaf, root)

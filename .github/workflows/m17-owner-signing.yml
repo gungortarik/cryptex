@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/m17-owner-signing.yml'
       - 'scripts/m17/mac_package_signing.py'
+      - 'scripts/m14/release_smoke.py'
+      - 'scripts/m8/*standard-user*.ps1'
       - 'scripts/m17/windows_package_signing.ps1'
       - 'scripts/m17/build_owner_windows_installer.ps1'
       - 'scripts/m17/verify_first_install_*'
@@ -55,6 +57,11 @@ jobs:
         run: pnpm --filter @cryptex/desktop tauri:package-smoke
       - name: Sign the Windows installer and inspect the installed images
         if: runner.os == 'Windows'
-        timeout-minutes: 6
+        timeout-minutes: 12
         shell: pwsh
         run: ./scripts/m17/windows_package_signing.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-installed-startup-${{ runner.os }}
+          path: ${{ runner.temp }}/m17-signed-startup.json
+          if-no-files-found: error

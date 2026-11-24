@@ -1,4 +1,5 @@
 """Start the ordinary release installation in a disposable native CI account."""
+import argparse
 from contextlib import contextmanager
 import json
 import os
@@ -156,7 +157,17 @@ def main():
     runtime = base / "Cryptex-Dev/runtime/p0-2"
     if runtime.exists() or os.environ.get("CRYPTEXD_BIN"):
         raise RuntimeError("Expected a fresh profile without a daemon override")
-    desktop, daemon = install(ROOT / "target/release", base)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--installed", type=Path, help="Already verified signed installation in this CI account")
+    installed = parser.parse_args().installed
+    if installed is None:
+        desktop, daemon = install(ROOT / "target/release", base)
+    else:
+        resources = installed if WINDOWS else installed / "Contents/Resources"
+        executables = installed if WINDOWS else installed / "Contents/MacOS"
+        desktop = executables / ("cryptex-desktop" + SUFFIX)
+        daemon = executables / ("cryptexd" + SUFFIX)
+        verify_notices(resources)
     with TemporaryDirectory() as outside:
         foreign = Path(outside) / daemon.name
         foreign.write_bytes(b"inert sidecar selection fixture")
@@ -192,7 +203,8 @@ def main():
                "external_environment_refusal": env_refusal, "external_request_file_refusal": file_refusal,
                "daemon_lock_released": True}
     print(json.dumps(receipt), flush=True)
-    (Path(os.environ["RUNNER_TEMP"]) / "m14-release-smoke.json").write_text(json.dumps(receipt, indent=2), encoding="utf-8")
+    name = "m14-release-smoke.json" if installed is None else "m17-signed-startup.json"
+    (Path(os.environ["RUNNER_TEMP"]) / name).write_text(json.dumps(receipt, indent=2), encoding="utf-8")
 
 
 if __name__ == "__main__":

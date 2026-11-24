@@ -90,6 +90,12 @@ try {
             if ($_.Exception.Message -ne 'Unexpected Authenticode signer') { throw }
         }
     }
+    $trial = @{
+        Installer = $installer; Certificate = $pin; Setup = $release
+        Desktop = (Get-FileHash -LiteralPath (Join-Path $destination 'cryptex-desktop.exe')).Hash
+        Daemon = (Get-FileHash -LiteralPath (Join-Path $destination 'cryptexd.exe')).Hash
+    }
+    & "$repo/scripts/m8/run-daemon-tests-standard-user-ci.ps1" -M14ReleaseSmoke -M17SignedSmoke $trial
     $edited = Join-Path $fixture.FullName 'changed.exe'
     Copy-Item -LiteralPath (Join-Path $destination 'cryptexd.exe') -Destination $edited
     # The standard DOS stub is covered by the Authenticode digest.
