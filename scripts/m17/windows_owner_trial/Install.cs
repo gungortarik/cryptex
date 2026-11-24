@@ -194,7 +194,7 @@ internal static class Install
                     Save(installed, identity);
                 }
                 CheckPath(app);
-                SignInstalled(desktop, build["desktop"], cert);
+                SignInstalled(desktop, build["installed_desktop"], cert);
                 SignInstalled(daemon, build["daemon"], cert);
                 Result["installed_desktop_sha256"] = FileHash(desktop);
                 Result["installed_daemon_sha256"] = FileHash(daemon);
