@@ -1,0 +1,53 @@
+name: M17 Windows owner first install
+on:
+  workflow_dispatch:
+  push:
+    branches: ['codex/m17-release-candidate']
+    paths:
+      - '.github/workflows/m17-windows-owner-trial.yml'
+      - 'scripts/m17/windows_owner_trial/**'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cryptex/desktop tauri:package-smoke
+      - name: Package for a separate local-user installation
+        shell: pwsh
+        run: |
+          $config = Join-Path $env:RUNNER_TEMP 'trial.json'
+          @{
+            productName = 'Cryptex M17 Owner Trial'
+            identifier = 'com.cryptex.m17.ownertrial'
+            bundle = @{ windows = @{ nsis = @{ installMode = 'currentUser' }; webviewInstallMode = @{ type = 'skip' } } }
+          } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $config
+          pnpm --dir apps/desktop exec tauri bundle --ci --bundles nsis --config src-tauri/tauri.bundle.conf.json --config $config
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $installer = @(Get-ChildItem target/release/bundle/nsis/*-setup.exe)
+          $daemon = @(Get-ChildItem apps/desktop/src-tauri/binaries/cryptexd-*.exe)
+          if ($installer.Count -ne 1 -or $daemon.Count -ne 1) { throw 'Ambiguous package inputs' }
+          $out = New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/owner-input"
+          Copy-Item -LiteralPath $installer[0].FullName -Destination "$out/setup.exe"
+          @{
+            revision = $env:GITHUB_SHA
+            installer = (Get-FileHash "$out/setup.exe").Hash
+            desktop = (Get-FileHash target/release/cryptex-desktop.exe).Hash
+            daemon = (Get-FileHash -LiteralPath $daemon[0].FullName).Hash
+          } | ConvertTo-Json | Set-Content "$out/build.json" -Encoding utf8
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cryptex-m17-owner-input
+          path: ${{ runner.temp }}/owner-input/
+          if-no-files-found: error
