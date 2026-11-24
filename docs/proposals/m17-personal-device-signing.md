@@ -94,4 +94,18 @@ The receiving tool verifies a private copy of the package and asks its read-only
 
 ## Scope and release decision
 
+### Proposed delivery and version policy for the two personal devices
+
+The [release contract](../27_RELEASE_DISTRIBUTION_AND_SIGNING.md#17-explicitly-unresolved) leaves the channel, formats, signing, update hosting, version numbers and uninstall experience to the release decision. The owner has confirmed the audience. The choices below are a proposal for that decision.
+
+| Owner action | Proposed behavior |
+| --- | --- |
+| Bring the first build to each device | Transfer the Windows per-user NSIS installer or the Mac delivery directory over an owner-controlled local transfer. The Mac directory includes the sealed app, detached inventory and receipts. Obtain the expected certificate and release fingerprints independently from the signing device and follow the first-install procedure above. |
+| Establish publisher trust | Use the local signing identity for each platform. On Windows enroll the public certificate for the receiving user. On macOS verify the independently pinned signer and signed inventory for Desktop and its daemon. This audience uses local signing without a paid publisher or notarization service. |
+| Receive an update | Use the same local transfer for the signed update and its receipt. The owner initiates application of that package. This delivery method works offline and needs no update host. The standalone updater checks the approved digest, signer, platform and compatibility, and preserves the previous working installation for rollback. |
+| Identify an update | Use the same three-part numeric release version for both platforms. Assign the first owner candidate `1.0.1`; increment the final component for each subsequent candidate in that series, including a rebuild for changed release inputs. Record the source revision, platform-specific package hash and signing certificate fingerprint alongside that number. A version label alone grants no update authority. |
+| Remove Cryptex | Use the per-user uninstaller on Windows or the verified Mac removal command above. The application and its matching login registration are removed. Keep the Brain, keys and backups available for reinstall. Erasing memory requires the existing separate purge process. |
+
+The current [Desktop configuration](../../apps/desktop/src-tauri/tauri.conf.json) still declares `0.0.0`. When the owner accepts a release numbering policy, check the version shown by each installed package against the approved release record. Leave the existing M16 personal-use hold in effect until the corrected official transport passes verification. Approval of a disposable Windows signing exercise authorizes only that exercise.
+
 Private CI jobs use disposable identities and synthetic data. Their certificates expire or are discarded. The release decision requires a verified owner-controlled installation on both target systems, the beta checklist and explicit approval. The [transport hold](../../evidence/m16/hardening.md#personal-use-release-hold) remains in force independently of package signing.
