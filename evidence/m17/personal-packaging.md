@@ -116,3 +116,9 @@ The two archived executables and notices were downloaded from the [native run](h
 | macOS arm64 | `a76ac5d88bb609004efffccdbf87d5be393851a92a88e3860da2e2c4bb5c190d` | 37 | 35 |
 
 The owner package procedure produces fresh archives with independently enrolled local keys. The hashes above identify only these disposable CI artifacts.
+
+## Search after a normal Mac quit and reopen
+
+At `109490a`, the [persistent-profile job](https://github.com/gungortarik/cryptex/actions/runs/45292862528/job/138105777718) signed and installed the Mac application and independently verified its startup inventory. The installed daemon seeded one public synthetic note in a fresh directory using a disposable Keychain. Each ordinary Desktop launch selected the same certificate-specific temporary directory. The protected WebView submitted the normal Search form and observed the note text in a visible result before AppKit requested quit.
+
+The harness compared the canonical file and public identity hashes and the signed-probe descriptor after both exits. A missing profile was refused without creating a replacement. With the descriptor removed, startup was refused and the canonical baseline was preserved. The [fresh-profile job](https://github.com/gungortarik/cryptex/actions/runs/45292862528/job/138105777389) also passed. Existing-profile selection in this build is limited to the disposable trial feature. Owner enrollment, persistent personal profile selection and authorization to import personal data remain open.

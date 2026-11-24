@@ -8,6 +8,8 @@ For the owner's Mac and Windows VM, use an independently verified local signing 
 
 Public distribution would require a separate decision about publisher identity and OS trust. Apple's [Developer Program](https://developer.apple.com/programs/enroll/) and Microsoft's [Artifact Signing](https://azure.microsoft.com/en-us/products/artifact-signing/) are optional services for that decision. Neither is a prerequisite for this two-device rehearsal.
 
+The Windows first-install verifier requires Authenticode to report a valid signature as well as a matching pinned certificate. The owner will need to establish trust in their own signing certificate on the receiving Windows account before that verification can succeed. The hosted test's machine-wide trust enrollment belongs to its disposable runner. Personal-device enrollment and Mac first-launch approval are separate steps for the owner after the release gates pass.
+
 ## First installation
 
 Choose the per-user NSIS installer on Windows and the application bundle on macOS. Each platform uses its own code-signing identity. Generate the private key on an owner-controlled machine and keep it in the platform's protected key store. Release signing is separate from note signing and Recovery Kit approval. No service, installer or updater receives the private key.
