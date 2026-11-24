@@ -6,7 +6,7 @@ The owner approved [the two-device delivery policy and candidate version 1.0.1](
 
 The owner supplied passing first-install receipts from the temporary accounts on the [Windows VM](../evidence/m17/personal-packaging.md#owner-vm-result) and [Apple Silicon Mac](../evidence/m17/personal-packaging.md#owner-mac-result). Both matched their approved build inputs. Repeat-run coverage comes from hosted tests. Personal-profile activation and the release decision remain open.
 
-The [official transport notice check](../evidence/m17/personal-packaging.md#distribution-notices-for-the-inspected-transport) produced readable per-platform attributions for Syncthing v2.1.7. A fresh upstream release and its final installed notices still need verification before personal use.
+The [official transport notice check](../evidence/m17/personal-packaging.md#distribution-notices-for-the-inspected-transport) now refuses distribution when a linked module lacks a primary notice. Both v2.1.7 outputs preserved all 62 distinct module documents per platform. A corrected upstream release and its final installed notices still need verification before personal use.
 
 The owner intends to use Cryptex on their own Mac and Windows VM. The [beta checklist](../checklists/BETA_RELEASE_GATE.md) now links the M16 recovery and hardening results. The package work starts at `207dd15` with the bundled frontend and vendored Unicode attribution. The [installed package rehearsal](https://github.com/gungortarik/cryptex/actions/runs/45249384781) checks the installed notice bytes.
 

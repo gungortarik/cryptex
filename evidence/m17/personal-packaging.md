@@ -134,6 +134,8 @@ At `04df1d5` the [official archive inspection](https://github.com/gungortarik/cr
 
 The four in-range advisories still hold personal use. The final installer needs verification against the selected corrected official binary and its corresponding notice.
 
+At `43147e4` the [official inspection](https://github.com/gungortarik/cryptex/actions/runs/45501128250) also collected module author credits and patent grants. The generator refuses distribution if a linked module lacks a primary notice, and the workflow retains the diagnostic inventory. Both downloaded v2.1.7 archive digests matched the official release. Independent inspection found all 62 distinct linked-module documents for each target in its own rendered file, with their exact bytes and module labels. Each target still had 60 linked modules. The resulting notice SHA-256 was `8603658416888cc528e67681f60aa570cf8d85a5edc81b74be683c2bfd61569e` for Windows x64 and `e69e8838b92f33b3e6b6e140104bd84e410b72a93e773246be5eedc36345bc4b` for macOS arm64.
+
 ## Windows VM first-install handoff
 
 The [Windows job](https://github.com/gungortarik/cryptex/actions/runs/45336980708) delivered the launcher from `e89e4b7` with NSIS input from `f4d7159`. Before embedding the Desktop hash it verified that normalization of the single NSIS bundle marker gave the original reviewed build digest. The daemon matched its original build hash directly.
