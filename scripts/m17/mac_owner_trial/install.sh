@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 export PATH=/usr/bin:/bin:/usr/sbin:/sbin
-[[ "$(id -un)" == cryptexm14 && "$(id -u)" != 0 && "$(uname -m)" == arm64 ]]
+[[ "$(id -un)" == cryptexm14 && "$(id -u)" != 0 && "$(uname -m)" == arm64 ]] || exit 2
 kit="$(cd -P -- "$(dirname -- "$0")" && pwd)"
 state="$HOME/Library/Application Support/Cryptex-M17-Ilk-Kurulum"
 parent="$HOME/Applications/Cryptex-M17-Ilk-Kurulum"
@@ -26,7 +26,7 @@ finish() {
 }
 trap finish EXIT
 sha() { /usr/bin/shasum -a 256 "$1" | /usr/bin/cut -d' ' -f1; }
-[[ ! -L "$HOME/Applications" && ! -L "$parent" && ! -L "$state" && ! -L "$app" ]]
+[[ ! -L "$HOME/Applications" && ! -L "$parent" && ! -L "$state" && ! -L "$app" ]] || exit 2
 mkdir -p -m 700 "$HOME/Applications"
 tmp="$(mktemp -d "$HOME/Applications/.cryptex-m17.XXXXXXXX")"
 phase=paket
@@ -41,18 +41,18 @@ fi
 cert="$state/owner.der"
 phase=anahtar
 if [[ ! -e "$cert" && ! -L "$cert" ]]; then
-  [[ ! -e "$parent" ]]
+  [[ ! -e "$parent" ]] || exit 2
   /bin/bash "$kit/enroll.sh" "$tmp"
 fi
-[[ -f "$cert" && ! -L "$cert" ]]
+[[ -f "$cert" && ! -L "$cert" ]] || exit 2
 pin="$(sha "$cert")"
 selector="$(/usr/bin/shasum -a 1 "$cert" | cut -d' ' -f1)"
 verify() {
   local bundle="$1" image role leaf
-  [[ ! -L "$bundle" && ! -L "$bundle/Contents" && ! -L "$bundle/Contents/MacOS" ]]
-  [[ ! -L "$bundle/Contents/MacOS/cryptexd" && ! -L "$bundle/Contents/MacOS/cryptex-desktop" ]]
-  [[ "$(/usr/bin/plutil -extract CFBundleIdentifier raw "$bundle/Contents/Info.plist")" == com.cryptex.desktop ]]
-  [[ "$(/usr/bin/plutil -extract CFBundleExecutable raw "$bundle/Contents/Info.plist")" == cryptex-desktop ]]
+  [[ ! -L "$bundle" && ! -L "$bundle/Contents" && ! -L "$bundle/Contents/MacOS" ]] || exit 2
+  [[ ! -L "$bundle/Contents/MacOS/cryptexd" && ! -L "$bundle/Contents/MacOS/cryptex-desktop" ]] || exit 2
+  [[ "$(/usr/bin/plutil -extract CFBundleIdentifier raw "$bundle/Contents/Info.plist")" == com.cryptex.desktop ]] || exit 2
+  [[ "$(/usr/bin/plutil -extract CFBundleExecutable raw "$bundle/Contents/Info.plist")" == cryptex-desktop ]] || exit 2
   for role in daemon desktop; do
     if [[ "$role" == daemon ]]; then image="$bundle/Contents/MacOS/cryptexd"; else image="$bundle"; fi
     /usr/bin/codesign --verify --strict --all-architectures -R "=identifier \"com.cryptex.$role\"" "$image"
@@ -61,7 +61,7 @@ verify() {
     /usr/bin/codesign --display --architecture arm64 "--extract-certificates=$leaf" "$image"
     [[ "$(sha "${leaf}0")" == "$pin" ]] || return 1
   done
-  [[ "$(/usr/bin/plutil -extract source.commit raw "$bundle/Contents/Resources/build-provenance.json")" == "$revision" ]]
+  [[ "$(/usr/bin/plutil -extract source.commit raw "$bundle/Contents/Resources/build-provenance.json")" == "$revision" ]] || exit 2
 }
 approval() {
   printf '%s\n' "$revision" "$archive" "$pin" "$(sha "$1/Contents/MacOS/cryptex-desktop")" "$(sha "$1/Contents/MacOS/cryptexd")"
@@ -71,9 +71,9 @@ if [[ ! -e "$parent" ]]; then
   mkdir "$tmp/slot"
   /usr/bin/ditto -x -k "$tmp/input.zip" "$tmp/slot"
   candidate="$tmp/slot/Cryptex.app"
-  [[ "$(/usr/bin/plutil -extract source.commit raw "$candidate/Contents/Resources/build-provenance.json")" == "$revision" ]]
+  [[ "$(/usr/bin/plutil -extract source.commit raw "$candidate/Contents/Resources/build-provenance.json")" == "$revision" ]] || exit 2
   for executable in cryptex-desktop cryptexd; do
-    [[ "$(/usr/bin/od -An -tx1 -N8 "$candidate/Contents/MacOS/$executable" | tr -d "[:space:]")" == cffaedfe0c000001 ]]
+    [[ "$(/usr/bin/od -An -tx1 -N8 "$candidate/Contents/MacOS/$executable" | tr -d "[:space:]")" == cffaedfe0c000001 ]] || exit 2
   done
   phase=imza
   echo "Mac Anahtar Zinciri izin isterse cryptexm14 hesabinizla imzalamaya izin verin."
@@ -87,7 +87,7 @@ if [[ ! -e "$parent" ]]; then
 fi
 phase=dogrulama
 verify "$app"
-[[ -f "$parent/approval" && ! -L "$parent/approval" ]]
+[[ -f "$parent/approval" && ! -L "$parent/approval" ]] || exit 2
 approval "$app" > "$tmp/expected"
 /usr/bin/cmp "$tmp/expected" "$parent/approval"
 desktop="$(sha "$app/Contents/MacOS/cryptex-desktop")"

@@ -2,11 +2,11 @@
 set -euo pipefail
 umask 077
 export PATH=/usr/bin:/bin:/usr/sbin:/sbin
-[[ "$(id -un)" == cryptexm14 && "$(id -u)" != 0 ]]
+[[ "$(id -un)" == cryptexm14 && "$(id -u)" != 0 ]] || exit 2
 kit="$(cd -P -- "$(dirname -- "$0")" && pwd)"
 tmp="$1"
 cert="$HOME/Library/Application Support/Cryptex-M17-Ilk-Kurulum/owner.der"
-[[ -d "$tmp" && ! -L "$tmp" && ! -e "$cert" && ! -L "$cert" ]]
+[[ -d "$tmp" && ! -L "$tmp" && ! -e "$cert" && ! -L "$cert" ]] || exit 2
 cat > "$tmp/cert.cnf" <<'CERT'
 [req]
 distinguished_name=dn

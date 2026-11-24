@@ -1,6 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-[[ "$GITHUB_ACTIONS" == true && "$RUNNER_ENVIRONMENT" == github-hosted && "$(uname -m)" == arm64 ]]
+[[ "$GITHUB_ACTIONS" == true && "$RUNNER_ENVIRONMENT" == github-hosted && "$(uname -m)" == arm64 ]] || exit 2
 name=Cryptex-M17-Mac-Ilk-Kurulum
 if "$RUNNER_TEMP/$name/KUR.command"; then echo "Unexpected account accepted"; exit 1; fi
 account=cryptexm14
@@ -9,10 +9,10 @@ pw="$(openssl rand -hex 24)"
 sudo sysadminctl -addUser "$account" -fullName 'Cryptex M17 trial' -password "$pw"
 unset pw
 home="$(dscl . -read "/Users/$account" NFSHomeDirectory | cut -d' ' -f2-)"
-[[ "$home" == "/Users/$account" ]]
+[[ "$home" == "/Users/$account" ]] || exit 2
 sudo createhomedir -c -u "$account"
 run=(sudo -H -u "$account")
-[[ " $(id -Gn "$account") " != *' admin '* ]]
+[[ " $(id -Gn "$account") " != *' admin '* ]] || exit 2
 sudo install -o "$account" -m 600 "$RUNNER_TEMP/$name.zip" "$home/trial.zip"
 sudo install -o "$account" -m 644 scripts/m17/verify_first_install_mac.py "$home/verify.py"
 "${run[@]}" /bin/bash -s -- "$BUILD_REVISION" <<'TRIAL'
@@ -38,10 +38,10 @@ staging="$(mktemp -d "$HOME/.enroll.XXXXXXXX")"
 "$security" set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$pw" "$kc" >/dev/null
 "$dir/KUR.command"
 unset pw
-[[ "$(plutil -extract passed raw "$report")" == true ]]
-[[ "$(plutil -extract revision raw "$report")" == "$1" ]]
+[[ "$(plutil -extract passed raw "$report")" == true ]] || exit 2
+[[ "$(plutil -extract revision raw "$report")" == "$1" ]] || exit 2
 approved="$(shasum -a 256 "$HOME/Library/Application Support/Cryptex-M17-Ilk-Kurulum/owner.der" | cut -d' ' -f1)"
-[[ "$(plutil -extract certificate_sha256 raw "$report")" == "$approved" ]]
+[[ "$(plutil -extract certificate_sha256 raw "$report")" == "$approved" ]] || exit 2
 /usr/bin/python3 -B verify.py "$app" "$approved" "$(plutil -extract installed_desktop_sha256 raw "$report")"
 cp "$report" first.json
 "$dir/KUR.command"
@@ -50,13 +50,13 @@ payload="$dir/Resources/Application.zip"
 original_hash="$(shasum -a 256 "$payload" | cut -d' ' -f1)"
 printf x >> "$payload"
 changed_hash="$(shasum -a 256 "$payload" | cut -d' ' -f1)"
-[[ "$original_hash" != "$changed_hash" ]]
+[[ "$original_hash" != "$changed_hash" ]] || exit 2
 echo "Testing altered payload $changed_hash (original $original_hash)"
 if "$dir/KUR.command"; then echo "Changed installer accepted"; exit 1; fi
-[[ "$(plutil -extract phase raw "$report")" == paket ]]
+[[ "$(plutil -extract phase raw "$report")" == paket ]] || exit 2
 printf '\n' >> "$app/Contents/Resources/notices/frontend.json"
 ditto -x -k trial.zip .
 if "$dir/KUR.command"; then echo "Changed installation accepted"; exit 1; fi
-[[ "$(plutil -extract phase raw "$report")" == dogrulama ]]
+[[ "$(plutil -extract phase raw "$report")" == dogrulama ]] || exit 2
 echo 'Standard account: native first install, repeat, separate verifier, and both refusals passed.'
 TRIAL
