@@ -2,7 +2,7 @@
 
 ## M17 personal-device release preparation
 
-The [Windows owner VM receipt](../evidence/m17/personal-packaging.md#owner-vm-result) reports a successful first-install trial for `f4d7159` in the temporary account. Repeat-run coverage comes from the hosted Windows test. The corresponding owner-device first installation on Mac and the personal-use release decision remain open.
+The [Windows owner VM receipt](../evidence/m17/personal-packaging.md#owner-vm-result) reports a successful first-install trial for `f4d7159` in the temporary account. Repeat-run coverage comes from the hosted Windows test. The [Apple Silicon installation kit](../evidence/m17/personal-packaging.md#mac-owner-first-install-kit) passed its hosted standard-account checks. Await the owner's Mac receipt and compare its revision and input digest with that evidence. The personal-use release decision remains open.
 
 The [official transport notice check](../evidence/m17/personal-packaging.md#distribution-notices-for-the-inspected-transport) produced readable per-platform attributions for Syncthing v2.1.7. A fresh upstream release and its final installed notices still need verification before personal use.
 

@@ -145,3 +145,11 @@ The ZIP from the successful run contains only `KUR.exe`. Its SHA-256 is `1420174
 ### Owner VM result
 
 On November 24, 2026 the owner supplied the Windows trial receipt `M17-IMZA-SONUC.json` (file SHA-256 `876fde8fee588798f6585a749f9f7cc851affe4619345e777a1114f1dff35bde`). Its revision matched the pinned installer input `f4d715978c1a074c99292773028df8b513fd1e2d`, its result was `passed: true`, and it contained four distinct, correctly formatted SHA-256 values for the certificate, signed installer, installed Desktop and installed daemon. The launcher checks the native Authenticode signatures against the selected certificate before reporting success. This owner-supplied JSON records the local result; independent inspection of the VM binaries, launching the application, and personal profile access were outside this exercise.
+
+## Mac owner first-install kit
+
+The [macOS 26 arm64 build](https://github.com/gungortarik/cryptex/actions/runs/45485652498) verified source revision `e90c2abb597af8c78f7643d6641d82f6f86f26b5`. The application archive SHA-256 is `5d691d19942f9fd9a676fcff98d49ad8e77d0d8e8c73bacb713cda370f9a1f09`. The [kit test](https://github.com/gungortarik/cryptex/actions/runs/45488028688) produced delivery ZIP SHA-256 `13f393c0e6beca4597d0964c3d65f15beeb0e890c89fb4bc8a8b18c5f8fe71a4` at `742ba21`.
+
+In a hosted standard account named `cryptexm14`, the test enrolled a seven-day signing identity in a disposable Keychain and authorized the native signing tool for that test key. It installed the app, independently checked both installed signatures, and compared first and repeat receipts. The launcher refused another account, a changed input archive and a modified installed resource. On the owner's Mac the same enrollment uses the account's default Keychain and macOS can prompt for signing permission. The installed app is under `~/Applications/Cryptex-M17-Ilk-Kurulum/`. The installer verifies the files without launching the app.
+
+The owner-device result is pending. The launcher writes `M17-IMZA-SONUC-Darwin.json` beside `KUR.command`. The local certificate and signed executable fingerprints are specific to the device.
