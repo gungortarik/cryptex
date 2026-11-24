@@ -2,6 +2,8 @@
 
 ## M17 personal-device release preparation
 
+The owner requested the Windows first-install exercise. The [one-click package](../evidence/m17/personal-packaging.md#windows-vm-first-install-handoff) passed installation and a repeat run in a hosted standard account. The next device evidence is the owner's VM receipt, `M17-IMZA-SONUC.json`.
+
 The [official transport notice check](../evidence/m17/personal-packaging.md#distribution-notices-for-the-inspected-transport) produced readable per-platform attributions for Syncthing v2.1.7. A fresh upstream release and its final installed notices still need verification before personal use.
 
 The owner intends to use Cryptex on their own Mac and Windows VM. The [beta checklist](../checklists/BETA_RELEASE_GATE.md) now links the M16 recovery and hardening results. The package work starts at `207dd15` with the bundled frontend and vendored Unicode attribution. The [installed package rehearsal](https://github.com/gungortarik/cryptex/actions/runs/45249384781) checks the installed notice bytes.

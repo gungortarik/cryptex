@@ -133,3 +133,11 @@ At `04df1d5` the [official archive inspection](https://github.com/gungortarik/cr
 | macOS arm64 | 60 | `38aab77073e47a717ec59eab082670b4fccf28c256fa0f7935aebb3f4665bb01` | `9aa871c76c7744728ad6d6ae9f422a68e712ad297e2b4ae89e5a9d7cb6bd8200` |
 
 The four in-range advisories still hold personal use. The final installer needs verification against the selected corrected official binary and its corresponding notice.
+
+## Windows VM first-install handoff
+
+The [Windows job](https://github.com/gungortarik/cryptex/actions/runs/45336980708) delivered the launcher from `e89e4b7` with NSIS input from `f4d7159`. Before embedding the Desktop hash it verified that normalization of the single NSIS bundle marker gave the original reviewed build digest. The daemon matched its original build hash directly.
+
+A disposable local standard user named `cryptexm14` signed the installer, installed Desktop and the daemon into a separate application directory, signed the two verified installed images, and validated all three signatures. Running the same launcher again preserved both installed file hashes. The CI runner pretrusted the test user's public leaf to avoid an interactive Windows dialog. In the owner's VM the launcher requests trust through the current-user store and Windows can ask the user to confirm. Only the VM receipt can establish that this step and installation succeeded on the owner's device.
+
+The ZIP from the successful run contains only `KUR.exe`. Its SHA-256 is `1420174bee3215c0459330f8a054ed412266de5c0ec7ccf9d48bb9f37e9648d2`. The executable SHA-256 is `8017cd3cb173a09f1fda84e6bc8ef505d69134ad6109ef7d94c4df1c7ecafca0`. The trial covers first installation and file verification. Personal profile access and the transport hold remain separate release decisions.

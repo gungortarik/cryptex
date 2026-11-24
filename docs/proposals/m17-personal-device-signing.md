@@ -20,6 +20,10 @@ For first-install verification, use the verifier from a trusted checkout. Keep t
 
 ### Packaging Windows images with the owner's certificate
 
+For the first-install exercise in the local Windows VM account `cryptexm14`, extract the trial ZIP and open `KUR.exe` as an ordinary user. The launcher carries the separate per-user NSIS installer and the reviewed unsigned image hashes. It requests trust for a seven-day, non-exportable code-signing key through the current user's Windows certificate stores. Check the displayed trial certificate name in the Windows confirmation dialog.
+
+The launcher signs and verifies the installer before running it. It checks the installed Desktop and daemon against the unsigned build hashes before signing them in place and verifying both signatures. The test installs under `%LOCALAPPDATA%\Cryptex-M17-Ilk-Kurulum\Application`. A second run verifies the already signed images. The launcher writes `M17-IMZA-SONUC.json` beside itself. The receipt describes installation and file signatures. Application launch, personal profile enrollment and activation of sync are separate operations.
+
 Build the reviewed checkout with `pnpm --filter @cryptex/desktop tauri:package-smoke`. Record the SHA-256 hashes of the approved release Desktop executable and staged daemon. Use PowerShell 7 on the signing machine with the code-signing identity available in the current user's personal certificate store.
 
 ```powershell
