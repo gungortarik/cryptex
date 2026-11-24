@@ -100,9 +100,9 @@ The receiving tool verifies a private copy of the package and asks its read-only
 
 ### Accepted delivery and version policy for the two personal devices
 
-The [release contract](../27_RELEASE_DISTRIBUTION_AND_SIGNING.md#17-explicitly-unresolved) leaves the channel, formats, signing, update hosting, version numbers and uninstall experience to the release decision. On November 24, 2026 the owner approved the following policy for their Mac and Windows VM.
+On November 24, 2026 the owner approved the following policy for their Mac and Windows VM. The [release contract](../27_RELEASE_DISTRIBUTION_AND_SIGNING.md#17-distribution-decisions) records the decision and its audience.
 
-| Owner action | Proposed behavior |
+| Owner action | Approved behavior |
 | --- | --- |
 | Bring the first build to each device | Transfer the Windows per-user NSIS installer or the Mac delivery directory over an owner-controlled local transfer. The Mac directory includes the sealed app, detached inventory and receipts. Obtain the expected certificate and release fingerprints independently from the signing device and follow the first-install procedure above. |
 | Establish publisher trust | Use the local signing identity for each platform. On Windows enroll the public certificate for the receiving user. On macOS verify the independently pinned signer and signed inventory for Desktop and its daemon. This audience uses local signing without a paid publisher or notarization service. |

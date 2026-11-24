@@ -7,7 +7,7 @@
 
 This document defines the accepted release/distribution boundaries supported by the current Cryptex roadmap and audit.
 
-It does not prematurely choose final installer, signing-certificate or distribution-channel details that are not yet specified.
+Section 17 records the owner's release policy for their Mac and Windows VM.
 
 ## 2. Release-quality principle
 
@@ -64,7 +64,7 @@ Release-candidate status must not be claimed before these requirements and the b
 
 Release artifacts must use platform-appropriate signing/notarization where required by the accepted release plan and target OS expectations.
 
-The exact certificate/account/notarization workflow is not specified by the current authoritative sources and must be defined before M17 completion.
+For the owner's two devices, use an owner-controlled signing identity on each platform. Windows verifies the trusted Authenticode signer. macOS verifies the pinned local signer, sealed application and detached startup inventory. This signing policy requires no paid publisher account or Apple notarization. [First-install procedure](proposals/m17-personal-device-signing.md#first-installation)
 
 Private signing credentials must never be committed to the repository.
 
@@ -112,7 +112,7 @@ Packaging must not create visible Cryptex application-data folders in the user's
 
 Installer/uninstaller behavior must not treat canonical personal data as disposable application binaries.
 
-Exact uninstall/data-retention UX is not selected by this document.
+On the owner's devices, uninstall removes the application and its matching login registration. The Brain, keys and backups remain available for reinstall. Erasing memory requires a separate purge decision.
 
 ## 12. Security boundaries in packaged builds
 
@@ -161,9 +161,7 @@ The exact checklist file/content may be refined before M17, but its gate must re
 
 ## 16. Distribution channels
 
-The current authoritative sources do not select final distribution channels, app stores, auto-update hosting providers or installer formats.
-
-Those choices must not be inferred from convenience.
+The owner transfers the per-user NSIS installer to the Windows VM and the sealed application with its verification files to the Mac. The owner initiates each update after checking the locally transferred package. The complete policy appears in section 17.
 
 Any selected channel must preserve offline/local-first operation and security/recovery requirements.
 
@@ -186,7 +184,7 @@ For distribution beyond the owner's two devices, this document does not select:
 - exact release-version numbering policy
 - exact uninstall/data-retention UX
 
-These are later release/platform decisions and must be accepted before M17 completion.
+Any expansion to invited users or public distribution requires a separate decision covering these items before that distribution begins. M17 acceptance for the owner's two devices still requires verified final artifacts, the applicable release checklist and explicit owner approval.
 
 ## 18. Source basis
 
