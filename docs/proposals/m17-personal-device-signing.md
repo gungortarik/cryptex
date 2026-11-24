@@ -98,9 +98,9 @@ The receiving tool verifies a private copy of the package and asks its read-only
 
 ## Scope and release decision
 
-### Proposed delivery and version policy for the two personal devices
+### Accepted delivery and version policy for the two personal devices
 
-The [release contract](../27_RELEASE_DISTRIBUTION_AND_SIGNING.md#17-explicitly-unresolved) leaves the channel, formats, signing, update hosting, version numbers and uninstall experience to the release decision. The owner has confirmed the audience. The choices below are a proposal for that decision.
+The [release contract](../27_RELEASE_DISTRIBUTION_AND_SIGNING.md#17-explicitly-unresolved) leaves the channel, formats, signing, update hosting, version numbers and uninstall experience to the release decision. On November 24, 2026 the owner approved the following policy for their Mac and Windows VM.
 
 | Owner action | Proposed behavior |
 | --- | --- |
@@ -110,6 +110,6 @@ The [release contract](../27_RELEASE_DISTRIBUTION_AND_SIGNING.md#17-explicitly-u
 | Identify an update | Use the same three-part numeric release version for both platforms. Assign the first owner candidate `1.0.1`; increment the final component for each subsequent candidate in that series, including a rebuild for changed release inputs. Record the source revision, platform-specific package hash and signing certificate fingerprint alongside that number. A version label alone grants no update authority. |
 | Remove Cryptex | Use the per-user uninstaller on Windows or the verified Mac removal command above. The application and its matching login registration are removed. Keep the Brain, keys and backups available for reinstall. Erasing memory requires the existing separate purge process. |
 
-The current [Desktop configuration](../../apps/desktop/src-tauri/tauri.conf.json) still declares `0.0.0`. When the owner accepts a release numbering policy, check the version shown by each installed package against the approved release record. Leave the existing M16 personal-use hold in effect until the corrected official transport passes verification. Approval of a disposable Windows signing exercise authorizes only that exercise.
+The [Desktop configuration](../../apps/desktop/src-tauri/tauri.conf.json) declares the approved first candidate version `1.0.1`. Check that value in both installed packages and their release records. Leave the existing M16 personal-use hold in effect until the corrected official transport passes verification. Approval of a disposable Windows signing exercise authorizes only that exercise.
 
 Private CI jobs use disposable identities and synthetic data. Their certificates expire or are discarded. The release decision requires a verified owner-controlled installation on both target systems, the beta checklist and explicit approval. The [transport hold](../../evidence/m16/hardening.md#personal-use-release-hold) remains in force independently of package signing.

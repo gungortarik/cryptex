@@ -70,6 +70,13 @@ try {
     if ($proc.ExitCode -ne 0) { throw "Installer exited with $($proc.ExitCode)" }
     python -B "$PSScriptRoot/check_installed_provenance.py" (Join-Path $destination 'build-provenance.json')
     if ($LASTEXITCODE -ne 0) { throw 'Installed package provenance verification failed' }
+    $info = [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $destination 'cryptex-desktop.exe'))
+    $installedVersion = '{0}.{1}.{2}' -f $info.ProductMajorPart,$info.ProductMinorPart,$info.ProductBuildPart
+    if ($report.Source -ne $env:GITHUB_SHA -or $report.Platform -ne 'windows' -or
+        $report.Version -cne '1.0.1' -or $installedVersion -cne $report.Version -or $info.ProductPrivatePart -ne 0) {
+        throw "Owner candidate version mismatch: installed $installedVersion, package $($report.Version)"
+    }
+    Write-Output "Verified Windows installed candidate $installedVersion and signed installer $release."
     $notices = Get-FileHash -LiteralPath (Join-Path $destination 'notices/rust.json')
     $sourceNotices = Get-FileHash -LiteralPath "$repo/apps/desktop/src-tauri/binaries/rust-notices.json"
     if ($notices.Hash -ne $sourceNotices.Hash) { throw 'Installed Rust inventory differs from the input' }

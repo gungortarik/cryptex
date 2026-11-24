@@ -60,6 +60,11 @@ try {
     } finally { Pop-Location }
     $installers = @(Get-ChildItem -LiteralPath (Join-Path $release 'bundle/nsis') -Filter '*-setup.exe' -File)
     if ($installers.Count -ne 1) { throw 'Expected one new signed installer' }
+    $version = $installers[0].VersionInfo.ProductVersion
+    if ($version -notmatch '^([0-9]+\.[0-9]+\.[0-9]+)(?:\.0)?$') { throw 'Unexpected NSIS product version' }
+    $version = $Matches[1]
+    $source = (Get-Content -Raw -LiteralPath "$repo/apps/desktop/src-tauri/binaries/build-provenance.json" | ConvertFrom-Json).source.commit
+    if ($source -cnotmatch '^[0-9a-f]{40}$') { throw 'Missing release build revision' }
     $hash = (Get-FileHash -LiteralPath $installers[0].FullName).Hash
     $pending = Join-Path $parent ([guid]::NewGuid().ToString() + '.exe')
     [IO.File]::Copy($installers[0].FullName, $pending, $false)
@@ -69,7 +74,14 @@ try {
     } finally {
         if ([IO.File]::Exists($pending)) { [IO.File]::Delete($pending) }
     }
-    [pscustomobject]@{ Installer = $output; ReleaseSha256 = $hash; CertificateSha256 = $CertificateSha256 }
+    [pscustomobject]@{
+        Installer = $output
+        Version = $version
+        Platform = 'windows'
+        Source = $source
+        ReleaseSha256 = $hash
+        CertificateSha256 = $CertificateSha256
+    }
 } finally {
     [Environment]::SetEnvironmentVariable('CARGO_TARGET_DIR', $targetBefore)
     if ($copiedDaemon -and [IO.File]::Exists($copiedDaemon)) { [IO.File]::Delete($copiedDaemon) }

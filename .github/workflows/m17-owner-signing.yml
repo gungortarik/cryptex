@@ -15,6 +15,7 @@ on:
       - 'third_party/rust-notices/**'
       - 'apps/desktop/scripts/*notices*'
       - 'apps/desktop/src-tauri/tauri.bundle.conf.json'
+      - 'apps/desktop/src-tauri/tauri.conf.json'
       - 'scripts/m8/test_mac_local_signing_ci.py'
 permissions:
   contents: read

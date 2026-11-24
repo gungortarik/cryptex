@@ -57,6 +57,9 @@ def main():
         if native_notices.read_bytes() != (ROOT / "apps/desktop/src-tauri/binaries/rust-notices.json").read_bytes():
             raise RuntimeError("Installed Rust inventory differs from the input")
         info = plistlib.loads((installed / "Contents/Info.plist").read_bytes())
+        if info["CFBundleShortVersionString"] != "1.0.1":
+            raise RuntimeError("Unexpected installed owner candidate version")
+        print("Verified installed macOS owner candidate", info["CFBundleShortVersionString"])
         if info["CFBundleIdentifier"] != bundle_id:
             raise RuntimeError("Unexpected installed bundle identifier")
         leaf = (root / "cert.der").read_bytes()

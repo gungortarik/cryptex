@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import plistlib
 import re
 import subprocess
 import tempfile
@@ -47,7 +48,11 @@ def package(bundle, approved, revision, public_der, pin, updater, cms_helper, ou
         prepare(app, revision, pin, signed_image, cms_helper, stage)
         signed_package = fingerprint(updater, app)
         sign(updater, app, signed_package, pin.lower(), stage / "update.cms", cms_helper)
-        info = {"source": revision, "certificate_sha256": pin.lower(), "input_sha256": approved,
+        with (app / "Contents/Info.plist").open("rb") as stream:
+            version = plistlib.load(stream)["CFBundleShortVersionString"]
+        if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+            raise ValueError("Expected a three-part release version")
+        info = {"version": version, "platform": "macos", "source": revision, "certificate_sha256": pin.lower(), "input_sha256": approved,
                 "desktop_sha256": signed_image, "package_sha256": signed_package}
         (stage / "release.json").write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")
         publish(stage, output)

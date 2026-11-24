@@ -53,6 +53,9 @@ def exercise(root, revision):
         raise RuntimeError("Rejected signing request left a delivery")
     signed = package_for_owner(unsigned, approved_input, revision, public_der, pin, updater, helper,
                                delivery, os.environ["CX_NATIVE_TEST_KEYCHAIN"])
+    manifest = json.loads((delivery / "release.json").read_bytes())
+    if manifest != signed or manifest["version"] != "1.0.1" or manifest["platform"] != "macos":
+        raise RuntimeError("Owner delivery record differs from the approved candidate version")
     if fingerprint(updater, unsigned) != approved_input:
         raise RuntimeError("Owner signing changed the approved build input")
     run("/usr/bin/ditto", delivery / "Cryptex.app", installed)
