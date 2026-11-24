@@ -142,7 +142,8 @@ internal static class Install
         using (var reader = new StreamReader(assembly.GetManifestResourceStream("build.json")))
             build = Json.Deserialize<Dictionary<string, string>>(reader.ReadToEnd());
         Result["revision"] = build["revision"];
-        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData, Environment.SpecialFolderOption.Create);
+        if (String.IsNullOrEmpty(local)) throw new IOException("Windows bu hesabin yerel uygulama klasorunu bulamadi.");
         CheckPath(local);
         state = Directory.CreateDirectory(Path.Combine(local, "Cryptex-M17-Ilk-Kurulum")).FullName;
         CheckPath(state);

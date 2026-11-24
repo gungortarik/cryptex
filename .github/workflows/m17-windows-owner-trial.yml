@@ -1,11 +1,6 @@
-name: M17 Windows owner first install
+name: M17 Windows owner installer input
 on:
   workflow_dispatch:
-  push:
-    branches: ['codex/m17-release-candidate']
-    paths:
-      - '.github/workflows/m17-windows-owner-trial.yml'
-      - 'scripts/m17/windows_owner_trial/**'
 permissions:
   contents: read
 jobs:
@@ -50,15 +45,4 @@ jobs:
         with:
           name: cryptex-m17-owner-input
           path: ${{ runner.temp }}/owner-input/
-          if-no-files-found: error
-      - name: Compile the self-contained owner launcher
-        shell: pwsh
-        run: ./scripts/m17/windows_owner_trial/build.ps1 "$env:RUNNER_TEMP/owner-input" "$env:RUNNER_TEMP/KUR.exe"
-      - name: Verify first install and repeat as a temporary standard user
-        shell: pwsh
-        run: ./scripts/m17/windows_owner_trial/test.ps1 "$env:RUNNER_TEMP/KUR.exe"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Cryptex-M17-Windows-Ilk-Kurulum
-          path: ${{ runner.temp }}/KUR.exe
           if-no-files-found: error

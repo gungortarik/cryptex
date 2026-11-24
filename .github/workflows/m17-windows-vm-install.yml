@@ -1,0 +1,43 @@
+name: M17 Windows VM one-click install
+on:
+  workflow_dispatch:
+  push:
+    branches: ['codex/m17-release-candidate']
+    paths:
+      - '.github/workflows/m17-windows-vm-install.yml'
+      - 'scripts/m17/windows_owner_trial/**'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  test-and-deliver:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    env:
+      BUILD_REVISION: f4d715978c1a074c99292773028df8b513fd1e2d
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify the reviewed installer input archive
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $zip = "$env:RUNNER_TEMP/owner-input.zip"
+          gh api "repos/$env:GITHUB_REPOSITORY/actions/artifacts/14894077654/zip" > $zip
+          if ($LASTEXITCODE -or (Get-FileHash $zip).Hash -ine '8982759304807153636652b6e9a036203961e041aa031569f80267e9e70fe4a0') { throw 'Wrong input archive' }
+          Expand-Archive -LiteralPath $zip -DestinationPath "$env:RUNNER_TEMP/owner-input"
+          $info = Get-Content "$env:RUNNER_TEMP/owner-input/build.json" -Raw | ConvertFrom-Json
+          if ($info.revision -cne $env:BUILD_REVISION) { throw 'Wrong installer revision' }
+      - name: Compile the self-contained owner launcher
+        shell: pwsh
+        run: ./scripts/m17/windows_owner_trial/build.ps1 "$env:RUNNER_TEMP/owner-input" "$env:RUNNER_TEMP/KUR.exe"
+      - name: Verify first install and repeat as a temporary standard user
+        shell: pwsh
+        run: ./scripts/m17/windows_owner_trial/test.ps1 "$env:RUNNER_TEMP/KUR.exe" $env:BUILD_REVISION
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cryptex-M17-Windows-Ilk-Kurulum
+          path: ${{ runner.temp }}/KUR.exe
+          if-no-files-found: error
