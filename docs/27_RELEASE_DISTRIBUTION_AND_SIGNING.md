@@ -167,9 +167,15 @@ Those choices must not be inferred from convenience.
 
 Any selected channel must preserve offline/local-first operation and security/recovery requirements.
 
-## 17. Explicitly unresolved
+## 17. Distribution decisions
 
-This document does not select:
+On November 24, 2026 the owner approved the [delivery policy for their Mac and Windows VM](proposals/m17-personal-device-signing.md#accepted-delivery-and-version-policy-for-the-two-personal-devices). It specifies local signing, user-initiated offline transfer, a per-user Windows installer, the sealed Mac delivery, candidate numbering starting at `1.0.1`, and retention of notes on uninstall. Final artifact verification and release approval still apply.
+
+<a id="17-explicitly-unresolved"></a>
+
+### Explicitly unresolved
+
+For distribution beyond the owner's two devices, this document does not select:
 
 - final macOS distribution channel
 - final Windows distribution channel
