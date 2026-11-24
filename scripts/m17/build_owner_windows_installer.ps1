@@ -29,7 +29,20 @@ $scratch = [IO.Directory]::CreateTempSubdirectory('cryptex-owner-package-').Full
 $targetBefore = [Environment]::GetEnvironmentVariable('CARGO_TARGET_DIR')
 $sidecarStage = $null
 $copiedDaemon = $null
+$provenanceLock = $null
 try {
+    $provenanceFile = Join-Path $repo 'apps/desktop/src-tauri/binaries/build-provenance.json'
+    # NSIS reads this resource later. Keep the verified file read-only until bundling finishes.
+    $provenanceLock = [IO.File]::Open($provenanceFile, 'Open', 'Read', 'Read')
+    $record = Get-Content -Raw -LiteralPath $provenanceFile | ConvertFrom-Json
+    $source = git -C $repo rev-parse --verify HEAD
+    if ($LASTEXITCODE -ne 0 -or $source -cnotmatch '^[0-9a-f]{40}$' -or
+        $record.target -cne 'x86_64-pc-windows-msvc' -or $record.source.commit -cne $source -or
+        $record.source.clean -isnot [bool] -or !$record.source.clean) {
+        throw 'Windows build provenance differs from the clean reviewed revision or target'
+    }
+    $changes = git -C $repo status --porcelain=v1 --untracked-files=normal
+    if ($LASTEXITCODE -ne 0 -or $changes) { throw 'Windows packaging requires a clean release checkout' }
     $env:CARGO_TARGET_DIR = Join-Path $scratch 'target'
     $release = [IO.Directory]::CreateDirectory((Join-Path $env:CARGO_TARGET_DIR 'release')).FullName
     $copiedDesktop = Join-Path $release 'cryptex-desktop.exe'
@@ -63,8 +76,6 @@ try {
     $version = $installers[0].VersionInfo.ProductVersion
     if ($version -notmatch '^([0-9]+\.[0-9]+\.[0-9]+)(?:\.0)?$') { throw 'Unexpected NSIS product version' }
     $version = $Matches[1]
-    $source = (Get-Content -Raw -LiteralPath "$repo/apps/desktop/src-tauri/binaries/build-provenance.json" | ConvertFrom-Json).source.commit
-    if ($source -cnotmatch '^[0-9a-f]{40}$') { throw 'Missing release build revision' }
     $hash = (Get-FileHash -LiteralPath $installers[0].FullName).Hash
     $pending = Join-Path $parent ([guid]::NewGuid().ToString() + '.exe')
     [IO.File]::Copy($installers[0].FullName, $pending, $false)
@@ -83,6 +94,7 @@ try {
         CertificateSha256 = $CertificateSha256
     }
 } finally {
+    if ($provenanceLock) { $provenanceLock.Dispose() }
     [Environment]::SetEnvironmentVariable('CARGO_TARGET_DIR', $targetBefore)
     if ($copiedDaemon -and [IO.File]::Exists($copiedDaemon)) { [IO.File]::Delete($copiedDaemon) }
     if ($sidecarStage) { [IO.Directory]::Delete($sidecarStage.FullName, $false) }

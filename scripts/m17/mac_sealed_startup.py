@@ -51,6 +51,15 @@ def exercise(root, revision):
         raise RuntimeError("Signed an unapproved application")
     if delivery.exists():
         raise RuntimeError("Rejected signing request left a delivery")
+    try:
+        package_for_owner(unsigned, approved_input, "0" * 40, public_der, pin, updater, helper, delivery)
+    except ValueError as error:
+        if "Mac build provenance differs" not in str(error):
+            raise
+    else:
+        raise RuntimeError("Owner signing accepted a different source revision")
+    if delivery.exists():
+        raise RuntimeError("Wrong revision published a Mac delivery")
     signed = package_for_owner(unsigned, approved_input, revision, public_der, pin, updater, helper,
                                delivery, os.environ["CX_NATIVE_TEST_KEYCHAIN"])
     manifest = json.loads((delivery / "release.json").read_bytes())

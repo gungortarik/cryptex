@@ -37,6 +37,11 @@ def package(bundle, approved, revision, public_der, pin, updater, cms_helper, ou
         subprocess.run(["/usr/bin/ditto", bundle, app], check=True, timeout=120)
         if fingerprint(updater, app) != approved:
             raise ValueError("Application changed while staging")
+        record = json.loads((app / "Contents/Resources/build-provenance.json").read_bytes())
+        source = record.get("source") or {}
+        if (record.get("target") != "aarch64-apple-darwin" or source.get("commit") != revision
+                or source.get("clean") is not True):
+            raise ValueError("Mac build provenance differs from the clean reviewed revision or target")
         daemon = app / "Contents/MacOS/cryptexd"
         for image, role in ((daemon, "com.cryptex.daemon"), (app, "com.cryptex.desktop")):
             args = ["/usr/bin/codesign", "--force", "--timestamp=none", "--options", "runtime",

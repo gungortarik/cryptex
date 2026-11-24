@@ -47,6 +47,28 @@ try {
         }
         if (Test-Path -LiteralPath $installer) { throw 'Refused packaging published an installer' }
     }
+    $provenance = Join-Path $repo 'apps/desktop/src-tauri/binaries/build-provenance.json'
+    $original = [IO.File]::ReadAllBytes($provenance)
+    try {
+        foreach ($field in 'revision','dirty','target') {
+            $record = [Text.Encoding]::UTF8.GetString($original) | ConvertFrom-Json
+            switch ($field) {
+                revision { $record.source.commit = '0' * 40 }
+                dirty { $record.source.clean = $false }
+                target { $record.target = 'aarch64-apple-darwin' }
+            }
+            $record | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $provenance
+            try {
+                & $package $pin $desktopHash $daemonHash $installer
+                throw "Owner packaging accepted unexpected provenance ($field)"
+            } catch {
+                if ($_.Exception.Message -ne 'Windows build provenance differs from the clean reviewed revision or target') { throw }
+            }
+            if (Test-Path -LiteralPath $installer) { throw 'Rejected provenance published an installer' }
+        }
+    } finally {
+        [IO.File]::WriteAllBytes($provenance, $original)
+    }
     $report = & $package $pin $desktopHash $daemonHash $installer
     if ($report.Installer -ne $installer -or (Get-FileHash -LiteralPath $desktop).Hash -ne $desktopHash -or
         (Get-FileHash -LiteralPath $staged[0].FullName).Hash -ne $daemonHash) { throw 'Approved build inputs changed' }
