@@ -59,7 +59,7 @@ No checkbox may be marked complete without actual evidence from the applicable m
 - [ ] macOS release candidate builds and launches.
   - Evidence: [Sealed macOS install and live peer startup](../evidence/m17/personal-packaging.md#installed-macos-owner-session) in a disposable account. Final owner candidate pending.
 - [ ] Windows release candidate builds and launches.
-  - Evidence:
+  - Evidence: The [owner VM receipt](../evidence/m17/personal-packaging.md#owner-vm-result) covers first installation and native signature checks in the temporary Windows account. Final candidate launch remains open.
 - [ ] Required platform-native behavior/polish is verified on macOS.
   - Evidence:
 - [ ] Required platform-native behavior/polish is verified on Windows.
