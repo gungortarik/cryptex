@@ -103,7 +103,7 @@ No checkbox may be marked complete without actual evidence from the applicable m
 - [ ] Health/Doctor surfaces reflect actual observed runtime state.
   - Evidence: [Disposable desktop health, maintenance and native owner controls at `3b0fd56`](https://github.com/gungortarik/cryptex/actions/runs/45263640097). Repeat with the signed final configuration.
 - [ ] Configured/Ready/Active/Verified/Attention distinctions are preserved where applicable.
-  - Evidence: [Guarded desktop status and privacy review](../evidence/m16/hardening.md#final-candidate-review). The Windows policy tests at `03857d4` rejected remote-durability claims based only on local activity.
+  - The [M17 Windows and macOS readiness run](https://github.com/gungortarik/cryptex/actions/runs/45504560649) at `d08adb5` passed the native profile status and rendered connection checks. The status tests reject a remote durability claim based on local publication or a live transport. The [M16 review](../evidence/m16/hardening.md#final-candidate-review) records the earlier guarded Desktop checks.
 - [ ] No major subsystem is represented as working solely because it is configured.
   - Evidence:
 
@@ -121,6 +121,7 @@ No checkbox may be marked complete without actual evidence from the applicable m
 - [ ] M17 milestone acceptance criteria are satisfied.
 - [ ] `docs/21_DEFINITION_OF_DONE.md` is satisfied for the release scope.
 - [ ] Required CI is green at the release-candidate commit.
+  - The [general CI run for the preparatory candidate](https://github.com/gungortarik/cryptex/actions/runs/45504560649) passed Windows readiness, macOS readiness and Windows cross-account IPC access control at `d08adb5fff6d061adb6e5c46b06305a23eee24fd`. Run the required checks again on the final revision containing the approved transport.
 - [ ] Human review is complete.
 - [ ] Cryptex may be reported ready for Private Beta / Release Candidate.
 
