@@ -122,3 +122,14 @@ The owner package procedure produces fresh archives with independently enrolled 
 At `109490a`, the [persistent-profile job](https://github.com/gungortarik/cryptex/actions/runs/45292862528/job/138105777718) signed and installed the Mac application and independently verified its startup inventory. The installed daemon seeded one public synthetic note in a fresh directory using a disposable Keychain. Each ordinary Desktop launch selected the same certificate-specific temporary directory. The protected WebView submitted the normal Search form and observed the note text in a visible result before AppKit requested quit.
 
 The harness compared the canonical file and public identity hashes and the signed-probe descriptor after both exits. A missing profile was refused without creating a replacement. With the descriptor removed, startup was refused and the canonical baseline was preserved. The [fresh-profile job](https://github.com/gungortarik/cryptex/actions/runs/45292862528/job/138105777389) also passed. Existing-profile selection in this build is limited to the disposable trial feature. Owner enrollment, persistent personal profile selection and authorization to import personal data remain open.
+
+## Distribution notices for the inspected transport
+
+At `04df1d5` the [official archive inspection](https://github.com/gungortarik/cryptex/actions/runs/45297008924) produced two UTF-8 notice files for Syncthing v2.1.7. An independent read of the original ZIP members confirmed the archive and executable digests and the exact LICENSE and AUTHORS text in each notice. The module inventories matched the linked dependencies per executable. Every linked module supplied notice text. Each file preserved the inspected document bytes and included the upstream credits and Go license and patent grant.
+
+| Target | Linked modules | Executable SHA-256 | Notice SHA-256 |
+| --- | ---: | --- | --- |
+| Windows x64 | 60 | `cd9aea20afda2b9bdba5aff2e6ac964ed5c2e741ed4ceb48ad9e1be096ca7891` | `f795a39e93046c3c8cc625432da6c902e12dfad0971527155c923576fbd34275` |
+| macOS arm64 | 60 | `38aab77073e47a717ec59eab082670b4fccf28c256fa0f7935aebb3f4665bb01` | `9aa871c76c7744728ad6d6ae9f422a68e712ad297e2b4ae89e5a9d7cb6bd8200` |
+
+The four in-range advisories still hold personal use. The final installer needs verification against the selected corrected official binary and its corresponding notice.
