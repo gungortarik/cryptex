@@ -1,0 +1,42 @@
+name: M17 Mac owner installer input
+on:
+  workflow_dispatch:
+  push:
+    branches: ['codex/m17-release-candidate']
+    paths: ['.github/workflows/m17-mac-owner-input.yml']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '26.0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cryptex/desktop tauri:package --bundles app
+      - name: Preserve the exact native bundle
+        run: |
+          set -eu
+          app=target/release/bundle/macos/Cryptex.app
+          test "$(uname -m)" = arm64
+          for executable in cryptexd cryptex-desktop; do
+            test "$(/usr/bin/lipo -archs "$app/Contents/MacOS/$executable")" = arm64
+          done
+          python3 -B scripts/m17/check_installed_provenance.py "$app/Contents/Resources/build-provenance.json"
+          /usr/bin/ditto -c -k --keepParent "$app" "$RUNNER_TEMP/Application.zip"
+          shasum -a 256 "$RUNNER_TEMP/Application.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: m17-owner-mac-arm64-input
+          path: ${{ runner.temp }}/Application.zip
+          if-no-files-found: error
