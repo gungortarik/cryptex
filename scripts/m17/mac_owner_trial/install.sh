@@ -33,7 +33,11 @@ phase=paket
 cp "$kit/Application.zip" "$tmp/input.zip"
 revision='@REVISION@'
 archive='@ARCHIVE@'
-[[ "$(sha "$tmp/input.zip")" == "$archive" ]]
+observed="$(sha "$tmp/input.zip")"
+if [[ "$observed" != "$archive" ]]; then
+  echo "Uygulama arsivi degismis: $observed" >&2
+  exit 3
+fi
 cert="$state/owner.der"
 phase=anahtar
 if [[ ! -e "$cert" && ! -L "$cert" ]]; then

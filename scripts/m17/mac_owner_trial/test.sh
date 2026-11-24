@@ -46,7 +46,12 @@ approved="$(shasum -a 256 "$HOME/Library/Application Support/Cryptex-M17-Ilk-Kur
 cp "$report" first.json
 "$dir/KUR.command"
 cmp first.json "$report"
-printf x >> "$dir/Resources/Application.zip"
+payload="$dir/Resources/Application.zip"
+original_hash="$(shasum -a 256 "$payload" | cut -d' ' -f1)"
+printf x >> "$payload"
+changed_hash="$(shasum -a 256 "$payload" | cut -d' ' -f1)"
+[[ "$original_hash" != "$changed_hash" ]]
+echo "Testing altered payload $changed_hash (original $original_hash)"
 if "$dir/KUR.command"; then echo "Changed installer accepted"; exit 1; fi
 [[ "$(plutil -extract phase raw "$report")" == paket ]]
 printf '\n' >> "$app/Contents/Resources/notices/frontend.json"
