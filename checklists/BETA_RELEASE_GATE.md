@@ -61,9 +61,9 @@ No checkbox may be marked complete without actual evidence from the applicable m
 - [ ] Windows release candidate builds and launches.
   - Evidence: The [owner VM receipt](../evidence/m17/personal-packaging.md#owner-vm-result) covers first installation and native signature checks in the temporary Windows account. The [signed 1.0.1 candidate](https://github.com/gungortarik/cryptex/actions/runs/45497413994) launched and quit in a temporary standard account. Verification of the final release configuration remains open.
 - [ ] Required platform-native behavior/polish is verified on macOS.
-  - Evidence:
+  - The [native shell and display run at `a3711ec`](https://github.com/gungortarik/cryptex/actions/runs/45502020093) exercised the embedded WebView and keyboard navigation. The [sealed Mac runs](https://github.com/gungortarik/cryptex/actions/runs/45501812934) exercised both temporary profile configurations. Final installed configuration review remains open.
 - [ ] Required platform-native behavior/polish is verified on Windows.
-  - Evidence:
+  - The [standard-user shell and display run at `a3711ec`](https://github.com/gungortarik/cryptex/actions/runs/45502020093) exercised window restoration, keyboard navigation and six theme/scale combinations. The [M14 acceptance record](../evidence/m14/platform-closeout-review.md#final-candidate) covers real sign-in. Final installed configuration review remains open.
 - [x] DPI/Retina/theme/accessibility requirements are verified as applicable.
   - Evidence: [M14 display and keyboard evidence](../evidence/m14/platform-closeout-review.md). Coverage uses the native WebView and emulated densities. Hardware monitor changes and assistive-technology sessions remain outside that evidence.
 - [x] Packaging smoke has passed on both platforms.
