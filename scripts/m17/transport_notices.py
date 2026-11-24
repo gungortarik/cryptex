@@ -12,6 +12,11 @@ import tempfile
 from urllib.request import urlopen
 
 NOTICE = re.compile(r"^(?:licen[cs]e|notice|copying|copyright|unlicense)(?:$|[._-])", re.I)
+SUPPLEMENT = re.compile(r"^(?:patents|authors)(?:$|[._-])", re.I)
+
+
+def has_notice(module):
+    return any(NOTICE.match(Path(name).name) for name in module["documents"])
 
 
 def source_commit(repo, tag):
@@ -51,11 +56,14 @@ def documents_for(args):
     root = Path(info["Dir"])
     documents = {}
     for item in sorted(root.rglob("*")):
-        if not NOTICE.match(item.name) or not item.is_file():
+        if not (NOTICE.match(item.name) or SUPPLEMENT.match(item.name)) or not item.is_file():
             continue
         if item.is_symlink() or not 0 < item.stat().st_size <= 4 * 1024 * 1024:
             raise ValueError(f"Unexpected notice entry in {path}@{version}")
-        documents[item.relative_to(root).as_posix()] = item.read_bytes()
+        data = item.read_bytes()
+        if not data.strip():
+            raise ValueError(f"Empty notice text in {path}@{version}: {item.name}")
+        documents[item.relative_to(root).as_posix()] = data
     return path, version, checksum, documents
 
 
@@ -89,8 +97,8 @@ def release_notice(tag, target, modules, texts, source_notices):
             continue
         label = f"{module['module']}@{module['version']}"
         headings.append(label)
-        if not module["documents"]:
-            headings.append("  No notice file found in the inspected module source.")
+        if not has_notice(module):
+            raise ValueError(f"Missing module notice for {label} on {target_name}")
         for name, key in sorted(module["documents"].items()):
             include(f"{label}/{name}", base64.b64decode(texts[key], validate=True), key)
     chunks = ["\n".join(headings).encode("utf-8")]
@@ -146,7 +154,7 @@ def main(inspection, output, distribution=None):
         key = hashlib.sha256(data).hexdigest()
         texts[key] = base64.b64encode(data).decode("ascii")
         upstream[url] = key
-    missing = [x["module"] + "@" + x["version"] for x in records if not x["documents"]]
+    missing = [x["module"] + "@" + x["version"] for x in records if not has_notice(x)]
     Path(output).write_text(json.dumps({"release": tag, "archives": targets, "modules": records,
                                        "upstream_source": revision, "upstream_documents": upstream,
                                        "documents_base64": texts, "missing_module_notices": missing},

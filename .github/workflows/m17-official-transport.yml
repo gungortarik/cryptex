@@ -39,10 +39,12 @@ jobs:
           path: ${{ runner.temp }}/transport.json
           if-no-files-found: error
       - name: Compare linked module sources and collect their exact notices
+        id: notices
         env:
           GH_TOKEN: ${{ github.token }}
         run: python -B scripts/m17/transport_notices.py "$RUNNER_TEMP/transport.json" "$RUNNER_TEMP/linked-notices.json" "$RUNNER_TEMP/distribution-notices"
       - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && (steps.notices.outcome == 'success' || steps.notices.outcome == 'failure') }}
         with:
           name: official-transport-linked-notices
           path: ${{ runner.temp }}/linked-notices.json
