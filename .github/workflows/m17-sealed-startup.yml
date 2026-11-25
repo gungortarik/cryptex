@@ -39,7 +39,7 @@ jobs:
       matrix:
         profile: [ephemeral, persistent]
     runs-on: macos-26
-    timeout-minutes: 45
+    timeout-minutes: ${{ matrix.profile == 'persistent' && 65 || 45 }}
     env:
       M17_MAC_TRIAL: ${{ matrix.profile }}
       MACOSX_DEPLOYMENT_TARGET: '26.0'

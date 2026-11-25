@@ -1,11 +1,37 @@
 //! Included only in the 1.0.1 service libtest on a disposable native runner.
 use super::*;
 use crate::bootstrap_journal::BootstrapJournalStore;
-use crate::managed_profile::ManagedProfile;
-use crate::syncthing_package::PinnedSyncthingPackage;
+#[cfg(windows)]
+use crate::{managed_profile::ManagedProfile, syncthing_package::PinnedSyncthingPackage};
 use cryptex_core::DeviceId;
 use cryptex_events::BootstrapApprovalRole;
 use std::fs;
+
+const BRAIN: &str = "11111111-1111-4111-8111-111111111111";
+
+fn create_note(root: &std::path::Path, store: &impl crate::secure_store::SecureStore) {
+    crate::install_runtime::prepare_m1_runtime_foundation(root).unwrap();
+    crate::signed_transfer_probe::create(
+        root,
+        store,
+        BRAIN,
+        "55555555-5555-4555-8555-555555555555",
+    )
+    .unwrap();
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires an isolated native credential Keychain"]
+fn installed_previous_note() {
+    assert_eq!(
+        std::env::var("RUNNER_ENVIRONMENT").unwrap(),
+        "github-hosted"
+    );
+    let root = PathBuf::from(std::env::var_os("CRYPTEX_TEST_ENROLLED_ROOT").unwrap());
+    let _instance = crate::instance::try_acquire_instance(&root).unwrap();
+    create_note(&root, &crate::MacosKeychainStore::new());
+}
 
 #[test]
 #[ignore = "requires a fresh account-owned profile and official previous release package"]
@@ -17,20 +43,14 @@ fn installed_previous_pair() {
     assert_eq!(crate::syncthing_package::VERSION, "2.1.5");
     let root = PathBuf::from(std::env::var_os("CRYPTEX_TEST_ENROLLED_ROOT").unwrap());
     let instance = crate::instance::try_acquire_instance(&root).unwrap();
-    let brain = "11111111-1111-4111-8111-111111111111";
+    let brain = BRAIN;
     let environment = crate::SecureStoreEnvironment::Dev;
     #[cfg(target_os = "macos")]
     let store = crate::MacosKeychainStore::new();
     #[cfg(windows)]
     let store = crate::WindowsCredentialStore::new();
-    crate::install_runtime::prepare_m1_runtime_foundation(&root).unwrap();
-    crate::signed_transfer_probe::create(
-        &root,
-        &store,
-        brain,
-        "55555555-5555-4555-8555-555555555555",
-    )
-    .unwrap();
+    #[cfg(windows)]
+    create_note(&root, &store);
     let device = DeviceId::new(
         crate::local_device_identity::load_local_device_identity(&root, brain)
             .unwrap()
@@ -53,13 +73,24 @@ fn installed_previous_pair() {
             .unwrap();
     }
     let home = helper.join("00000000000000000000000000000001");
-    let ports = NativePorts::new(18384, 22001).unwrap();
-    let package = PinnedSyncthingPackage::open(&helper.join("package")).unwrap();
-    let mut profile = ManagedProfile::create(&home, environment).unwrap();
-    let native = profile.prepare_native(&package, &store, ports).unwrap();
-    let transport = native.configured_transport_device_id().to_owned();
-    drop(native);
-    drop(profile);
+    #[cfg(windows)]
+    let (ports, transport) = {
+        let ports = NativePorts::new(18384, 22001).unwrap();
+        let package = PinnedSyncthingPackage::open(&helper.join("package")).unwrap();
+        let mut profile = ManagedProfile::create(&home, environment).unwrap();
+        let native = profile.prepare_native(&package, &store, ports).unwrap();
+        (ports, native.configured_transport_device_id().to_owned())
+    };
+    #[cfg(target_os = "macos")]
+    let (ports, transport) = {
+        // The signed 1.0.1 daemon has already enrolled this profile using its own helper.
+        let ports: NativePorts =
+            serde_json::from_slice(&fs::read(helper.join("ports.json")).unwrap()).unwrap();
+        let ready: serde_json::Value =
+            serde_json::from_slice(&fs::read(home.join("native-ready.json")).unwrap()).unwrap();
+        assert_eq!(ready["ports"], serde_json::to_value(ports).unwrap());
+        (ports, ready["native_id"].as_str().unwrap().to_owned())
+    };
     let key = crate::event_signing_key::load_existing_event_signing_key(
         &store,
         environment,

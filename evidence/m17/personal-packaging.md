@@ -106,6 +106,8 @@ The Mac assertions cover the persistent login file and binaries. They do not mea
 
 ## Standalone updater delivery from the owner's signing machine
 
+At `ee33895` Windows and Apple Silicon verified the signed delivery archive, rejected the default build when the enrolled-profile updater was requested, and used the extracted default executable for the installed update and rollback checks. Both systems verified the signed note after reinstall. The historical paired-profile migration has a separate trial. [Windows and Mac results](https://github.com/gungortarik/cryptex/actions/runs/45710227606)
+
 At `40dea0f` the [packaging command](../../scripts/m17/package_owner_updater.py) ran on native Windows and macOS with disposable certificate-store and Keychain identities. It refused a mismatched public certificate, unapproved executable hash and an updater built to trust a different signer. Both native suites extracted the signed updater from the resulting archive and used that executable for the five update and rollback scenarios. The signed test note remained verifiable after reinstall. The [sealed Mac run](https://github.com/gungortarik/cryptex/actions/runs/45289817066) also passed for this revision. The [companion first-install jobs](https://github.com/gungortarik/cryptex/actions/runs/45289817231) verified the installed signatures on both platforms.
 
 The two archived executables and notices were downloaded from the [native run](https://github.com/gungortarik/cryptex/actions/runs/45289817134). Both archive digests matched the signing-job logs. Every embedded notice document matched its recorded SHA-256.

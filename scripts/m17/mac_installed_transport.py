@@ -53,9 +53,56 @@ def previous_package(folder):
             file.chmod(0o500 if leaf == "syncthing" else 0o400)
 
 
+def enrollment_daemon(work, pin):
+    from mac_identity_preflight import checked, run_bounded
+    from mac_lan_setup import compile_products, inventory as app_inventory, tool
+    from platform import machine
+
+    tree = Path(os.environ["RUNNER_TEMP"]) / "m17-previous/source"
+    if subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=tree, text=True).strip() != REVISION:
+        raise RuntimeError("Unexpected enrollment service source")
+    tool_path = os.pathsep.join(dict.fromkeys([*(str(tool(name).parent) for name in ("node", "cargo", "pnpm")),
+                                              "/usr/bin", "/bin", "/usr/sbin", "/sbin"]))
+
+    def run(args, label, timeout=60):
+        outcome = run_bounded(args, timeout, tool_path=tool_path)
+        return checked(lambda *_: outcome, args, label, timeout)
+
+    _, release = compile_products(tree, work, REVISION, Path(os.environ["CRYPTEX_M17_SIGNER_DER"]), run, {})
+    app = work / "Cryptex-LAN.app"
+    binaries, resources = app / "Contents/MacOS", app / "Contents/Resources"
+    binaries.mkdir(parents=True, mode=0o700)
+    resources.mkdir(mode=0o700)
+    shutil.copytree(tree / "apps/desktop/dist", resources / "frontend")
+    previous_package(resources / "transport")
+    for name, role in (("cryptex-desktop", "desktop"), ("cryptexd", "daemon")):
+        shutil.copy2(work / "target/debug" / name, binaries / name)
+        image(binaries / name, "com.cryptex.development." + role)
+    manifest = resources / "m8-startup.json"
+    manifest.write_text(json.dumps(app_inventory(app, machine(), release, run), separators=(",", ":")),
+                        encoding="utf-8")
+    run([os.environ["CX_UPDATE_CI_CMS_HELPER"], pin, manifest, resources / "m8-startup.cms"],
+        "sign_historical_enrollment_inventory")
+    return binaries / "cryptexd"
+
+
+def seed_phase(scope, tool, profile, name):
+    test = "managed_profile::exchange_install::tests::installed_previous_pair::" + name
+    seed = scope.fence.outcome(["/usr/bin/env", "CRYPTEX_TEST_ENROLLED_ROOT=" + str(profile), tool,
+                                test, "--ignored", "--exact"], 150)
+    if seed.code:
+        line = re.search(r"installed_previous_pair\.rs:(\d+):", seed.output)
+        if line:
+            print("historical_mac_enrollment_failed_at_fixture_line=" + line[1], flush=True)
+    from mac_identity_preflight import checked
+    result = checked(lambda *_: seed, [], name, 150)
+    if f"test {test} ... ok" not in result:
+        raise RuntimeError("Historical pairing fixture did not execute")
+
+
 def exercise(work, desktop, updater, pin):
     from mac_ci_credential_keychain import CredentialKeychain, require_hosted_mac
-    from mac_identity_preflight import run_bounded, checked
+    from mac_identity_preflight import run_bounded
     from mac_product_key_startup import profile_snapshot
     from mac_transport_check import _metadata
     require_hosted_mac()
@@ -68,34 +115,27 @@ def exercise(work, desktop, updater, pin):
     profile = Path(tempfile.gettempdir()).resolve() / ("cryptex-m17-profile-" + pin)
     with tempfile.TemporaryDirectory(dir=work, prefix="old-enrollment-") as tmp:
         tool = seed_tool(Path(tmp))
+        daemon = enrollment_daemon(Path(tmp), pin)
         profile.mkdir(mode=0o700, exist_ok=False)
         helper = profile / "managed-transport"
-        helper.mkdir(mode=0o700)
-        previous_package(helper / "package")
-        for name, value in (("transport.marker", b"m8-native-transport-helper-v1\n"),
-                            ("ports.json", b'{"api":18384,"sync":22001}')):
-            (helper / name).write_bytes(value)
-            (helper / name).chmod(0o600)
         (profile / "pilot-runtime.marker").write_bytes(b"m0-native-desktop-runtime-v1\n")
         with CredentialKeychain(work, run_bounded) as scope:
-            test = "managed_profile::exchange_install::tests::installed_previous_pair::installed_previous_pair"
-            seed = scope.fence.outcome(["/usr/bin/env", "CRYPTEX_TEST_ENROLLED_ROOT=" + str(profile), tool,
-                                        test, "--ignored", "--exact"], 150)
-            if seed.code:
-                line = re.search(r"installed_previous_pair\.rs:(\d+):", seed.output)
-                if line:
-                    print("historical_mac_enrollment_failed_at_fixture_line=" + line[1], flush=True)
-            result = checked(lambda *_: seed, [], "seed_installed_previous_pair", 150)
-            if f"test {test} ... ok" not in result:
-                raise RuntimeError("Historical paired enrollment did not execute")
+            seed_phase(scope, tool, profile, "installed_previous_note")
+            probe = scope.root / "item"
             scope.run(["/usr/bin/xcrun", "clang", "-fobjc-arc", "-Wno-deprecated-declarations",
                        "-framework", "Foundation", "-framework", "Security",
-                       ROOT / "scripts/m8/mac_keychain_item_probe.m", "-o", scope.root / "item"], "compile_probe", 90)
+                       ROOT / "scripts/m8/mac_keychain_item_probe.m", "-o", probe], "compile_probe", 90)
             enrollment = helper / ("0" * 31 + "1")
             device = uuid.UUID(_metadata(profile / "identity/local_device.json")["device_id"])
-            for account in ["device-event-signing-seed:" + str(device),
-                            "api:" + _metadata(enrollment / "profile.json")["credential_id"]]:
-                scope.authorize(scope.root / "item", account, tool, target)
+            account = "device-event-signing-seed:" + str(device)
+            scope.authorize(probe, account, tool, daemon)
+            outcome = scope.run([daemon, "transport", "enroll-local-dev", "--runtime-root", profile,
+                                 "--confirm-local-only"], "enroll_historical_signed_service", 180)
+            if "transport_enrollment=local_only" not in outcome.splitlines():
+                raise RuntimeError("Missing historical signed enrollment receipt")
+            seed_phase(scope, tool, profile, "installed_previous_pair")
+            scope.authorize(probe, account, tool, target, previous_grantee=daemon)
+            scope.authorize(probe, "api:" + _metadata(enrollment / "profile.json")["credential_id"], daemon, target)
             notes = profile_snapshot(profile)
             original = inventory(enrollment / "native")
             old_files = inventory(helper / "package")

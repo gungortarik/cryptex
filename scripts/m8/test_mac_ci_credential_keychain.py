@@ -100,6 +100,28 @@ class Fake:
 
 
 class CredentialTests(unittest.TestCase):
+    def test_replaces_only_the_verified_previous_trial_grant(self):
+        from unittest.mock import Mock
+        scope = CredentialKeychain(Path('.'), Mock())
+        probe, creator, old, new = map(Path, ('probe', 'creator', 'old', 'new'))
+        writes = []
+        def run(args, label):
+            if label == 'authorize_exact_ci_credential':
+                writes.append(args)
+                return ''
+            if args[0] == probe:
+                self.assertEqual(args[3], old if not writes else new)
+                return json.dumps(metadata(True))
+            return 'CDHash=' + {creator: 'a', old: 'b', new: 'c'}[args[-1]] * 40
+        scope.run = run
+        with self.assertRaises(PreflightError):
+            scope.authorize(probe, 'test-account', creator, old, previous_grantee=old)
+        self.assertFalse(writes)
+        scope.authorize(probe, 'test-account', creator, new, previous_grantee=old)
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(writes[0][writes[0].index('-S') + 1], 'cdhash:' + 'a' * 40 + ',cdhash:' + 'c' * 40)
+        self.assertEqual(writes[0][-1], scope.path)
+
     def test_metadata_requires_single_exact_item_and_no_extra_partition(self):
         for provisioned in (False, True):
             require_item(json.dumps(metadata(provisioned)), provisioned)

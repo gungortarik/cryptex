@@ -156,17 +156,24 @@ class CredentialKeychain:
             raise PreflightError('ci_credential_cleanup_failed')
         return False
 
-    def authorize(self, probe, account, creator, daemon):
+    def authorize(self, probe, account, creator, daemon, *, previous_grantee=None):
         service = SERVICE
         if account.startswith('api:'):
             if not re.fullmatch(r'api:[0-9a-f]{32}', account):
                 raise PreflightError('ci_transport_credential_label_invalid')
             service = 'Cryptex-Dev-ManagedSyncthing'
         args = [probe, account, creator, daemon, self.path]
-        require_item(self.run(args, 'inspect_credential_before'), False)
+        if previous_grantee is None:
+            require_item(self.run(args, 'inspect_credential_before'), False)
+        else:
+            require_item(self.run([probe, account, creator, previous_grantee, self.path],
+                                  'inspect_previous_ci_grant'), True)
         hashes = [image_hash(self.run(['/usr/bin/codesign', '-d', '--verbose=4', binary],
                                      'inspect_credential_image')) for binary in (creator, daemon)]
         if hashes[0] == hashes[1]:
+            raise PreflightError('ci_credential_images_not_distinct')
+        if previous_grantee is not None and image_hash(self.run(
+                ['/usr/bin/codesign', '-d', '--verbose=4', previous_grantee], 'inspect_previous_image')) in hashes:
             raise PreflightError('ci_credential_images_not_distinct')
         self.run([SECURITY, 'set-generic-password-partition-list', '-s', service,
                   '-a', account, '-S', ','.join('cdhash:' + value for value in hashes),
