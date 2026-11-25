@@ -221,9 +221,22 @@ impl Location {
         store: &dyn SecureStore,
         environment: SecureStoreEnvironment,
     ) -> Result<(), Error> {
+        crate::paths::assert_outside_repository(root).map_err(|_| Error::Authority)?;
         let namespace = crate::import_staging::export_fs::Directory::open(root)
             .map_err(|_| Error::NotEnrolled)?;
         let _instance = crate::instance::try_acquire_instance(root).map_err(|_| Error::Held)?;
+        // The signed updater owns the single interactive device-key check.
+        // Staging in its stopped daemon must never prompt for either item.
+        #[cfg(target_os = "macos")]
+        let _silence =
+            security_framework::os::macos::keychain::SecKeychain::disable_user_interaction()
+                .map_err(|_| Error::Unauthorized)?;
+        let helper = namespace
+            .child("managed-transport", false)
+            .map_err(|_| Error::NotEnrolled)?;
+        let package_directory = helper
+            .child("package", false)
+            .map_err(|_| Error::NotEnrolled)?;
         #[cfg(windows)]
         let location = Self::windows_enrolled(root)?.ok_or(Error::NotEnrolled)?;
         #[cfg(target_os = "macos")]
@@ -235,6 +248,12 @@ impl Location {
         let ports = profile
             .existing_native_ports()
             .map_err(|_| Error::NotEnrolled)?;
+        #[cfg(target_os = "macos")]
+        crate::m8_owner_channel::transport_helper::verify_stopped_enrollment(
+            &root.join("managed-transport"),
+            ports,
+        )
+        .map_err(|_| Error::NotEnrolled)?;
         let native = profile
             .reopen_exchange_candidate(candidate_package, store, ports)
             .map_err(|_| Error::NotEnrolled)?;
@@ -264,6 +283,7 @@ impl Location {
         let stage = PrivateDirectory::acquire(&path, create).map_err(|_| Error::Storage)?;
         native.stage_previous_exchange(&stage, store, &peers)?;
         peers.revalidate().map_err(|_| Error::Authority)?;
+        package_directory.validate().map_err(|_| Error::Authority)?;
         namespace.validate().map_err(|_| Error::Authority)
     }
 }

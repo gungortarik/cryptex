@@ -19,6 +19,28 @@ fn stage_enrolled_previous_release() {
     let environment = SecureStoreEnvironment::Dev;
     let store = FakeSecureStore::new();
     let ports = NativePorts::new(18384, 22001).unwrap();
+    #[cfg(target_os = "macos")]
+    {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let helper = source.join("managed-transport");
+        for (name, bytes) in [
+            (
+                "transport.marker",
+                b"m8-native-transport-helper-v1\n".to_vec(),
+            ),
+            ("ports.json", serde_json::to_vec(&ports).unwrap()),
+        ] {
+            fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(helper.join(name))
+                .unwrap()
+                .write_all(&bytes)
+                .unwrap();
+        }
+    }
     let mut profile = ManagedProfile::create(&profile_path, environment).unwrap();
     let xml = include_bytes!("native_xml/exchange/bootstrap-test.xml");
     let prepared = profile
@@ -93,6 +115,14 @@ fn stage_enrolled_previous_release() {
     drop(lock);
     assert!(attempt(&FakeSecureStore::new()).is_err());
     assert!(!stage.exists());
+    #[cfg(target_os = "macos")]
+    {
+        let active = source.join("managed-transport").join("transport.active");
+        fs::write(&active, b"outstanding native helper").unwrap();
+        assert!(attempt(&store).is_err());
+        assert!(!stage.exists());
+        fs::remove_file(active).unwrap();
+    }
     let mut changed: serde_json::Value = serde_json::from_slice(&saved).unwrap();
     changed["peers"][0]["endpoint"] = "192.168.77.3:22002".into();
     fs::write(&settings_file, serde_json::to_vec(&changed).unwrap()).unwrap();

@@ -346,28 +346,45 @@ fn package(release: &Release, root: &Path) -> Result<PinnedSyncthingPackage, Err
     }
     PinnedSyncthingPackage::open(&directory).map_err(|_| Error::Package)
 }
+fn read_ports(file: &Path) -> Result<NativePorts, Error> {
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(file)
+        .map_err(|_| Error::Profile)?;
+    let m = file.metadata().map_err(|_| Error::Profile)?;
+    if !m.is_file()
+        || m.nlink() != 1
+        || m.uid() != unsafe { libc::geteuid() }
+        || m.mode() & 0o077 != 0
+        || !crate::owned_process::macos::private_acl(&file)
+    {
+        return Err(Error::Profile);
+    }
+    let mut raw = Vec::new();
+    file.take(1025)
+        .read_to_end(&mut raw)
+        .map_err(|_| Error::Profile)?;
+    decode(&raw)
+}
+
+#[cfg(feature = "m17-owner-transport")]
+pub(crate) fn verify_stopped_enrollment(root: &Path, expected: NativePorts) -> Result<(), Error> {
+    private_root(root)?;
+    match std::fs::symlink_metadata(root.join("transport.active")) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+        _ => return Err(Error::Profile),
+    }
+    if read_ports(&root.join("ports.json"))? != expected {
+        return Err(Error::Profile);
+    }
+    Ok(())
+}
+
 fn ports(root: &Path) -> Result<NativePorts, Error> {
     let file = root.join("ports.json");
     if file.try_exists().map_err(|_| Error::Profile)? {
-        let file = OpenOptions::new()
-            .read(true)
-            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-            .open(file)
-            .map_err(|_| Error::Profile)?;
-        let m = file.metadata().map_err(|_| Error::Profile)?;
-        if !m.is_file()
-            || m.nlink() != 1
-            || m.uid() != unsafe { libc::geteuid() }
-            || m.mode() & 0o077 != 0
-            || !crate::owned_process::macos::private_acl(&file)
-        {
-            return Err(Error::Profile);
-        }
-        let mut raw = Vec::new();
-        file.take(1025)
-            .read_to_end(&mut raw)
-            .map_err(|_| Error::Profile)?;
-        return decode(&raw);
+        return read_ports(&file);
     }
     let a = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
         .map_err(|_| Error::Engine)?;
