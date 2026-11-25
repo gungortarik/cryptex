@@ -82,7 +82,7 @@ No checkbox may be marked complete without actual evidence from the applicable m
 - [x] Backup/restore drills have passed.
   - Evidence: [Restore after purging an imported note on both platforms](../evidence/m16/hardening.md#restore-after-purging-an-accepted-cortex-note).
 - [ ] No known high-severity blocker remains open for the release scope.
-  - Evidence: [Owner risk acceptance for official Syncthing 2.1.7 on two devices](../docs/proposals/m17-personal-device-signing.md#owner-acceptance-of-syncthing-217). Final installed transport review is pending.
+  - Evidence: [Owner risk acceptance for official Syncthing 2.1.7 on two devices](../docs/proposals/m17-personal-device-signing.md#owner-acceptance-of-syncthing-217). The 1.0.2 installer checks cover the accepted component. Final candidate review remains open.
 
 ## F. Release artifacts
 
@@ -90,9 +90,9 @@ No checkbox may be marked complete without actual evidence from the applicable m
   - The owner accepted the [two-device delivery and version policy](../docs/proposals/m17-personal-device-signing.md#accepted-delivery-and-version-policy-for-the-two-personal-devices) and assigned first candidate version `1.0.1`.
   - Evidence: [Disposable local signing on both platforms](https://github.com/gungortarik/cryptex/actions/runs/45253534985). The [first-install verifiers](https://github.com/gungortarik/cryptex/actions/runs/45260525337) and [signed updater](https://github.com/gungortarik/cryptex/actions/runs/45257477174) passed with disposable identities. [Live Mac roles](../evidence/m17/personal-packaging.md#installed-macos-owner-session) were verified with a disposable signer. The [Mac packaging command](https://github.com/gungortarik/cryptex/actions/runs/45285474274) and the [Windows packaging command](https://github.com/gungortarik/cryptex/actions/runs/45286355369) passed with disposable signing identities. Owner-supplied first-install receipts cover the temporary accounts on the [Windows VM](../evidence/m17/personal-packaging.md#owner-vm-result) and [Mac](../evidence/m17/personal-packaging.md#owner-mac-result). Final candidate acceptance remains open.
 - [ ] Final third-party notices are included.
-  - Evidence: [Frontend, native Rust dependencies and embedded component notices](../evidence/m17/personal-packaging.md). Final installed inventory and transport review are pending.
+  - Evidence: [Frontend, native Rust dependencies and embedded component notices](../evidence/m17/personal-packaging.md). The 1.0.2 transport inventory passed in disposable installations. The final release inventory remains open.
 - [ ] Syncthing/other bundled dependency notice obligations are satisfied.
-  - Evidence: [Official transport archive contents and linked dependency notices](https://github.com/gungortarik/cryptex/actions/runs/45262814860). Verify the final installed payload and its notices against the selected 2.1.7 archives.
+  - Evidence: [Official transport archive contents and linked dependency notices](https://github.com/gungortarik/cryptex/actions/runs/45262814860). [The 1.0.2 installed-file checks](../evidence/m17/personal-packaging.md#installed-syncthing-in-owner-candidate-102) compare the executable and notice digests on both platforms. Repeat for the final signed artifacts.
 - [ ] Release artifacts are traceable to repository-controlled source and pinned dependencies.
   - Evidence: [Installed provenance matched the clean source revision and build inputs on both platforms](https://github.com/gungortarik/cryptex/actions/runs/45261329297). Repeat against the final release candidate.
 - [ ] Final release checklist has been reviewed by the human owner.
