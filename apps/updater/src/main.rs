@@ -270,6 +270,7 @@ impl Intent {
                 return Err(error("unexpected image during recovery"));
             }
         }
+        let stopped = layout.stopped_desktop()?;
         let old = working.ok_or_else(|| error("working image missing during recovery"))?;
         let new = staged.ok_or_else(|| error("staged image missing during recovery"))?;
         // Authenticate the retained image without launching its daemon against
@@ -288,6 +289,7 @@ impl Intent {
         if old != &layout.active {
             fs::rename(&layout.previous, &layout.active)?;
         }
+        drop(stopped);
         let verified = require_connection_check(layout, &self.working)?;
         if verified.status != "connected" {
             return Err(error("retained Desktop could not reconnect"));
@@ -368,18 +370,7 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
     if package_digest(&layout.active)? != approved {
         return Err(error("activated package changed"));
     }
-    let response = match probe(layout, approved, PROBE)? {
-        Probe::Replied(health) => {
-            if check_candidate_key(&before, &health, |mode| probe(layout, approved, mode))? {
-                Ok(health)
-            } else {
-                Err("rolled_back_keychain_check")
-            }
-        }
-        Probe::TimedOut => Err("rolled_back_timeout"),
-        Probe::Failed => Err("rolled_back_failed_probe"),
-        Probe::InvalidReply => Err("rolled_back_invalid_reply"),
-    };
+    let response = candidate_health(&before, |mode| probe(layout, approved, mode));
     let candidate = match response {
         Ok(health) => health,
         Err(outcome) => {
@@ -417,6 +408,23 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
         outcome,
         checks,
     )
+}
+
+fn candidate_health(
+    before: &Health,
+    mut run: impl FnMut(&str) -> io::Result<Probe>,
+) -> Result<Health, &'static str> {
+    match run(PROBE) {
+        Ok(Probe::Replied(health)) => match check_candidate_key(before, &health, run) {
+            Ok(true) => Ok(health),
+            Ok(false) => Err("rolled_back_keychain_check"),
+            Err(_) => Err("rolled_back_keychain_io"),
+        },
+        Ok(Probe::TimedOut) => Err("rolled_back_timeout"),
+        Ok(Probe::Failed) => Err("rolled_back_failed_probe"),
+        Ok(Probe::InvalidReply) => Err("rolled_back_invalid_reply"),
+        Err(_) => Err("rolled_back_probe_io"),
+    }
 }
 
 fn main() -> io::Result<()> {
@@ -495,6 +503,32 @@ mod keychain_update_tests {
         assert!(key_reply_matches(KEYCHAIN_REOPEN, &reply));
         reply.key_check.as_mut().unwrap().verifier_pid = reply.desktop_pid;
         assert!(!key_reply_matches(KEYCHAIN_REOPEN, &reply));
+    }
+
+    #[test]
+    fn failed_probe_io_selects_recovery_without_asking_again() {
+        for (failed, outcome) in [
+            (PROBE, "rolled_back_probe_io"),
+            (KEYCHAIN_PROBE, "rolled_back_keychain_io"),
+            (KEYCHAIN_REOPEN, "rolled_back_keychain_io"),
+        ] {
+            let mut seen = Vec::new();
+            let result = candidate_health(&health(true), |mode| {
+                seen.push(mode.to_owned());
+                if mode == failed {
+                    return Err(error("fixture pipe closed"));
+                }
+                Ok(Probe::Replied(health(true)))
+            });
+            assert_eq!(result.unwrap_err(), outcome);
+            assert_eq!(seen.last().unwrap(), failed);
+            assert!(
+                seen.iter()
+                    .filter(|mode| mode.as_str() == KEYCHAIN_PROBE)
+                    .count()
+                    <= 1
+            );
+        }
     }
 
     #[test]

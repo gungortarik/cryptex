@@ -88,10 +88,16 @@ impl Layout {
         transaction
             .try_lock()
             .map_err(|_| io::Error::other("another update is running"))?;
-        self.lock_file("desktop.lock")?
+        self.stopped_desktop()?;
+        Ok(transaction)
+    }
+
+    pub fn stopped_desktop(&self) -> io::Result<File> {
+        let session = self.lock_file("desktop.lock")?;
+        session
             .try_lock()
             .map_err(|_| io::Error::other("quit Cryptex before updating"))?;
-        Ok(transaction)
+        Ok(session)
     }
 
     pub fn desktop_session(&self) -> io::Result<Option<File>> {
@@ -177,7 +183,11 @@ mod tests {
                 "probe requires the active installed Desktop"
             );
         }
-        let _session = layout.probe_session_for(&desktop(&layout.active))?;
+        let session = layout.probe_session_for(&desktop(&layout.active))?;
+        assert!(layout.stopped_desktop().is_err());
+        drop(session);
+        let _stopped = layout.stopped_desktop()?;
+        assert!(layout.probe_session_for(&desktop(&layout.active)).is_err());
         Ok(())
     }
 }
