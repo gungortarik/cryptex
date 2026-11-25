@@ -7,7 +7,6 @@ import os
 from pathlib import Path
 import re
 import subprocess
-import sys
 import tempfile
 from urllib.request import urlopen
 
@@ -107,7 +106,21 @@ def release_notice(tag, target, modules, texts, source_notices):
     return b"\n\n".join(chunks) + b"\n"
 
 
-def main(inspection, output, distribution=None):
+def verify_owner_inputs(report, rendered):
+    from owner_transport import NOTICES, TARGETS, VERSION
+
+    if report["release"] != "v" + VERSION:
+        raise ValueError("Inspection differs from owner release version")
+    for target_name, _, archive, binary, notice in TARGETS.values():
+        target, = [row for row in report["targets"] if row["target"] == target_name]
+        if (target["archive_sha256"], target["executable_sha256"]) != (archive, binary):
+            raise ValueError(f"Different owner transport release bytes for {target_name}")
+        packaged = (NOTICES / f"Syncthing-{target_name}-NOTICES.txt").read_bytes()
+        if rendered[target_name] != packaged or hashlib.sha256(packaged).hexdigest() != notice:
+            raise ValueError(f"Owner transport notices differ for {target_name}")
+
+
+def main(inspection, output, distribution=None, verify_owner=False):
     report = json.loads(Path(inspection).read_bytes())
     tag = report["release"]
     if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag):
@@ -166,6 +179,8 @@ def main(inspection, output, distribution=None):
             raise ValueError("Expected both official release targets")
         rendered = {t["target"]: release_notice(tag, t, records, texts, [about, *go_notices[t["go_version"]]])
                     for t in report["targets"]}
+        if verify_owner:
+            verify_owner_inputs(report, rendered)
         directory = Path(distribution)
         directory.mkdir()
         for target, contents in rendered.items():
@@ -173,4 +188,14 @@ def main(inspection, output, distribution=None):
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:])
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("inspection")
+    parser.add_argument("output")
+    parser.add_argument("distribution", nargs="?")
+    parser.add_argument("--verify-owner", action="store_true")
+    args = parser.parse_args()
+    if args.verify_owner and not args.distribution:
+        parser.error("--verify-owner requires a distribution directory")
+    main(args.inspection, args.output, args.distribution, args.verify_owner)

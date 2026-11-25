@@ -5,10 +5,30 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-from transport_notices import documents_for, main, module_ref, release_notice
+from transport_notices import documents_for, main, module_ref, release_notice, verify_owner_inputs
 
 
 class NoticeTests(unittest.TestCase):
+    def test_owner_release_requires_both_pinned_payloads_and_reproducible_notices(self):
+        from owner_transport import NOTICES, TARGETS, VERSION
+
+        rows = []
+        rendered = {}
+        for name, _, archive, binary, _ in TARGETS.values():
+            rows.append({"target": name, "archive_sha256": archive, "executable_sha256": binary})
+            rendered[name] = (NOTICES / f"Syncthing-{name}-NOTICES.txt").read_bytes()
+        report = {"release": "v" + VERSION, "targets": rows}
+        verify_owner_inputs(report, rendered)
+        for row in rows:
+            name = row["target"]
+            for field in ("archive_sha256", "executable_sha256"):
+                with patch.dict(row, {field: "0" * 64}), self.assertRaisesRegex(ValueError, name):
+                    verify_owner_inputs(report, rendered)
+            with patch.dict(rendered, {name: rendered[name] + b" "}), self.assertRaisesRegex(ValueError, name):
+                verify_owner_inputs(report, rendered)
+        with patch.dict(report, {"release": "v0.0.0"}), self.assertRaisesRegex(ValueError, "version"):
+            verify_owner_inputs(report, rendered)
+
     def test_distribution_copy_matches_target_and_keeps_original_bytes(self):
         upstream = b"upstream terms\r\n"
         upstream_record = {"contents_base64": base64.b64encode(upstream).decode(),

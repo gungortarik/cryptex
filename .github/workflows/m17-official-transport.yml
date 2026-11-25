@@ -1,6 +1,11 @@
 name: M17 official transport inspection
 on:
   workflow_dispatch:
+    inputs:
+      owner_release:
+        description: Compare the selected owner release to both packaging inputs
+        type: boolean
+        default: false
   push:
     branches: ['codex/m17-release-candidate']
     paths:
@@ -9,6 +14,8 @@ on:
       - 'scripts/m17/test_scan_transport.py'
       - 'scripts/m17/transport_notices.py'
       - 'scripts/m17/test_transport_notices.py'
+      - 'scripts/m17/owner_transport.py'
+      - 'third_party/syncthing/**'
 permissions:
   contents: read
 jobs:
@@ -32,7 +39,7 @@ jobs:
       - name: Compare archive digests and inspect both binaries
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python -B scripts/m17/scan_transport.py "$RUNNER_TEMP/transport.json"
+        run: python -B scripts/m17/scan_transport.py "$RUNNER_TEMP/transport.json" ${{ (github.event_name == 'push' || inputs.owner_release) && '--owner-release' || '' }}
       - uses: actions/upload-artifact@v4
         with:
           name: official-transport-inspection
@@ -42,7 +49,7 @@ jobs:
         id: notices
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python -B scripts/m17/transport_notices.py "$RUNNER_TEMP/transport.json" "$RUNNER_TEMP/linked-notices.json" "$RUNNER_TEMP/distribution-notices"
+        run: python -B scripts/m17/transport_notices.py "$RUNNER_TEMP/transport.json" "$RUNNER_TEMP/linked-notices.json" "$RUNNER_TEMP/distribution-notices" ${{ (github.event_name == 'push' || inputs.owner_release) && '--verify-owner' || '' }}
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() && (steps.notices.outcome == 'success' || steps.notices.outcome == 'failure') }}
         with:

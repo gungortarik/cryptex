@@ -6,7 +6,6 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
-import sys
 from tempfile import TemporaryDirectory
 import zipfile
 
@@ -87,7 +86,15 @@ def inspect(release, target, executable, directory):
 
 
 def main():
-    release = json.loads(subprocess.check_output(["gh", "api", f"repos/{REPOSITORY}/releases/latest"], timeout=60))
+    import argparse
+    from owner_transport import VERSION
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("report", type=Path)
+    parser.add_argument("--owner-release", action="store_true")
+    args = parser.parse_args()
+    selector = f"tags/v{VERSION}" if args.owner_release else "latest"
+    release = json.loads(subprocess.check_output(["gh", "api", f"repos/{REPOSITORY}/releases/{selector}"], timeout=60))
     if release["draft"] or release["prerelease"] or not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", release["tag_name"]):
         raise ValueError("Expected an official stable release")
     with TemporaryDirectory() as tmp:
@@ -96,7 +103,7 @@ def main():
     # separately after native compatibility, rollback and advisory review.
     report = {"release": release["tag_name"], "release_url": release["html_url"],
               "targets": results, "personal_use_authorized": False}
-    Path(sys.argv[1]).write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    args.report.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({r["target"]: r["findings"] for r in results}))
 
 
