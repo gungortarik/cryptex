@@ -368,7 +368,11 @@ def exercise(packages, work, runtime, env):
             if receipt.is_file() and receipt.stat().st_size:
                 break
             time.sleep(0.1)
+        else:
+            raise TimeoutError(f"{outcome}: reopened Desktop {report['reopened_pid']} produced no receipt within 60s")
         reopened = json.loads(receipt.read_bytes())
+        if "observation_error" in reopened:
+            raise RuntimeError(f"{outcome}: reopened Desktop {reopened['desktop_pid']} failed at {reopened['observation_error']}")
         if (reopened["desktop_pid"], reopened["version"], reopened["status"], reopened["daemon_protocol"]) != (
                 report["reopened_pid"], "0.14.2", "connected", 2):
             raise RuntimeError(f"Reopened Desktop did not reconnect: {reopened}")

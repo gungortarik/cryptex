@@ -85,28 +85,32 @@ pub(super) fn hold_rejected_reply(root: &std::path::Path) -> Result<(), String> 
 
 pub(super) fn observe(app: AppHandle) {
     std::thread::spawn(move || {
-        let result = check(&app);
-        let stopped = stop_daemon_for_user_quit(&app.state::<ProbeState>(), "m14_update_stop");
-        let result = stopped.and(result).and_then(|receipt| {
-            let root = default_runtime_root_path()?;
+        let health = check(&app).map_err(|_| "reopened_health");
+        let stopped = stop_daemon_for_user_quit(&app.state::<ProbeState>(), "m14_update_stop")
+            .map_err(|_| "daemon_stop");
+        let observation = stopped.and(health).and_then(|receipt| {
+            let root = default_runtime_root_path().map_err(|_| "runtime_root")?;
             if cryptexd::instance::observe_instance(&root)
-                .map_err(|e| e.to_string())?
+                .map_err(|_| "observe_lock")?
                 .lock_held
             {
-                return Err("daemon lock remained held".into());
+                return Err("daemon_lock_held");
             }
+            Ok(receipt)
+        });
+        let passed = observation.is_ok();
+        let receipt = observation.unwrap_or_else(|stage| {
+            serde_json::json!({"desktop_pid": std::process::id(), "observation_error": stage})
+        });
+        let publish = || -> Result<(), String> {
+            let root = default_runtime_root_path()?;
             let mut pending = tempfile::NamedTempFile::new_in(&root).map_err(|e| e.to_string())?;
             serde_json::to_writer(pending.as_file_mut(), &receipt).map_err(|e| e.to_string())?;
             pending
                 .persist_noclobber(root.join("m14-update-result.json"))
                 .map_err(|e| e.to_string())?;
             Ok(())
-        });
-        if let Err(error) = result {
-            eprintln!("Installed update observation failed: {error}");
-            app.exit(2);
-        } else {
-            app.exit(0);
-        }
+        };
+        app.exit(if publish().is_ok() && passed { 0 } else { 2 });
     });
 }
