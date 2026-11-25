@@ -128,7 +128,7 @@ def exercise(root, revision):
         previous_daemon = Path(os.environ["RUNNER_TEMP"]) / "m17-previous/cryptexd"
         image(previous_daemon, "com.cryptex.daemon")
         check(root, desktop, pin, previous_daemon)
-        print("installed_102_reopened_note_created_by_101_daemon=passed", flush=True)
+        print("installed_102_reopened_101_note_after_disposable_keychain_grant=passed", flush=True)
         return
     window = subprocess.run(["/usr/bin/swift", ROOT / "scripts/m8/mac_ui_quit_check.swift", desktop],
                             capture_output=True, text=True, timeout=120)

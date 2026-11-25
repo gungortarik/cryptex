@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import uuid
 
 
 def observe(desktop):
@@ -25,6 +26,7 @@ def check(work, desktop, pin, creator):
     from mac_ci_credential_keychain import CredentialKeychain
     from mac_identity_preflight import run_bounded
     from mac_product_key_startup import profile_snapshot
+    from mac_transport_check import _metadata
 
     profile = Path(tempfile.gettempdir()).resolve() / ("cryptex-m17-profile-" + pin)
     if os.path.lexists(profile):
@@ -43,6 +45,18 @@ def check(work, desktop, pin, creator):
             raise RuntimeError("Empty canonical baseline")
         descriptor = profile / "signed-probe.json"
         expected = hashlib.sha256(descriptor.read_bytes()).digest()
+        if creator != daemon:
+            # The hosted local certificates bind this test credential to an image.
+            # Reuse the M8 disposable Keychain grant. It checks both partitions
+            # before and after the operation and never reads the seed.
+            probe = scope.root / "item-probe"
+            source = Path(__file__).resolve().parents[1] / "m8/mac_keychain_item_probe.m"
+            scope.run(["/usr/bin/xcrun", "clang", "-fobjc-arc", "-Wno-deprecated-declarations",
+                       "-framework", "Foundation", "-framework", "Security", source, "-o", probe],
+                      "compile_item_probe", 90)
+            device = uuid.UUID(_metadata(profile / "identity/local_device.json")["device_id"])
+            scope.authorize(probe, "device-event-signing-seed:" + str(device), creator, daemon)
+            print("disposable_keychain_previous_image_only_then_exact_candidate_grant=passed", flush=True)
         scope.run([daemon, "transport", "enroll-local-dev", "--runtime-root", profile,
                    "--confirm-local-only"], "enroll_installed_transport", 160)
         installed = desktop.parent.parent / "Resources/transport/syncthing"
