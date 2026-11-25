@@ -31,8 +31,20 @@ def exercise(root, revision):
         cwd=ROOT / "apps/desktop", timeout=1200)
     run("pnpm", "--filter", "@cryptex/desktop", "exec", "tauri", "build", "--bundles", "app",
         "--features", feature, "--config", overlay, cwd=ROOT, timeout=1200)
-    installed = root / "Applications/Cryptex.app"
-    installed.parent.mkdir()
+    if profile_trial:
+        from mac_ci_credential_keychain import require_hosted_mac
+        require_hosted_mac()
+        home = Path.home()
+        installed = home / "Applications/Cryptex.app"
+        state = home / "Library/Application Support/Cryptex-Updater"
+        if (home != home.resolve(strict=True) or installed.parent != installed.parent.resolve()
+                or state != state.resolve() or any(os.path.lexists(path) for path in
+                (installed, installed.with_suffix(".app.pending"), installed.with_suffix(".app.previous"), state))):
+            raise RuntimeError("Disposable account install or updater slot is occupied or indirect")
+        installed.parent.mkdir(exist_ok=True)
+    else:
+        installed = root / "Applications/Cryptex.app"
+        installed.parent.mkdir()
     unsigned = ROOT / "target/release/bundle/macos/Cryptex.app"
     run("cargo", "build", "--locked", "--release", "-p", "cryptex-updater", cwd=ROOT, timeout=900)
     updater = ROOT / "target/release/cryptex-updater"

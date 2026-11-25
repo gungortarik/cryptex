@@ -21,7 +21,10 @@ def exercise(root, desktop, updater, delivery, revision, pin, scope, profile):
     candidate = pending / "Contents/MacOS/cryptexd"
     original = desktop.with_name("cryptexd")
     helper = Path(os.environ["CX_UPDATE_CI_CMS_HELPER"])
-    isolated = dict(os.environ, HOME=str(root))
+    # Preserve the hosted account's Keychain and WebKit preferences through
+    # the updater, its probes and the Desktop that it reopens.
+    if active != Path.home() / "Applications/Cryptex.app":
+        raise RuntimeError("Expected the disposable account's installed Desktop")
     initial = profile_snapshot(profile)
     staging = root / "credential-delivery"
     staging.mkdir()
@@ -43,7 +46,7 @@ def exercise(root, desktop, updater, delivery, revision, pin, scope, profile):
     statement = staging / "candidate.cms"
     receipt(updater, package, statement)
     for path, cms in ((active, delivery / "update.cms"), (pending, statement)):
-        subprocess.run([updater, "admit", path, cms], env=isolated, check=True, timeout=90)
+        subprocess.run([updater, "admit", path, cms], check=True, timeout=90)
     working_sum, staged_sum = fingerprint(updater, active), fingerprint(updater, pending)
     if staged_sum == working_sum:
         raise RuntimeError("Missing distinct candidate")
@@ -56,7 +59,7 @@ def exercise(root, desktop, updater, delivery, revision, pin, scope, profile):
     require_item(scope.run([probe, account, original, candidate, scope.path], "original_only"), False)
 
     def apply(outcome, selected):
-        report = json.loads(subprocess.check_output([updater, "apply", staged_sum], env=isolated,
+        report = json.loads(subprocess.check_output([updater, "apply", staged_sum],
                                                     timeout=260, text=True))
         if report["outcome"] != outcome or fingerprint(updater, active) != selected:
             raise RuntimeError("Installed credential update selected the wrong package or outcome")
