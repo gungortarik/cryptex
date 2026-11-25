@@ -40,8 +40,8 @@ No checkbox may be marked complete without actual evidence from the applicable m
 
 - [x] M16 security review is complete.
   - Evidence: [Technical review, conditional owner approval and personal-use hold](../evidence/m16/hardening.md#final-candidate-review)
-- [ ] No custom cryptography has been introduced.
-  - Evidence: Release receipt and executable verification use [Windows CryptoAPI and Authenticode](../apps/updater/native/windows.c) and [Apple Security](../apps/updater/native/macos.c) with the [existing CMS decoder](../services/cryptexd/src/m8_owner_channel/native/inventory.c). Include these adapters in final candidate review.
+- [x] No custom cryptography has been introduced.
+  - [M17 runtime diff and signed receipt review](../evidence/m17/personal-packaging.md#november-25-owner-package-review). Release receipt and executable verification use [Windows CryptoAPI and Authenticode](../apps/updater/native/windows.c) and [Apple Security](../apps/updater/native/macos.c) with the [existing CMS decoder](../services/cryptexd/src/m8_owner_channel/native/inventory.c).
 - [x] Renderer/webview remains least privilege.
   - [1.0.2 renderer, command registration and policy review](../evidence/m17/personal-packaging.md#renderer-review-for-102)
   - Evidence: The [M16 webview and IPC review](../evidence/m16/hardening.md#security-and-recovery-review) covers the shipped CSP and explicit invoke list. The [review at `40dea0f`](../evidence/m17/personal-packaging.md#dependency-and-renderer-review-at-40dea0f) confirmed that the capability files and CSP remain unchanged from M16.

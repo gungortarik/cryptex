@@ -185,3 +185,16 @@ remains distinct; production gates below remain mandatory.
 This scoped implementation addendum is accepted. P0-4/M0 completion still
 requires the repository's remaining closeout checklist; acceptance authorizes
 no M1 work or product replication features by itself.
+
+### M17 owner package selection — November 25, 2026
+
+For their Windows x64 VM and Apple Silicon Mac, the owner selected official
+Syncthing 2.1.7 for low-sensitivity personal notes and accepted the four
+in-range component findings. The release builds pin each upstream archive,
+executable and notice inventory. Earlier fixtures retain the exact versions
+used to produce their evidence. The owner decision and fingerprints are in the
+[two-device release policy](../proposals/m17-personal-device-signing.md#owner-acceptance-of-syncthing-217).
+
+The cold migration and rollback requirements above still apply to a device
+already enrolled with 2.1.5. The [review of the installed candidate](../../evidence/m17/personal-packaging.md#november-25-owner-package-review)
+tracks signed history, package verification and the outstanding paired-profile trial.
