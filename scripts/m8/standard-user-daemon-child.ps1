@@ -81,6 +81,8 @@ if($releaseSmoke -or ($p.PSObject.Properties['m14_update_packages'] -and $p.m14_
             & $verify $previousDaemon $record.Certificate $record.PreviousDaemonHash
             & $p.python -B (Join-Path $p.workspace 'scripts/m17/windows_previous_note.py') $previousDaemon $installedDaemon
             if ($LASTEXITCODE -ne 0) {throw 'Historical note verification failed.'}
+            & $p.python -B (Join-Path $p.workspace 'scripts/m17/windows_installed_transport.py') $destination
+            if ($LASTEXITCODE -ne 0) {throw 'Installed paired-profile update failed.'}
             & $p.python -B (Join-Path $p.workspace 'scripts/m14/release_smoke.py') --installed $destination
         } elseif($ObserveConsoleLogin) {
             & $p.python -B $observer observe

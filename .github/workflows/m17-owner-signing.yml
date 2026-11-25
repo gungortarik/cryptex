@@ -12,6 +12,8 @@ on:
       - 'scripts/m17/owner_transport.py'
       - 'scripts/m17/previous_daemon.py'
       - 'scripts/m17/windows_previous_note.py'
+      - 'scripts/m17/windows_installed_transport.py'
+      - 'scripts/m17/installed_previous_pair.rs'
       - 'third_party/syncthing/2.1.7/**'
       - 'scripts/m17/build_owner_windows_installer.ps1'
       - 'scripts/m17/verify_first_install_*'
@@ -32,7 +34,7 @@ jobs:
       matrix:
         os: [macos-26, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 65
     env:
       MACOSX_DEPLOYMENT_TARGET: '26.0'
     steps:
@@ -65,7 +67,7 @@ jobs:
         run: python -B scripts/m17/previous_daemon.py
       - name: Sign the Windows installer and inspect the installed images
         if: runner.os == 'Windows'
-        timeout-minutes: 12
+        timeout-minutes: 25
         shell: pwsh
         run: ./scripts/m17/windows_package_signing.ps1
       - uses: actions/upload-artifact@v4

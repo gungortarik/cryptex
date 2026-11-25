@@ -88,6 +88,7 @@ try {
     if($M17SignedSmoke) {
         Copy-Item -LiteralPath $M17SignedSmoke.Installer -Destination (Join-Path $scratch 'signed-setup.exe')
         Copy-Item -LiteralPath $M17SignedSmoke.PreviousDaemon -Destination (Join-Path $scratch 'previous-daemon.exe')
+        Copy-Item -LiteralPath $M17SignedSmoke.PairedUpdate -Destination (Join-Path $scratch 'paired-update') -Recurse
     }
     if($M17PairedRelease) {
         $compiled=Join-Path $env:RUNNER_TEMP 'm17-paired-binaries'

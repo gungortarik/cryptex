@@ -38,6 +38,20 @@ fn installed_previous_pair() {
     )
     .unwrap();
     let helper = root.join("managed-transport");
+    #[cfg(windows)]
+    {
+        use crate::import_staging::export_fs::Directory;
+        let source = PathBuf::from(std::env::var_os("CRYPTEX_TEST_PREVIOUS_PACKAGE").unwrap());
+        let directory = Directory::open(&root).unwrap();
+        let helper = directory
+            .create_child_exclusive("managed-transport")
+            .unwrap();
+        let package = helper.create_child_exclusive("package").unwrap();
+        PinnedSyncthingPackage::open(&source)
+            .unwrap()
+            .install_fresh(&package)
+            .unwrap();
+    }
     let home = helper.join("00000000000000000000000000000001");
     let ports = NativePorts::new(18384, 22001).unwrap();
     let package = PinnedSyncthingPackage::open(&helper.join("package")).unwrap();

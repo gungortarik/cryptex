@@ -117,9 +117,31 @@ try {
     $previousDaemon = Join-Path $env:RUNNER_TEMP 'm17-previous/cryptexd.exe'
     Set-AuthenticodeSignature -FilePath $previousDaemon -Certificate $cert -HashAlgorithm SHA256 | Out-Null
     Assert-ImageSigner $previousDaemon $pin
+    $handoff = New-Item -ItemType Directory -Path (Join-Path $fixture.FullName 'paired-update')
+    $oldImage = New-Item -ItemType Directory -Path (Join-Path $handoff.FullName 'working')
+    Copy-Item -LiteralPath $previousDaemon -Destination (Join-Path $oldImage.FullName 'cryptexd.exe')
+    $oldDesktop = Join-Path $oldImage.FullName 'cryptex-desktop.exe'
+    Copy-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'm17-previous/cryptex-desktop.exe') -Destination $oldDesktop
+    Set-AuthenticodeSignature -FilePath $oldDesktop -Certificate $cert -HashAlgorithm SHA256 | Out-Null
+    Assert-ImageSigner $oldDesktop $pin
+    Copy-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'm17-previous/seed-pair.exe') -Destination $handoff.FullName
+    $env:CRYPTEX_UPDATE_SIGNER_DER = $publicPath
+    cargo build --release --locked -p cryptex-updater --features owner-transport-update
+    if ($LASTEXITCODE -ne 0) { throw 'Could not build the enrolled-profile updater' }
+    $tool = Join-Path $handoff.FullName 'cryptex-updater.exe'
+    Copy-Item -LiteralPath (Join-Path $repo 'target/release/cryptex-updater.exe') -Destination $tool
+    Set-AuthenticodeSignature -FilePath $tool -Certificate $cert -HashAlgorithm SHA256 | Out-Null
+    Assert-ImageSigner $tool $pin
+    foreach ($slot in @(@{name='working';dir=$oldImage.FullName}, @{name='candidate';dir=$destination})) {
+        $approved = & $tool fingerprint $slot.dir
+        if ($LASTEXITCODE -ne 0) { throw 'Could not fingerprint installed images' }
+        python -B "$PSScriptRoot/sign_owner_update.py" $tool $slot.dir $approved ($pin.ToLowerInvariant()) (Join-Path $handoff.FullName ($slot.name + '.cms'))
+        if ($LASTEXITCODE -ne 0) { throw 'Could not sign installed update receipt' }
+    }
     $trial = @{
         PreviousDaemon = $previousDaemon
         PreviousDaemonHash = (Get-FileHash -LiteralPath $previousDaemon).Hash
+        PairedUpdate = $handoff.FullName
         Installer = $installer; Certificate = $pin; Setup = $release
         Desktop = (Get-FileHash -LiteralPath (Join-Path $destination 'cryptex-desktop.exe')).Hash
         Daemon = (Get-FileHash -LiteralPath (Join-Path $destination 'cryptexd.exe')).Hash
