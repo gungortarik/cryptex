@@ -17,6 +17,8 @@ pub const PROBE: &str = "--cryptex-update-probe";
 pub struct KeyCheck {
     pub prompted_access_allowed: bool,
     pub verifier_pid: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub staged_transport: Option<[u8; 32]>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

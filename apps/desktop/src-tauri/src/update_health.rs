@@ -132,13 +132,14 @@ fn measure() -> Result<Health, String> {
             .owned_child_id()
             .ok_or("missing authenticated key verifier")?;
         let prompted_access_allowed = mode == cryptex_updater::KEYCHAIN_PROBE;
-        verifier
+        let staged_transport = verifier
             .check_update_credential(prompted_access_allowed)
             .map_err(|e| e.to_string())?;
         scope.close().map_err(|_| "update_key_cleanup")?;
         Some(cryptex_updater::KeyCheck {
             prompted_access_allowed,
             verifier_pid,
+            staged_transport,
         })
     } else {
         None

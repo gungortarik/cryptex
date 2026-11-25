@@ -321,7 +321,7 @@ fn await_hint(child: &mut Child, deadline: Instant) -> Result<(), Error> {
     }
     Ok(())
 }
-fn package(release: &Release, root: &Path) -> Result<PinnedSyncthingPackage, Error> {
+pub(super) fn package(release: &Release, root: &Path) -> Result<PinnedSyncthingPackage, Error> {
     let directory = root.join("package");
     if !directory.try_exists().map_err(|_| Error::Package)? {
         std::fs::DirBuilder::new()

@@ -46,7 +46,10 @@ def exercise(root, revision):
         installed = root / "Applications/Cryptex.app"
         installed.parent.mkdir()
     unsigned = ROOT / "target/release/bundle/macos/Cryptex.app"
-    run("cargo", "build", "--locked", "--release", "-p", "cryptex-updater", cwd=ROOT, timeout=900)
+    transport_features = ["--features", "mac-owner-transport-update"] if profile_trial else []
+    run("cargo", "test", "--locked", "-p", "cryptex-updater", *transport_features, cwd=ROOT, timeout=900)
+    run("cargo", "build", "--locked", "--release", "-p", "cryptex-updater", *transport_features,
+        cwd=ROOT, timeout=900)
     updater = ROOT / "target/release/cryptex-updater"
     image(updater, "com.cryptex.updater")
     public_der = Path(os.environ["CRYPTEX_M17_SIGNER_DER"])

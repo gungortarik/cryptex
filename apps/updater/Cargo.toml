@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 publish = false
 
+[features]
+mac-owner-transport-update = ["dep:cryptexd"]
+
+[target.'cfg(target_os = "macos")'.dependencies]
+cryptexd = { path = "../../services/cryptexd", optional = true, features = ["m17-owner-transport", "m17-sealed-profile-trial"] }
+
 [build-dependencies]
 cc = "=1.5.1"
 

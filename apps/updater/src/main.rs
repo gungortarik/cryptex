@@ -196,6 +196,7 @@ fn key_reply_matches(mode: &str, health: &Health) -> bool {
             r.verifier_pid != 0
                 && r.verifier_pid != health.desktop_pid
                 && health.requires_existing_key
+                && (r.staged_transport.is_none() || mode == cryptex_updater::KEYCHAIN_REOPEN)
         })
 }
 
@@ -238,18 +239,60 @@ fn vacant(path: &Path) -> io::Result<bool> {
 struct Intent {
     working: String,
     staged: String,
+    #[cfg(all(target_os = "macos", feature = "mac-owner-transport-update"))]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    transport: Option<cryptexd::managed_profile::owner_transport_update::TransportTransition>,
 }
 
 impl Intent {
-    fn save(&self, file: &Path) -> io::Result<()> {
+    fn write_intent(&self, file: &Path) -> io::Result<tempfile::NamedTempFile> {
         let temp = tempfile::NamedTempFile::new_in(
             file.parent()
                 .ok_or_else(|| error("missing updater state directory"))?,
         )?;
         serde_json::to_writer(temp.as_file(), self)?;
         temp.as_file().sync_all()?;
-        temp.persist_noclobber(file)?;
+        Ok(temp)
+    }
+
+    #[cfg(all(target_os = "macos", feature = "mac-owner-transport-update"))]
+    fn select_transport(&mut self, layout: &Layout, reported: [u8; 32]) -> io::Result<()> {
+        use cryptexd::managed_profile::owner_transport_update::TransportTransition;
+        if self.transport.is_some() {
+            return Err(error("transport generation already selected"));
+        }
+        let root = cryptexd::local_signed_startup::sealed_trial_root()
+            .map_err(|_| error("sealed profile unavailable"))?;
+        let stopped = layout.stopped_desktop()?;
+        let transition = TransportTransition::capture(&root)
+            .map_err(|_| error("staged transport unavailable"))?;
+        if transition.fingerprint() != reported {
+            return Err(error(
+                "staged transport differs from the authenticated daemon reply",
+            ));
+        }
+        self.transport = Some(transition);
+        let path = layout.intent();
+        self.write_intent(&path)?.persist(&path)?;
+        fs::File::open(
+            path.parent()
+                .ok_or_else(|| error("missing transaction directory"))?,
+        )?
+        .sync_all()?;
+        self.transport
+            .as_ref()
+            .ok_or_else(|| error("missing transport intent"))?
+            .activate(&root)
+            .map_err(|_| error("transport activation failed"))?;
+        drop(stopped);
         Ok(())
+    }
+
+    #[cfg(not(all(target_os = "macos", feature = "mac-owner-transport-update")))]
+    fn select_transport(&mut self, _: &Layout, _: [u8; 32]) -> io::Result<()> {
+        Err(error(
+            "updater does not support this enrolled transport transition",
+        ))
     }
 
     fn restore(&self, layout: &Layout) -> io::Result<Vec<Health>> {
@@ -276,6 +319,14 @@ impl Intent {
         // Authenticate the retained image without launching its daemon against
         // any state left behind by the interrupted candidate.
         release::verify(layout, old, &self.working)?;
+        #[cfg(all(target_os = "macos", feature = "mac-owner-transport-update"))]
+        if let Some(transport) = &self.transport {
+            let root = cryptexd::local_signed_startup::sealed_trial_root()
+                .map_err(|_| error("sealed profile unavailable"))?;
+            transport
+                .restore(&root)
+                .map_err(|_| error("could not restore retained native transport"))?;
+        }
         if old == &layout.pending && new == &layout.active {
             fs::rename(old, &layout.previous)?;
         } else if !((old == &layout.active && new == &layout.pending)
@@ -330,7 +381,7 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
     let transaction = layout.begin_update()?;
     let journal = layout.intent();
     if !vacant(&journal)? {
-        let intent: Intent = serde_json::from_reader(fs::File::open(&journal)?.take(1024))?;
+        let intent: Intent = serde_json::from_reader(fs::File::open(&journal)?.take(2048))?;
         let checks = intent.restore(layout)?;
         return reopen(layout, transaction, &intent.working, "recovered", checks);
     }
@@ -357,11 +408,13 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
     if before.status != "connected" {
         return Err(error("current Desktop does not have a working daemon"));
     }
-    let intent = Intent {
+    let mut intent = Intent {
         working: original.clone(),
         staged: approved.to_owned(),
+        #[cfg(all(target_os = "macos", feature = "mac-owner-transport-update"))]
+        transport: None,
     };
-    intent.save(&journal)?;
+    intent.write_intent(&journal)?.persist_noclobber(&journal)?;
     fs::rename(&layout.active, &layout.previous)?;
     if let Err(cause) = fs::rename(&layout.pending, &layout.active) {
         fs::rename(&layout.previous, &layout.active)?;
@@ -370,7 +423,11 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
     if package_digest(&layout.active)? != approved {
         return Err(error("activated package changed"));
     }
-    let response = candidate_health(&before, |mode| probe(layout, approved, mode));
+    let response = candidate_health(
+        &before,
+        |mode| probe(layout, approved, mode),
+        |reported| intent.select_transport(layout, reported),
+    );
     let candidate = match response {
         Ok(health) => health,
         Err(outcome) => {
@@ -413,9 +470,34 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
 fn candidate_health(
     before: &Health,
     mut run: impl FnMut(&str) -> io::Result<Probe>,
+    mut select: impl FnMut([u8; 32]) -> io::Result<()>,
 ) -> Result<Health, &'static str> {
     match run(PROBE) {
-        Ok(Probe::Replied(health)) => match check_candidate_key(before, &health, run) {
+        Ok(Probe::Replied(health)) => match check_candidate_key(before, &health, |mode| {
+            let reply = run(mode)?;
+            if let Probe::Replied(ref checked) = reply
+                && let Some(prepared) = checked
+                    .key_check
+                    .as_ref()
+                    .and_then(|check| check.staged_transport)
+            {
+                if mode != cryptex_updater::KEYCHAIN_REOPEN
+                    || checked.status != "connected"
+                    || checked.desktop_protocol != health.desktop_protocol
+                    || !checked.requires_existing_key
+                {
+                    return Ok(Probe::InvalidReply);
+                }
+                select(prepared)?;
+                let reopened = run(mode)?;
+                if matches!(&reopened, Probe::Replied(check) if check.key_check.as_ref().is_some_and(|key| key.staged_transport.is_some()))
+                {
+                    return Ok(Probe::InvalidReply);
+                }
+                return Ok(reopened);
+            }
+            Ok(reply)
+        }) {
             Ok(true) => Ok(health),
             Ok(false) => Err("rolled_back_keychain_check"),
             Err(_) => Err("rolled_back_keychain_io"),
@@ -495,6 +577,7 @@ mod keychain_update_tests {
         reply.key_check = Some(cryptex_updater::KeyCheck {
             prompted_access_allowed: true,
             verifier_pid: 3,
+            staged_transport: None,
         });
         assert!(key_reply_matches(KEYCHAIN_PROBE, &reply));
         assert!(!key_reply_matches(PROBE, &reply));
@@ -506,6 +589,41 @@ mod keychain_update_tests {
     }
 
     #[test]
+    fn staged_transport_requires_a_fresh_silent_check_after_selection() {
+        for repeated_stage in [true, false] {
+            let mut modes = vec![];
+            let mut selected = vec![];
+            let result = candidate_health(
+                &health(true),
+                |mode| {
+                    modes.push(mode.to_owned());
+                    let mut reply = health(true);
+                    if mode != PROBE {
+                        reply.key_check = Some(cryptex_updater::KeyCheck {
+                            prompted_access_allowed: mode == KEYCHAIN_PROBE,
+                            verifier_pid: 3,
+                            staged_transport: (mode == KEYCHAIN_REOPEN
+                                && (modes.len() == 3 || repeated_stage))
+                                .then_some([42; 32]),
+                        });
+                    }
+                    Ok(Probe::Replied(reply))
+                },
+                |fingerprint| {
+                    selected.push(fingerprint);
+                    Ok(())
+                },
+            );
+            assert_eq!(
+                modes,
+                [PROBE, KEYCHAIN_PROBE, KEYCHAIN_REOPEN, KEYCHAIN_REOPEN]
+            );
+            assert_eq!(selected, [[42; 32]]);
+            assert_eq!(result.is_ok(), !repeated_stage);
+        }
+    }
+
+    #[test]
     fn failed_probe_io_selects_recovery_without_asking_again() {
         for (failed, outcome) in [
             (PROBE, "rolled_back_probe_io"),
@@ -513,13 +631,17 @@ mod keychain_update_tests {
             (KEYCHAIN_REOPEN, "rolled_back_keychain_io"),
         ] {
             let mut seen = Vec::new();
-            let result = candidate_health(&health(true), |mode| {
-                seen.push(mode.to_owned());
-                if mode == failed {
-                    return Err(error("fixture pipe closed"));
-                }
-                Ok(Probe::Replied(health(true)))
-            });
+            let result = candidate_health(
+                &health(true),
+                |mode| {
+                    seen.push(mode.to_owned());
+                    if mode == failed {
+                        return Err(error("fixture pipe closed"));
+                    }
+                    Ok(Probe::Replied(health(true)))
+                },
+                |_| panic!("transport selection was not requested"),
+            );
             assert_eq!(result.unwrap_err(), outcome);
             assert_eq!(seen.last().unwrap(), failed);
             assert!(

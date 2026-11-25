@@ -977,6 +977,7 @@ name = "cryptex-updater"
 version = "0.0.0"
 dependencies = [
  "cc",
+ "cryptexd",
  "process-wrap",
  "serde",
  "serde_json",

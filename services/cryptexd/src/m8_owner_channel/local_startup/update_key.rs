@@ -8,13 +8,17 @@ pub(super) const INTERACTIVE: u8 = 6;
 pub(super) const SILENT: u8 = 7;
 const VERIFIED: u8 = 8;
 const REFUSED: u8 = 9;
+const TRANSPORT_STAGED: u8 = 10;
 
 fn budget(allow_prompt: bool) -> Duration {
     Duration::from_secs(if allow_prompt { 120 } else { 12 })
 }
 
 impl LocalDaemon {
-    pub fn check_update_credential(mut self, allow_prompt: bool) -> Result<(), Error> {
+    pub fn check_update_credential(
+        mut self,
+        allow_prompt: bool,
+    ) -> Result<Option<[u8; 32]>, Error> {
         if self.bound || self.existing_profile || self.transport_mode {
             return Err(Error::Arguments);
         }
@@ -23,18 +27,24 @@ impl LocalDaemon {
         let channel = self.channel.as_mut().ok_or(Error::Channel)?;
         let phase = if allow_prompt { INTERACTIVE } else { SILENT };
         channel.send(&frame(phase, &self.epoch, &binding), deadline)?;
-        let verified =
-            channel.receive(&mut [0; 54], deadline)? == frame(VERIFIED, &self.epoch, &binding);
+        let mut message = [0; 86];
+        let reply = channel.receive(&mut message, deadline)?;
+        let result = if reply == frame(VERIFIED, &self.epoch, &binding) {
+            Ok(None)
+        } else if !allow_prompt
+            && reply.len() == 86
+            && reply[..54] == frame(TRANSPORT_STAGED, &self.epoch, &binding)
+        {
+            Ok(Some(reply[54..].try_into().map_err(|_| Error::Channel)?))
+        } else {
+            Err(Error::Unavailable)
+        };
         // The daemon has finished its one read and enters normal lifecycle
         // shutdown. This check never bound an owner request channel.
         self.content_mode = false;
         let stop = self.stop_file.clone();
         self.shutdown(&stop)?;
-        if verified {
-            Ok(())
-        } else {
-            Err(Error::Unavailable)
-        }
+        result
     }
 }
 
@@ -45,15 +55,21 @@ impl ChildGuard {
         allow_prompt: bool,
     ) -> Result<(), Error> {
         let deadline = Instant::now() + budget(allow_prompt);
-        let verified = verify_existing_key(allow_prompt).is_ok();
-        let result = if verified { VERIFIED } else { REFUSED };
-        self._channel
-            .send(&frame(result, &self.epoch, binding), deadline)?;
+        let result = match verify_existing_key(allow_prompt) {
+            Ok(None) => frame(VERIFIED, &self.epoch, binding),
+            Ok(Some(fingerprint)) => {
+                let mut reply = frame(TRANSPORT_STAGED, &self.epoch, binding);
+                reply.extend_from_slice(&fingerprint);
+                reply
+            }
+            Err(_) => frame(REFUSED, &self.epoch, binding),
+        };
+        self._channel.send(&result, deadline)?;
         Ok(())
     }
 }
 
-fn verify_existing_key(allow_prompt: bool) -> Result<(), Error> {
+fn verify_existing_key(allow_prompt: bool) -> Result<Option<[u8; 32]>, Error> {
     use crate::import_staging::macos_fs::RuntimeIdentity;
     let root = sealed_trial_root()?;
     require_content_runtime(&root, ContentProfile::ExistingProfile)?;
@@ -91,11 +107,32 @@ fn verify_existing_key(allow_prompt: bool) -> Result<(), Error> {
             namespace
                 .pin(&root.join("managed-transport"))
                 .map_err(|_| Error::Instance)?;
-            crate::managed_profile::connection_settings::Location::mac(&root)
+            use crate::managed_profile::connection_settings::Location;
+            let location = Location::mac(&root);
+            #[cfg(feature = "m17-owner-transport")]
+            if location.pin_enrolled_package().is_err() {
+                let previous = root.join("managed-transport/package");
+                crate::syncthing_package::verify_previous_owner_package(&previous)
+                    .map_err(|_| Error::Unavailable)?;
+                let source = tempfile::tempdir().map_err(|_| Error::Instance)?;
+                let release = Release::current(Role::Daemon, Instant::now() + budget(false))?;
+                let package =
+                    crate::m8_owner_channel::transport_helper::package(&release, source.path())
+                        .map_err(|_| Error::Unavailable)?;
+                drop(lock);
+                let prepared =
+                    Location::stage_stopped_owner_transport(&root, &package, &store, environment)
+                        .map_err(|_| Error::Unavailable)?;
+                directory.validate().map_err(|_| Error::Instance)?;
+                namespace.validate().map_err(|_| Error::Instance)?;
+                return Ok(Some(prepared.fingerprint()));
+            }
+            location
                 .candidate(&store, environment)
                 .map_err(|_| Error::Unavailable)?;
         }
         directory.validate().map_err(|_| Error::Instance)?;
     }
-    namespace.validate().map_err(|_| Error::Instance)
+    namespace.validate().map_err(|_| Error::Instance)?;
+    Ok(None)
 }

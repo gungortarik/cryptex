@@ -174,7 +174,7 @@ impl Enrollment {
 }
 
 impl TransportTransition {
-    pub(super) fn capture(root: &Path) -> Result<Self> {
+    pub fn capture(root: &Path) -> Result<Self> {
         let dirs = Enrollment::open(root)?;
         Ok(Self {
             runtime: dirs.runtime.identity()?,
@@ -182,6 +182,26 @@ impl TransportTransition {
             native: dirs.native().capture()?,
             package: dirs.package().capture()?,
         })
+    }
+    /// Bind the directory identities returned by the stopped daemon to the
+    /// independent updater's observation before it saves an activation intent.
+    pub fn fingerprint(&self) -> [u8; 32] {
+        use sha2::{Digest, Sha256};
+        let mut hash = Sha256::new();
+        hash.update(b"cryptex.stopped-transport.v1\0");
+        for (volume, high, low) in [
+            self.runtime,
+            self.enrollment,
+            self.native.previous,
+            self.native.candidate,
+            self.package.previous,
+            self.package.candidate,
+        ] {
+            for word in [volume, high, low] {
+                hash.update(word.to_be_bytes());
+            }
+        }
+        hash.finalize().into()
     }
     pub fn activate(&self, root: &Path) -> Result<()> {
         self.select(root, Position::Candidate)
