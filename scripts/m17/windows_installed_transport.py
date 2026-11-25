@@ -76,7 +76,33 @@ def exercise(active):
         subprocess.run([tool, "admit", directory, fixture / (name + ".cms")], check=True, timeout=90)
     approved = subprocess.check_output([tool, "fingerprint", pending], text=True, timeout=90).strip()
     stage.write_text("apply", encoding="ascii")
-    report = json.loads(subprocess.check_output([tool, "apply", approved], text=True, timeout=360))
+    # apply intentionally leaves a Desktop running. Wait for the updater's process
+    # handle, independently of when its descendants release inherited streams.
+    with (scratch / "paired-apply.json").open("x+b") as receipt:
+        with (scratch / "paired-apply.stderr").open("x+b") as diagnostic:
+            try:
+                subprocess.run([tool, "apply", approved], stdin=subprocess.DEVNULL,
+                               stdout=receipt, stderr=diagnostic, check=True, timeout=360)
+            except subprocess.TimeoutExpired:
+                intent = local / "Cryptex-Updater/package-transition.json"
+                print("paired_apply_process_deadline=true"
+                      f" transition_present={intent.is_file()}"
+                      f" previous_app_present={active.with_name('Cryptex.previous').is_dir()}"
+                      f" receipt_bytes={receipt.seek(0, os.SEEK_END)}", flush=True)
+                raise
+            except subprocess.CalledProcessError as error:
+                diagnostic.seek(0)
+                output = diagnostic.read(16384).decode(errors="replace")
+                known = ("working Desktop update probe timed out", "working Desktop failed its update probe",
+                         "invalid working Desktop update response", "retained Desktop could not reconnect",
+                         "recovered Desktop could not reconnect", "could not restore retained native transport")
+                reason = next((message for message in known if message in output), "unclassified")
+                raise RuntimeError(f"Installed paired updater exit={error.returncode}, reason={reason}") from error
+        receipt.seek(0)
+        data = receipt.read(4097)
+        if not data or len(data) > 4096:
+            raise RuntimeError("Installed paired updater returned a missing or oversized receipt")
+        report = json.loads(data)
     stage.write_text("reopen", encoding="ascii")
     pid = report["reopened_pid"]
     try:
