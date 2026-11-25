@@ -97,14 +97,21 @@ def install_previous_app(work, active, updater, pin):
 def seed_phase(scope, tool, profile, name):
     test = "managed_profile::exchange_install::tests::installed_previous_pair::" + name
     seed = scope.fence.outcome(["/usr/bin/env", "CRYPTEX_TEST_ENROLLED_ROOT=" + str(profile), tool,
-                                test, "--ignored", "--exact"], 150)
-    if seed.code:
+                                test, "--ignored", "--exact", "--nocapture"], 150)
+    if seed.code or seed.timed_out:
+        stages = re.findall(r"\bpair_fixture_stage=(profile|credential|journal|anchor|history|native)$",
+                            seed.output, re.MULTILINE)
+        if stages:
+            print("historical_pair_last_stage=" + stages[-1], flush=True)
+        status = re.search(r"\bpair_fixture_credential_status=(-?\d{1,10})$", seed.output, re.MULTILINE)
+        if status:
+            print("historical_pair_credential_status=" + status[1], flush=True)
         line = re.search(r"installed_previous_pair\.rs:(\d+):", seed.output)
         if line:
             print("historical_mac_enrollment_failed_at_fixture_line=" + line[1], flush=True)
     from mac_identity_preflight import checked
     result = checked(lambda *_: seed, [], name, 150)
-    if f"test {test} ... ok" not in result:
+    if test not in result or not re.search(r"^test result: ok\. 1 passed; 0 failed; 0 ignored;", result, re.MULTILINE):
         raise RuntimeError("Historical pairing fixture did not execute")
 
 
