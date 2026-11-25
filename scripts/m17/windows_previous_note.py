@@ -61,7 +61,13 @@ def existing_enrollment(previous, installed):
                                capture_output=True, text=True, timeout=45)
         if (probe.returncode != 2 or "enrolled transport requires cold migration" not in probe.stderr
                 or probe.stdout.strip()):
-            raise RuntimeError("Installed Desktop accepted an unmigrated transport or failed at the wrong boundary")
+            reason = next((reason for reason in (
+                "quit the running Desktop", "probe requires the installed Desktop",
+                "no package transaction is running", "Desktop is running", "Update rehearsal refused",
+                "enrolled transport requires cold migration",
+            ) if reason in probe.stderr), "unrecognized")
+            raise RuntimeError(f"Unexpected installed probe: exit={probe.returncode}, "
+                               f"response={bool(probe.stdout.strip())}, reason={reason}")
         if {path.relative_to(root): digest(path) for path in root.rglob("*") if path.is_file()} != runtime_files:
             raise RuntimeError("Candidate health probe changed the previous runtime")
     if verify_note(previous, root) != before:

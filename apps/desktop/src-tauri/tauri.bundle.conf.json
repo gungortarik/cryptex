@@ -1,5 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
+  "build": {
+    "features": ["cryptexd/m17-owner-transport"]
+  },
   "bundle": {
     "active": true,
     "windows": { "nsis": { "installMode": "currentUser" } },
