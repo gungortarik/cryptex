@@ -13,7 +13,7 @@ from paired_release_handoff import ROOT, inventory
 from windows_previous_note import park_test_profile
 
 sys.path.insert(0, str(ROOT / "scripts/m14"))
-from installed_update import wait_for_desktop_exit
+from installed_update import digest, verify_note_signature, wait_for_desktop_exit
 
 
 def verify_reopened(root, pid):
@@ -60,8 +60,14 @@ def exercise(active):
     baseline = inventory(native)
     old_package = inventory(helper / "package")
     journal = Path("exchange-install.json")
-    if journal not in baseline or not list(events.rglob("*.seg")):
-        raise RuntimeError("Missing committed previous journal or signed note")
+    if journal not in baseline:
+        raise RuntimeError("Missing committed previous journal")
+    descriptor = runtime / "signed-probe.json"
+    descriptor_hash = digest(descriptor)
+    # Only the local device writes canonical events in this paired fixture.
+    # Its original note is sealed in segment zero before the peer approval.
+    note, = events.glob("*/00000000000000000000.seg")
+    verify_note_signature(fixture / "working/cryptexd.exe", note, descriptor)
     pending = active.with_name("Cryptex.pending")
     active.rename(pending)
     shutil.copytree(fixture / "working", active)
@@ -82,8 +88,10 @@ def exercise(active):
         (runtime / "quit.request").touch(exist_ok=True)
         wait_for_desktop_exit(pid)
     stage.write_text("verify", encoding="ascii")
+    verify_note_signature(active / "cryptexd.exe", note, descriptor)
     installed = inventory(helper / "package")
     if (subprocess.check_output([tool, "fingerprint", active], text=True, timeout=90).strip() != approved
+            or digest(descriptor) != descriptor_hash
             or history != (inventory(events), inventory(identity))
             or inventory(runtime / "managed-transport-previous-native") != baseline
             or inventory(runtime / "managed-transport-previous-package") != old_package

@@ -231,16 +231,20 @@ def apply_with_live_timeout(tool, approved, runtime, env):
         armed.unlink()
 
 
-def verify_note(daemon, runtime):
-    events = runtime / "canonical/events"
-    packs = sorted(path for path in events.rglob("*") if path.suffix in (".seg", ".open"))
-    segment, = [path for path in packs if path.suffix == ".seg"]
-    descriptor = runtime / "signed-probe.json"
+def verify_note_signature(daemon, segment, descriptor):
     verified = run(daemon, "pilot-fixture", "verify-signed-transfer-v1", "--segment", segment,
                    "--descriptor", descriptor, "--confirm-isolated-pilot", capture_output=True, timeout=30)
     report = json.loads(verified.stdout)
     if report["outcome"] != "signature_verified" or report["event_count"] != 1:
         raise RuntimeError("Expected one verified synthetic note")
+
+
+def verify_note(daemon, runtime):
+    events = runtime / "canonical/events"
+    packs = sorted(path for path in events.rglob("*") if path.suffix in (".seg", ".open"))
+    segment, = [path for path in packs if path.suffix == ".seg"]
+    descriptor = runtime / "signed-probe.json"
+    verify_note_signature(daemon, segment, descriptor)
     return {path.relative_to(runtime).as_posix(): digest(path) for path in [*packs, descriptor]}
 
 

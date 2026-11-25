@@ -106,6 +106,13 @@ The Mac assertions cover the persistent login file and binaries. They do not mea
 
 ## Standalone updater delivery from the owner's signing machine
 
+For the [installed update run at `3d77e32`](https://github.com/gungortarik/cryptex/actions/runs/45715891800), both downloaded default archives matched the SHA-256 printed by their native signing job. Each package referenced at least one embedded notice. Every reference resolved, every embedded document had a reference, and every document matched its SHA-256 after decoding.
+
+| Test archive | SHA-256 | Packages | Distinct documents |
+| --- | --- | ---: | ---: |
+| Windows x64 | `06e8c7ea3029cffb0cedc9bd0f2116081fc443a14bba053e9fd565c7458bf70f` | 44 | 30 |
+| Apple Silicon | `c6e263982a3dbb94aa93c0209365386d63d00de4550663eb9cfdb33aa322aac7` | 37 | 35 |
+
 At `ee33895` Windows and Apple Silicon verified the signed delivery archive, rejected the default build when the enrolled-profile updater was requested, and used the extracted default executable for the installed update and rollback checks. Both systems verified the signed note after reinstall. The historical paired-profile migration has a separate trial. [Windows and Mac results](https://github.com/gungortarik/cryptex/actions/runs/45710227606)
 
 At `40dea0f` the [packaging command](../../scripts/m17/package_owner_updater.py) ran on native Windows and macOS with disposable certificate-store and Keychain identities. It refused a mismatched public certificate, unapproved executable hash and an updater built to trust a different signer. Both native suites extracted the signed updater from the resulting archive and used that executable for the five update and rollback scenarios. The signed test note remained verifiable after reinstall. The [sealed Mac run](https://github.com/gungortarik/cryptex/actions/runs/45289817066) also passed for this revision. The [companion first-install jobs](https://github.com/gungortarik/cryptex/actions/runs/45289817231) verified the installed signatures on both platforms.
