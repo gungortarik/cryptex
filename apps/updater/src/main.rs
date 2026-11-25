@@ -72,6 +72,7 @@ enum Probe {
     Replied(Health),
     TimedOut,
     Failed,
+    InvalidReply,
 }
 
 fn require_connection_check(layout: &Layout, package: &Path, digest: &str) -> io::Result<Health> {
@@ -79,6 +80,7 @@ fn require_connection_check(layout: &Layout, package: &Path, digest: &str) -> io
         Probe::Replied(health) => Ok(health),
         Probe::TimedOut => Err(error("working Desktop update probe timed out")),
         Probe::Failed => Err(error("working Desktop failed its update probe")),
+        Probe::InvalidReply => Err(error("invalid working Desktop update response")),
     }
 }
 
@@ -139,9 +141,13 @@ fn probe(layout: &Layout, package: &Path, digest: &str) -> io::Result<Probe> {
             terminate_probe(&mut *child)?;
             return Ok(Probe::TimedOut);
         }
+        Ok(Ok(_)) => {
+            terminate_probe(&mut *child)?;
+            return Ok(Probe::InvalidReply);
+        }
         _ => {
             terminate_probe(&mut *child)?;
-            return Err(error("invalid Desktop update probe output"));
+            return Err(error("could not read Desktop update probe output"));
         }
     };
     let Some(exit) = wait_for_exit(
@@ -155,7 +161,9 @@ fn probe(layout: &Layout, package: &Path, digest: &str) -> io::Result<Probe> {
     if !exit.success() {
         return Ok(Probe::Failed);
     }
-    let health: Health = serde_json::from_slice(&bytes)?;
+    let Ok(health) = serde_json::from_slice::<Health>(&bytes) else {
+        return Ok(Probe::InvalidReply);
+    };
     if health.desktop_pid != child.id()
         || health.daemon_pid == 0
         || !matches!(
@@ -166,7 +174,7 @@ fn probe(layout: &Layout, package: &Path, digest: &str) -> io::Result<Probe> {
             ("connected", true) | ("incompatible", false)
         )
     {
-        return Err(error("invalid Desktop update response"));
+        return Ok(Probe::InvalidReply);
     }
     Ok(Probe::Replied(health))
 }
@@ -310,22 +318,18 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
     if package_digest(&layout.active)? != approved {
         return Err(error("activated package changed"));
     }
-    let candidate = match probe(layout, &layout.active, approved)? {
-        Probe::Replied(health) => health,
-        failure @ (Probe::TimedOut | Probe::Failed) => {
+    let response = match probe(layout, &layout.active, approved)? {
+        Probe::Replied(health) => Ok(health),
+        Probe::TimedOut => Err("rolled_back_timeout"),
+        Probe::Failed => Err("rolled_back_failed_probe"),
+        Probe::InvalidReply => Err("rolled_back_invalid_reply"),
+    };
+    let candidate = match response {
+        Ok(health) => health,
+        Err(outcome) => {
             let mut checks = vec![before];
             checks.extend(intent.restore(layout)?);
-            return reopen(
-                layout,
-                transaction,
-                &original,
-                if matches!(failure, Probe::TimedOut) {
-                    "rolled_back_timeout"
-                } else {
-                    "rolled_back_failed_probe"
-                },
-                checks,
-            );
+            return reopen(layout, transaction, &original, outcome, checks);
         }
     };
     let mut checks = vec![before, candidate];

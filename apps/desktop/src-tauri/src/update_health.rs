@@ -54,6 +54,16 @@ pub(super) fn probe() -> Result<(), String> {
         .and_then(|layout| layout.probe_session())
         .map_err(|e| e.to_string())?;
     let health = measure()?;
+    #[cfg(feature = "m14-installed-update-check")]
+    if health.status == "incompatible"
+        && default_runtime_root_path()?
+            .join("m17-invalid-reply")
+            .try_exists()
+            .map_err(|e| e.to_string())?
+    {
+        println!("incomplete response");
+        return Ok(());
+    }
     println!(
         "{}",
         serde_json::to_string(&health).map_err(|e| e.to_string())?

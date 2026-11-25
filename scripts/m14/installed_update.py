@@ -299,7 +299,10 @@ def exercise(packages, work, runtime, env):
     for path, (_, artifact, _) in zip([active, *(image[0] for image in images)], packages, strict=True):
         for _ in range(2):
             run(tool, "admit", path, artifact.parent / "release.cms", env=env, timeout=45)
-    for index, source in enumerate([images[0][0]] + [images[1][0]] * 4):
+    outcomes = ("updated", "rolled_back", "recovered", "rolled_back_timeout",
+                "rolled_back_failed_probe", "rolled_back_invalid_reply")
+    for index, outcome in enumerate(outcomes):
+        source = images[0 if index == 0 else 1][0]
         if WINDOWS:
             shutil.copytree(source, pending)
         else:
@@ -339,8 +342,8 @@ def exercise(packages, work, runtime, env):
             process, timeout_evidence = apply_with_live_timeout(tool, approved, runtime, env)
             if run(tool, "fingerprint", pending, text=True, capture_output=True).stdout.strip() != approved:
                 raise RuntimeError("Timeout rollback changed the staged candidate")
-        elif index == 4:
-            marker = runtime / "m17-fail-probe"
+        elif index in (4, 5):
+            marker = runtime / ("m17-fail-probe" if index == 4 else "m17-invalid-reply")
             marker.touch(exist_ok=False)
             try:
                 process = run(tool, "apply", approved, env=env, text=True, stdout=subprocess.PIPE, timeout=150)
@@ -349,13 +352,14 @@ def exercise(packages, work, runtime, env):
         else:
             process = run(tool, "apply", approved, env=env, text=True, stdout=subprocess.PIPE, timeout=150)
         report = json.loads(process.stdout)
-        expected = ([(1, 1), (2, 2)], [(2, 2), (2, 1), (2, 2)], [(2, 2), (2, 2)], [(2, 2)] * 3, [(2, 2)] * 3)[index]
+        expected = {0: [(1, 1), (2, 2)], 1: [(2, 2), (2, 1), (2, 2)],
+                    2: [(2, 2)] * 2}.get(index, [(2, 2)] * 3)
         checks = report["checks"]
         if [(c["desktop_protocol"], c["daemon_protocol"]) for c in checks] != expected:
             raise RuntimeError(f"Transaction {index} returned {report['outcome']} with unexpected IPC handshake sequence: {checks}")
         if [c["status"] for c in checks] != ["incompatible" if a != b else "connected" for a, b in expected]:
             raise RuntimeError("Unexpected update decision evidence")
-        if report["outcome"] != ("updated", "rolled_back", "recovered", "rolled_back_timeout", "rolled_back_failed_probe")[index]:
+        if report["outcome"] != outcome:
             raise RuntimeError(f"Unexpected updater outcome: {report}")
         if journal.exists() or previous.exists():
             raise RuntimeError("Completed operation retained an unfinished transition")
