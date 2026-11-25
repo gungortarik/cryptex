@@ -76,7 +76,7 @@ enum Probe {
 }
 
 fn require_connection_check(layout: &Layout, package: &Path, digest: &str) -> io::Result<Health> {
-    match probe(layout, package, digest)? {
+    match probe(layout, package, digest, PROBE)? {
         Probe::Replied(health) => Ok(health),
         Probe::TimedOut => Err(error("working Desktop update probe timed out")),
         Probe::Failed => Err(error("working Desktop failed its update probe")),
@@ -106,11 +106,11 @@ fn terminate_probe(child: &mut dyn ChildWrapper) -> io::Result<()> {
     Ok(())
 }
 
-fn probe(layout: &Layout, package: &Path, digest: &str) -> io::Result<Probe> {
+fn probe(layout: &Layout, package: &Path, digest: &str, mode: &str) -> io::Result<Probe> {
     release::verify(layout, package, digest)?;
     let mut command = Command::new(desktop(package));
     command
-        .arg(PROBE)
+        .arg(mode)
         .stdin(Stdio::null())
         .stdout(Stdio::piped());
     let mut command = CommandWrap::from(command);
@@ -119,7 +119,12 @@ fn probe(layout: &Layout, package: &Path, digest: &str) -> io::Result<Probe> {
     #[cfg(unix)]
     command.wrap(process_wrap::std::ProcessGroup::leader());
     let mut child = command.spawn()?;
-    let deadline = Instant::now() + cryptex_updater::PROBE_TIMEOUT;
+    let timeout = if mode == cryptex_updater::KEYCHAIN_PROBE {
+        Duration::from_secs(150)
+    } else {
+        cryptex_updater::PROBE_TIMEOUT
+    };
+    let deadline = Instant::now() + timeout;
     let stdout = child
         .stdout()
         .take()
@@ -177,6 +182,32 @@ fn probe(layout: &Layout, package: &Path, digest: &str) -> io::Result<Probe> {
         return Ok(Probe::InvalidReply);
     }
     Ok(Probe::Replied(health))
+}
+
+// Each check is a fresh, independently verified Desktop/daemon pair. The second
+// child must reopen the same credential with all Keychain interaction disabled.
+fn check_candidate_key(
+    working: &Health,
+    candidate: &Health,
+    mut run: impl FnMut(&str) -> io::Result<Probe>,
+) -> io::Result<bool> {
+    if candidate.status != "connected" {
+        return Ok(true);
+    }
+    if !candidate.requires_existing_key {
+        return Ok(!working.requires_existing_key);
+    }
+    for mode in [
+        cryptex_updater::KEYCHAIN_PROBE,
+        cryptex_updater::KEYCHAIN_REOPEN,
+    ] {
+        if !matches!(run(mode)?, Probe::Replied(reply) if reply.requires_existing_key
+            && reply.status == "connected" && reply.desktop_protocol == candidate.desktop_protocol)
+        {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn vacant(path: &Path) -> io::Result<bool> {
@@ -318,8 +349,16 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
     if package_digest(&layout.active)? != approved {
         return Err(error("activated package changed"));
     }
-    let response = match probe(layout, &layout.active, approved)? {
-        Probe::Replied(health) => Ok(health),
+    let response = match probe(layout, &layout.active, approved, PROBE)? {
+        Probe::Replied(health) => {
+            if check_candidate_key(&before, &health, |mode| {
+                probe(layout, &layout.active, approved, mode)
+            })? {
+                Ok(health)
+            } else {
+                Err("rolled_back_keychain_check")
+            }
+        }
         Probe::TimedOut => Err("rolled_back_timeout"),
         Probe::Failed => Err("rolled_back_failed_probe"),
         Probe::InvalidReply => Err("rolled_back_invalid_reply"),
@@ -403,5 +442,62 @@ fn main() -> io::Result<()> {
         _ => Err(error(
             "use fingerprint PATH, statement PATH APPROVED_SHA256, admit PATH RECEIPT or apply APPROVED_SHA256",
         )),
+    }
+}
+
+#[cfg(test)]
+mod keychain_update_tests {
+    use super::*;
+    use cryptex_updater::{KEYCHAIN_PROBE, KEYCHAIN_REOPEN};
+
+    fn health(requires_existing_key: bool) -> Health {
+        Health {
+            status: "connected".into(),
+            desktop_pid: 1,
+            daemon_pid: 2,
+            desktop_protocol: 1,
+            daemon_protocol: 1,
+            requires_existing_key,
+        }
+    }
+
+    #[test]
+    fn rejection_stops_after_one_prompt_and_one_time_access_cannot_commit() {
+        for modes in [vec![KEYCHAIN_PROBE], vec![KEYCHAIN_PROBE, KEYCHAIN_REOPEN]] {
+            let mut seen = Vec::new();
+            let accepted = check_candidate_key(&health(true), &health(true), |mode| {
+                seen.push(mode.to_owned());
+                Ok(if seen.len() == modes.len() {
+                    Probe::Failed
+                } else {
+                    Probe::Replied(health(true))
+                })
+            })
+            .unwrap();
+            assert!(!accepted);
+            assert_eq!(seen, modes);
+        }
+    }
+
+    #[test]
+    fn persistent_upgrade_requires_a_second_silent_success_and_cannot_drop_capability() {
+        let mut seen = Vec::new();
+        assert!(
+            check_candidate_key(&health(false), &health(true), |mode| {
+                seen.push(mode.to_owned());
+                Ok(Probe::Replied(health(true)))
+            })
+            .unwrap()
+        );
+        assert_eq!(seen, [KEYCHAIN_PROBE, KEYCHAIN_REOPEN]);
+        for old in [true, false] {
+            assert_eq!(
+                check_candidate_key(&health(old), &health(false), |_| {
+                    panic!("ordinary health should determine this outcome")
+                })
+                .unwrap(),
+                !old
+            );
+        }
     }
 }

@@ -7,6 +7,7 @@ on:
       - '.github/workflows/m17-sealed-startup.yml'
       - 'scripts/m17/mac_sealed_startup.py'
       - 'scripts/m17/mac_sealed_profile.py'
+      - 'scripts/m17/mac_update_credential.py'
       - 'scripts/m17/previous_daemon.py'
       - 'services/cryptexd/src/ipc/native_profile.rs'
       - 'scripts/m17/mac_reopened_window.swift'

@@ -43,6 +43,10 @@ fn health_for_child(runtime: &std::path::Path, pid: u32) -> Result<Health, Strin
         daemon_pid: pid,
         desktop_protocol: cryptexd::compat::DAEMON_PROTOCOL_VERSION,
         daemon_protocol: protocol,
+        requires_existing_key: cfg!(all(
+            target_os = "macos",
+            feature = "m17-sealed-profile-trial"
+        )),
     })
 }
 
@@ -50,9 +54,25 @@ pub(super) fn probe() -> Result<(), String> {
     if env::args_os().len() != 2 || env::var_os("CRYPTEXD_BIN").is_some() {
         return Err("update probes require the installed sidecar".into());
     }
-    let _session = cryptex_updater::Layout::current()
-        .and_then(|layout| layout.probe_session())
-        .map_err(|e| e.to_string())?;
+    let layout = cryptex_updater::Layout::current().map_err(|e| e.to_string())?;
+    let _session = layout.probe_session().map_err(|e| e.to_string())?;
+    if env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg != cryptex_updater::PROBE)
+        && !(cfg!(all(
+            target_os = "macos",
+            feature = "m17-sealed-profile-trial"
+        )) && layout.previous.is_dir()
+            && layout.intent().is_file()
+            && env::current_exe()
+                .and_then(|p| p.canonicalize())
+                .map_err(|e| e.to_string())?
+                == cryptex_updater::desktop(&layout.active)
+                    .canonicalize()
+                    .map_err(|e| e.to_string())?)
+    {
+        return Err("credential probe requires the activated installed candidate".into());
+    }
     let health = measure()?;
     #[cfg(feature = "m14-installed-update-check")]
     if health.status == "incompatible"
@@ -82,6 +102,35 @@ fn measure() -> Result<Health, String> {
         .path()
         .canonicalize()
         .map_err(|_| "update_probe_runtime")?;
+    #[cfg(feature = "m17-sealed-profile-trial")]
+    if let Some(mode) = env::args()
+        .nth(1)
+        .filter(|arg| arg != cryptex_updater::PROBE)
+    {
+        use cryptexd::local_signed_startup::{CONTENT_MARKER, ContentProfile};
+        let scope = tempfile::Builder::new()
+            .prefix("cryptex-key-check-")
+            .tempdir()
+            .map_err(|_| "update_key_runtime")?;
+        let root = scope
+            .path()
+            .canonicalize()
+            .map_err(|_| "update_key_runtime")?;
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700))
+            .map_err(|_| "update_key_runtime")?;
+        std::fs::write(root.join("m8-content.marker"), CONTENT_MARKER)
+            .map_err(|_| "update_key_runtime")?;
+        let session = Prepared::current_profile(Duration::from_secs(10), ContentProfile::Ephemeral)
+            .map_err(|e| e.to_string())?;
+        let cmd = super::daemon_hold_command(&session.daemon_path(), &root)?;
+        session
+            .launch(cmd, &root.join("ready"))
+            .map_err(|e| e.to_string())?
+            .check_update_credential(mode == cryptex_updater::KEYCHAIN_PROBE)
+            .map_err(|e| e.to_string())?;
+        scope.close().map_err(|_| "update_key_cleanup")?;
+    }
     let prepared = Prepared::current_desktop(Duration::from_secs(10)).map_err(|e| e.to_string())?;
     let command = super::daemon_hold_command(&prepared.daemon_path(), &runtime)?;
     let daemon = prepared

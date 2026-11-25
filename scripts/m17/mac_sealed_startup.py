@@ -124,11 +124,13 @@ def exercise(root, revision):
     startup("connected")
     if profile_trial:
         from mac_sealed_profile import check
-        check(root, desktop, pin, daemon)
         previous_daemon = Path(os.environ["RUNNER_TEMP"]) / "m17-previous/cryptexd"
         image(previous_daemon, "com.cryptex.daemon")
         check(root, desktop, pin, previous_daemon)
         print("installed_102_reopened_101_note_after_disposable_keychain_grant=passed", flush=True)
+        from mac_update_credential import exercise as credential_update
+        check(root, desktop, pin, daemon, lambda scope, profile:
+              credential_update(root, desktop, updater, delivery, revision, pin, scope, profile))
         return
     window = subprocess.run(["/usr/bin/swift", ROOT / "scripts/m8/mac_ui_quit_check.swift", desktop],
                             capture_output=True, text=True, timeout=120)

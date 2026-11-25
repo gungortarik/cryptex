@@ -50,7 +50,7 @@ pub(crate) fn validate_existing(root: &Path) -> io::Result<()> {
     directory.validate()
 }
 
-fn bind_verified_namespace<S: SecureStore + ?Sized>(
+pub(crate) fn bind_verified_namespace<S: SecureStore + ?Sized>(
     root: &Path,
     instance: &crate::instance::InstanceLock,
     namespace: &RuntimeIdentity,

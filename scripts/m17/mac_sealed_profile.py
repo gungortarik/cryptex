@@ -22,7 +22,7 @@ def observe(desktop):
         raise RuntimeError("Installed window did not return the signed note and quit cleanly")
 
 
-def check(work, desktop, pin, creator):
+def check(work, desktop, pin, creator, upgrade=None):
     from mac_ci_credential_keychain import CredentialKeychain
     from mac_identity_preflight import run_bounded
     from mac_product_key_startup import profile_snapshot
@@ -70,6 +70,8 @@ def check(work, desktop, pin, creator):
                                    f"(exit={outcome.code}, timeout={outcome.timed_out})")
             if profile_snapshot(profile) != baseline or hashlib.sha256(descriptor.read_bytes()).digest() != expected:
                 raise RuntimeError("Reopening changed the signed note or its identity")
+        if upgrade is not None:
+            upgrade(scope, profile)
         descriptor.rename(profile / "held-descriptor")
         denied = scope.fence.outcome([desktop], 40)
         if (denied.code != 2 or denied.timed_out or denied.limited or denied.pipe_failed

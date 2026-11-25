@@ -74,6 +74,8 @@ const RELEASE: &str = env!("CRYPTEX_COMPILED_RELEASE_ID");
 const VERIFICATION_HINT: &[u8] = b"cryptex-m8-verification-progress-v1\n";
 #[path = "local_client.rs"]
 mod client;
+#[cfg(feature = "m17-sealed-profile-trial")]
+mod update_key;
 
 /// Native fixture-only replay evidence. It cannot be serialized, logged with
 /// Debug, or moved away from the thread that owns the native connection.
@@ -625,12 +627,21 @@ impl ChildGuard {
         }
         let content = self._release.frontend()?;
         let mut bytes = [0; 54];
-        if self
+        let request = self
             ._channel
             .receive(&mut bytes, self.deadline)
-            .map_err(Error::from)?
-            != frame(4, &self.epoch, content.binding())
-        {
+            .map_err(Error::from)?;
+        #[cfg(feature = "m17-sealed-profile-trial")]
+        if profile == ContentProfile::Ephemeral {
+            for (phase, allow_prompt) in
+                [(update_key::INTERACTIVE, true), (update_key::SILENT, false)]
+            {
+                if request == frame(phase, &self.epoch, content.binding()) {
+                    return self.reply_to_update_key_check(content.binding(), allow_prompt);
+                }
+            }
+        }
+        if request != frame(4, &self.epoch, content.binding()) {
             return Err(Error::Channel);
         }
         let mut connection = BoundConnection {

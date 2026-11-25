@@ -8,6 +8,8 @@ use std::{
 };
 
 pub const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+pub const KEYCHAIN_PROBE: &str = "--cryptex-update-keychain";
+pub const KEYCHAIN_REOPEN: &str = "--cryptex-update-keychain-unattended";
 pub const PROBE: &str = "--cryptex-update-probe";
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -18,6 +20,8 @@ pub struct Health {
     pub daemon_pid: u32,
     pub desktop_protocol: u32,
     pub daemon_protocol: u32,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub requires_existing_key: bool,
 }
 
 pub struct Layout {

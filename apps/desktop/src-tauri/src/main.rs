@@ -1099,7 +1099,7 @@ fn p0_5_capture_memory(
     let response = cryptexd::ipc::desktop_capture(body, Duration::from_secs(2))
         .map_err(|error| redact_capture_transport_error(&error, false).to_string())?;
     if !response.accepted {
-        // Stable code only — never forward raw daemon/OS diagnostics to the renderer.
+        // Stable code only â€” never forward raw daemon/OS diagnostics to the renderer.
         return Err("capture_rejected".into());
     }
     Ok(response)
@@ -1156,7 +1156,7 @@ enum PlannedMenuEntry {
     CloseWindow,
     /// Explicit custom Quit routed through shared guarded shutdown.
     CustomQuit,
-    /// Forbidden in Cryptex menus — muda/macOS maps this to `terminate:`.
+    /// Forbidden in Cryptex menus â€” muda/macOS maps this to `terminate:`.
     PredefinedQuit,
 }
 
@@ -1199,9 +1199,9 @@ fn is_tray_menu_quit_id(id: &str) -> bool {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MenuListenerOwner {
-    /// `Builder::on_menu_event` — application menu / Cmd+Q only.
+    /// `Builder::on_menu_event` â€” application menu / Cmd+Q only.
     Application,
-    /// `TrayIconBuilder::on_menu_event` — tray menu ids only.
+    /// `TrayIconBuilder::on_menu_event` â€” tray menu ids only.
     Tray,
 }
 
@@ -1403,7 +1403,7 @@ enum CaptureQuitGuardView {
     Clean,
     /// Renderer reported dirty/unresolved/archived input.
     Dirty,
-    /// Guard never synced or sync failed — must not silently quit.
+    /// Guard never synced or sync failed â€” must not silently quit.
     Unknown,
 }
 
@@ -1754,7 +1754,7 @@ mod capture_quit_guard_tests {
         });
         assert!(asked_dirty.get());
 
-        // Even Clean requires confirm in this slice — stale false Clean cannot bypass.
+        // Even Clean requires confirm in this slice â€” stale false Clean cannot bypass.
         let asked_clean = Cell::new(false);
         let _ = decide_user_initiated_quit(CaptureQuitGuardView::Clean, |_message| {
             asked_clean.set(true);
@@ -1765,7 +1765,7 @@ mod capture_quit_guard_tests {
 
     #[test]
     fn cancel_keeps_protection_when_unresolved_remain_after_newer_commit() {
-        // B committed, A still unresolved/archived → Dirty guard; Cancel must not stop/exit.
+        // B committed, A still unresolved/archived â†’ Dirty guard; Cancel must not stop/exit.
         let stopped = Cell::new(false);
         let exited = Cell::new(false);
         let outcome = perform_user_initiated_quit(
@@ -1927,7 +1927,7 @@ mod exit_lifecycle_routing_tests {
             outcome
         };
 
-        // First physical tray Quit → Cancel: every listener sees the event, but only tray owns it.
+        // First physical tray Quit â†’ Cancel: every listener sees the event, but only tray owns it.
         let mut outcomes = Vec::new();
         let acted = dispatch_menu_event_through_all_listeners(TRAY_MENU_QUIT_ID, |_note| {
             outcomes.push(run_once(&asked, &stopped, &exited, &gate, false));
@@ -2830,7 +2830,7 @@ fn spawn_control_file_watcher(app: AppHandle, state: ProbeState) {
             if close.exists() {
                 let _ = fs::remove_file(&close);
                 if let Some(window) = app.get_webview_window("main") {
-                    // Emits WindowEvent::CloseRequested — same handler path as the
+                    // Emits WindowEvent::CloseRequested â€” same handler path as the
                     // macOS traffic-light close button. Used when Accessibility TCC
                     // blocks agent-driven UI clicks.
                     let _ = window.close();
@@ -2979,7 +2979,15 @@ fn main() {
         eprintln!("Update rehearsal refused: {error}");
         std::process::exit(2);
     }
-    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new(cryptex_updater::PROBE)) {
+    if std::env::args_os().nth(1).is_some_and(|arg| {
+        [
+            cryptex_updater::PROBE,
+            cryptex_updater::KEYCHAIN_PROBE,
+            cryptex_updater::KEYCHAIN_REOPEN,
+        ]
+        .iter()
+        .any(|flag| arg == *flag)
+    }) {
         if let Err(error) = update_health::probe() {
             eprintln!("Installed Desktop health check failed: {error}");
             std::process::exit(2);
