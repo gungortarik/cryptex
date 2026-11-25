@@ -106,6 +106,7 @@ fn stage_enrolled_previous_release() {
     drop(settings);
     let pkg = PinnedSyncthingPackage::open(&root.join("2.1.7")).unwrap();
     let stage = source.join("managed-transport-update-native");
+    let package_stage = source.join("managed-transport-update-package");
     let attempt = |store: &dyn SecureStore| {
         Location::stage_stopped_owner_transport(&source, &pkg, store, environment)
     };
@@ -128,10 +129,20 @@ fn stage_enrolled_previous_release() {
     fs::write(&settings_file, serde_json::to_vec(&changed).unwrap()).unwrap();
     assert!(attempt(&store).is_err());
     assert!(!stage.join("exchange-install.json").exists());
+    assert!(!package_stage.exists());
     fs::write(&settings_file, &saved).unwrap();
     fs::write(native.join("index.db"), b"synthetic cold database").unwrap();
     attempt(&store).unwrap();
     attempt(&store).unwrap();
+    PinnedSyncthingPackage::open(&package_stage).unwrap();
+    crate::syncthing_package::verify_previous_owner_package(
+        &source.join("managed-transport").join("package"),
+    )
+    .unwrap();
+    let unrecognized = package_stage.join("unexpected");
+    fs::write(&unrecognized, b"foreign entry").unwrap();
+    assert!(attempt(&store).is_err());
+    assert!(fs::read(&unrecognized).unwrap() == b"foreign entry");
     for leaf in ["config.xml", "index.db", "cert.pem", "key.pem"] {
         assert!(fs::read(stage.join(leaf)).unwrap() == fs::read(native.join(leaf)).unwrap());
     }

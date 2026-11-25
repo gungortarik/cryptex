@@ -116,9 +116,16 @@ struct PackagePins {
 pub struct PinnedSyncthingPackage(Arc<PackagePins>);
 
 impl PinnedSyncthingPackage {
-    /// Copy only the three already verified, immutable Windows package handles.
+    /// Copy only the three already verified package handles.
     /// Destination is a newly created backend directory, never an overwrite.
-    #[cfg(windows)]
+    #[cfg(any(
+        windows,
+        all(
+            target_os = "macos",
+            feature = "m8-local-startup-check",
+            feature = "m17-owner-transport"
+        )
+    ))]
     pub(crate) fn install_fresh(
         &self,
         directory: &crate::import_staging::export_fs::Directory,
@@ -129,7 +136,12 @@ impl PinnedSyncthingPackage {
             .len()
             .checked_sub(3)
             .ok_or(PackageError::UnsafeObject)?;
-        for (name, source) in ["syncthing.exe", "LICENSE.txt", "AUTHORS.txt"]
+        let executable = if cfg!(windows) {
+            "syncthing.exe"
+        } else {
+            "syncthing"
+        };
+        for (name, source) in [executable, "LICENSE.txt", "AUTHORS.txt"]
             .into_iter()
             .zip(&files[start..])
         {
@@ -141,9 +153,67 @@ impl PinnedSyncthingPackage {
                 .open_file(name, true)
                 .map_err(|_| PackageError::Io)?;
             std::io::copy(&mut source, &mut target).map_err(|_| PackageError::Io)?;
+            #[cfg(target_os = "macos")]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mode = if name == executable { 0o500 } else { 0o400 };
+                target
+                    .set_permissions(std::fs::Permissions::from_mode(mode))
+                    .map_err(|_| PackageError::Io)?;
+            }
             crate::import_staging::export_fs::flush(&target).map_err(|_| PackageError::Io)?;
         }
         directory.validate().map_err(|_| PackageError::UnsafeObject)
+    }
+    #[cfg(all(
+        feature = "m17-owner-transport",
+        any(
+            all(windows, target_arch = "x86_64"),
+            all(target_os = "macos", feature = "m8-local-startup-check")
+        )
+    ))]
+    pub(crate) fn stage_owner_update(
+        &self,
+        runtime: &crate::import_staging::export_fs::Directory,
+        root: &Path,
+    ) -> Result<Self, PackageError> {
+        const SLOT: &str = "managed-transport-update-package";
+        if !runtime.is_path(root) {
+            return Err(PackageError::InvalidPath);
+        }
+        let slot = if runtime
+            .exists(SLOT)
+            .map_err(|_| PackageError::UnsafeObject)?
+        {
+            runtime
+                .child(SLOT, false)
+                .map_err(|_| PackageError::UnsafeObject)?
+        } else {
+            let directory = runtime
+                .create_child_exclusive(SLOT)
+                .map_err(|_| PackageError::Io)?;
+            self.install_fresh(&directory)?;
+            directory.sync().map_err(|_| PackageError::Io)?;
+            runtime.sync().map_err(|_| PackageError::Io)?;
+            directory
+        };
+        let path = root.join(SLOT);
+        let package = Self::open(&path)?;
+        // All three fixed files are pinned above. An unexplained fourth
+        // entry cannot be carried into a later launch directory.
+        let mut count = 0;
+        for entry in std::fs::read_dir(&path).map_err(|_| PackageError::Io)? {
+            entry.map_err(|_| PackageError::Io)?;
+            count += 1;
+            if count > 3 {
+                return Err(PackageError::UnsafeObject);
+            }
+        }
+        if count != 3 {
+            return Err(PackageError::UnsafeObject);
+        }
+        slot.validate().map_err(|_| PackageError::UnsafeObject)?;
+        Ok(package)
     }
     pub fn open(directory: &Path) -> Result<Self, PackageError> {
         #[cfg(all(windows, target_arch = "x86_64"))]

@@ -282,6 +282,9 @@ impl Location {
         let create = !path.try_exists().map_err(|_| Error::Storage)?;
         let stage = PrivateDirectory::acquire(&path, create).map_err(|_| Error::Storage)?;
         native.stage_previous_exchange(&stage, store, &peers)?;
+        let _staged_package = candidate_package
+            .stage_owner_update(&namespace, root)
+            .map_err(|_| Error::Storage)?;
         peers.revalidate().map_err(|_| Error::Authority)?;
         package_directory.validate().map_err(|_| Error::Authority)?;
         namespace.validate().map_err(|_| Error::Authority)
