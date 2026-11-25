@@ -7,6 +7,8 @@ on:
       - '.github/workflows/m17-owner-transport.yml'
       - 'scripts/m17/test_owner_transport.py'
       - 'scripts/m17/owner_transport.py'
+      - 'scripts/m17/paired_release_handoff.*'
+      - 'scripts/m17/previous_daemon.py'
       - 'scripts/m17/mac_owner_transport_exchange.py'
       - 'scripts/m8/mac_local_startup_ci.py'
       - 'scripts/m8/mac_transport_check.py'
@@ -38,6 +40,26 @@ jobs:
           python-version: '3.12'
       - run: node --test tools/m0-lifecycle-compare/scripts/syncthing-upgrade.test.mjs
       - run: python -B scripts/m17/test_owner_transport.py
+  previous-release-journal:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-26]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    env:
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Read and restore a journal produced by the 1.0.1 service source
+        run: python -B scripts/m17/paired_release_handoff.py
   windows-product-exchange:
     runs-on: windows-latest
     timeout-minutes: 30
