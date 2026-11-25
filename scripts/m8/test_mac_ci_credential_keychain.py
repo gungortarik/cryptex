@@ -128,6 +128,25 @@ class CredentialTests(unittest.TestCase):
             self.assertEqual(calls, [])
             self.assertEqual(list(root.iterdir()), [])
 
+    def test_transport_grant_is_limited_to_one_enrolled_item_in_the_trial_keychain(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            (root / 'Library/Keychains').mkdir(parents=True, mode=0o700)
+            fake = Fake(root)
+            with patch('mac_ci_credential_keychain.require_hosted_mac'), patch('pathlib.Path.home', return_value=root):
+                with CredentialKeychain(root, fake) as scope:
+                    probe = root / 'item-probe'
+                    with self.assertRaises(PreflightError):
+                        scope.authorize(probe, 'api:', root / 'creator', root / 'candidate')
+                    account = 'api:' + 'a' * 32
+                    scope.authorize(probe, account, root / 'creator', root / 'candidate')
+                    grants = [args for args in fake.calls if 'set-generic-password-partition-list' in args]
+                    self.assertEqual(len(grants), 1)
+                    self.assertEqual(grants[0][2:8], [
+                        '-s', 'Cryptex-Dev-ManagedSyncthing', '-a', account,
+                        '-S', 'cdhash:' + 'a' * 40 + ',cdhash:' + 'b' * 40])
+                    self.assertEqual(grants[0][-1], str(scope.path))
+
     def test_nonempty_profile_exact_authorization_and_cleanup_on_failures(self):
         failures = (None, 'create-keychain', 'unlock-keychain', 'late_fixture', 'foreign', 'duplicate',
                     'extra_partition', 'set-generic-password-partition-list', 'changed', 'raw',

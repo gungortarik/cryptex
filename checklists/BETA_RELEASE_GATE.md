@@ -49,6 +49,7 @@ No checkbox may be marked complete without actual evidence from the applicable m
   - [1.0.2 release and trial command review](../evidence/m17/personal-packaging.md#renderer-review-for-102)
   - Evidence: The [Desktop invocation review](../evidence/m16/hardening.md#security-and-recovery-review) applies to the same renderer source at `03857d4`. The updater runs as a separate native executable.
 - [ ] Secrets/private keys use appropriate OS secure storage.
+  - The [Mac update credential trial](../evidence/m17/personal-packaging.md#mac-credential-acceptance-and-rollback) checked both independently enrolled Keychain items and verified the original signed note after two rollbacks and a successful update in a disposable login account.
   - Evidence: The [owner release signer](../evidence/m17/personal-packaging.md#signing-an-owner-approved-update-receipt) used Windows certificate-store and macOS Keychain identities for installed update receipts. Real owner key provisioning and final candidate review remain open.
 - [x] Restricted memory remains excluded from AI by default.
   - Evidence: [Signed classification checks on the guarded public reader](../evidence/m12/local-mcp-review.md#security-failure-handling-and-ui).

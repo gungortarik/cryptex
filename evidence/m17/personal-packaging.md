@@ -208,4 +208,24 @@ The M16-to-candidate runtime diff adds package verification using the existing S
 
 The [repeat installed update run](https://github.com/gungortarik/cryptex/actions/runs/45562461238) passed all six scenarios on Windows and Mac. The [cross-platform restore rerun](https://github.com/gungortarik/cryptex/actions/runs/45560851222/attempts/2) completed both transfer directions. Its first attempt timed out while waiting for the other hosted runner's artifact.
 
-At `ee04d14` the signed Mac updater gives the candidate one interactive Keychain check and verifies access from a fresh noninteractive daemon before committing. The two updater decision tests passed locally on Windows, including refusal, one-time access, and a candidate dropping the required credential check. The [installed Mac check](https://github.com/gungortarik/cryptex/actions/runs/45565297623) uses disposable credentials and separately observes rollback, the restored window, and a verified note.
+At `ee04d14` the signed Mac updater gives the candidate one interactive Keychain check and verifies access from a fresh noninteractive daemon before committing. Three updater decision tests at `8c33eff` passed locally on Windows, including refusal, single-use access, and a candidate dropping the required credential check. In the [first installed Mac trial](https://github.com/gungortarik/cryptex/actions/runs/45565297623) an inaccessible credential triggered rollback and the original complete package digest matched. The window check then failed. The [repeat](https://github.com/gungortarik/cryptex/actions/runs/45565752589) stopped at the same check. The fixture used a different home for the updater than for Keychain enrollment. Using the [same disposable login account throughout](https://github.com/gungortarik/cryptex/actions/runs/45568216620) verified rollback and the original note. It also revealed that a grant for the device key alone could leave the new Desktop unable to open.
+
+### Mac credential acceptance and rollback
+
+At `d1592b6`, the fresh daemon verified the signed history and reopened any enrolled transport configuration with Keychain interaction disabled. The [Apple Silicon installed trial](https://github.com/gungortarik/cryptex/actions/runs/45571094635) passed three transactions against the same signed note and device identity.
+
+| Candidate access in disposable Keychain | Selected application |
+| --- | --- |
+| No device signing key access | Restored working package |
+| Device signing key access only | Restored working package |
+| Device signing key and enrolled transport access | Updated package |
+
+Each transaction checked the package digest, observed the exact reopened PID with a visible window, quit it and searched for the signed note in a fresh window. The public identity and complete canonical event inventory matched their original hashes after each transaction. The [general installed rollback suite](https://github.com/gungortarik/cryptex/actions/runs/45568216253) passed on Windows and Mac. The Keychain grants were provisioned for two exact disposable daemon hashes. The physical approval dialog on the owner's Mac remains untested.
+
+### Historical Mac key and local diagnostics
+
+At `1de87a6`, the [installed Mac profile check](https://github.com/gungortarik/cryptex/actions/runs/45563945777) seeded the note with the genuine 1.0.1 daemon and compared the public identity, signed descriptor and canonical event files after two separate 1.0.2 application launches. The disposable Keychain initially authorized only the creator's code hash. The fixture granted the exact 1.0.2 daemon, then both launches verified the original note. This check exercised a prepared permission. Native dialog behavior and package rollback have their own check.
+
+The 1.0.1 Mac [bundle manifest](https://github.com/gungortarik/cryptex/blob/a8e1d3fe1fb4c31b370fec0baac649e94a982688/apps/desktop/src-tauri/tauri.bundle.conf.json) packaged the Desktop and daemon. Its enrolled-profile fixture created a signed note and reopened it without enrolling a transport. Reproducing an existing 2.1.5 pairing needs a previously transport-enabled package or fixture with that enrollment. A fresh 2.1.7 enrollment supplies different evidence.
+
+Review of the M16-to-`8c33eff` runtime diff covered the twenty changed source files in Desktop, the daemon and the updater. New standard output includes fixed UI results, public package fingerprints, and bounded structured health responses. The signed package verification and protected profile check return fixed stage results. A key read stays inside the daemon. The updater's credential check carries the interactive setting and the verifier process ID. The existing public signer fingerprint identifies a certificate. The changed output paths do not serialize note bodies, Keychain item values or signing material. The final release still needs its installed log review.
