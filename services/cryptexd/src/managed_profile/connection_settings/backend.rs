@@ -158,17 +158,25 @@ impl Location {
             expected_ports: None,
         }
     }
+    /// Hold the enrolled executable and notices under this release's pins.
+    /// An installed update probe can check these public files before starting
+    /// the daemon on an existing, potentially older native database.
+    pub fn pin_enrolled_package(
+        &self,
+    ) -> Result<crate::syncthing_package::PinnedSyncthingPackage, Error> {
+        #[cfg(windows)]
+        for pin in &self.enrolled_pins {
+            pin.validate().map_err(|_| Error::Authority)?;
+        }
+        crate::syncthing_package::PinnedSyncthingPackage::open(&self.package)
+            .map_err(|_| Error::NotEnrolled)
+    }
     pub(crate) fn candidate(
         &self,
         store: &dyn SecureStore,
         environment: SecureStoreEnvironment,
     ) -> Result<(String, NativePorts), Error> {
-        #[cfg(windows)]
-        for pin in &self.enrolled_pins {
-            pin.validate().map_err(|_| Error::Authority)?;
-        }
-        let package = crate::syncthing_package::PinnedSyncthingPackage::open(&self.package)
-            .map_err(|_| Error::NotEnrolled)?;
+        let package = self.pin_enrolled_package()?;
         let mut profile =
             ManagedProfile::open(&self.profile, environment).map_err(|_| Error::NotEnrolled)?;
         let ports = profile

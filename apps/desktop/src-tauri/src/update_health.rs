@@ -170,6 +170,23 @@ fn measure() -> Result<Health, String> {
     if observe()?.lock_held {
         return Err("quit the running Desktop and daemon before updating".into());
     }
+    // Windows probes launch against the enrolled runtime. Keep any existing
+    // package pinned until that daemon stops. In particular, a healthy IPC
+    // reply cannot validate an older transport database for this release.
+    #[cfg(windows)]
+    let _enrolled_package = match std::fs::symlink_metadata(&runtime) {
+        Ok(_) => {
+            cryptexd::managed_profile::connection_settings::Location::windows_enrolled(&runtime)
+                .and_then(|location| {
+                    location
+                        .map(|location| location.pin_enrolled_package())
+                        .transpose()
+                })
+                .map_err(|_| "enrolled transport requires cold migration before update")?
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(_) => return Err("update runtime unavailable".into()),
+    };
     let state = ProbeState::default();
     start_daemon_for_desktop_launch(&state)?;
     if state.child.lock().map_err(|_| "child lock")?.is_none() {
