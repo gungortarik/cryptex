@@ -733,3 +733,6 @@ fn visible_commit_cannot_hide_an_unresolved_flush_failure() {
         assert_eq!(files.writes, 0);
     });
 }
+
+#[cfg(feature = "m17-owner-transport")]
+mod owner_upgrade;

@@ -140,6 +140,14 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
                      "image_policy::tests::product_policy_has_no_configured_publisher"):
             if "test m8_owner_channel::" + name + " ... ok" not in tests:
                 raise PreflightError("signed_startup_gate_test_missing")
+        if owner_package is not None:
+            paired = run(fixture_rust_command(cargo, "test", "--locked", "-p", "cryptexd",
+                         "--features", daemon_features, "--lib",
+                         "managed_profile::exchange_install::tests::owner_upgrade::", "--",
+                         "--test-threads=1"), "test_previous_paired_exchange_upgrade", 300)
+            if "test result: ok. 2 passed; 0 failed; 0 ignored;" not in paired:
+                raise PreflightError("previous_paired_exchange_upgrade_test_missing")
+            print("previous_paired_exchange_upgrade=passed")
         for selection in ("first_capture::", "managed_profile::enrollment::", "managed_profile::sealed_export::", "managed_profile::connection_settings::", "managed_profile::macos::tests::", "managed_profile::exchange_install::tests::", "managed_profile::exchange_start::tests::", "owned_process::macos::tests::",
                           "ipc::native_profile::tests::", "import_staging::macos_inbox::tests::",
                           "incoming_publication::tests::", "runtime_admission::tests::",

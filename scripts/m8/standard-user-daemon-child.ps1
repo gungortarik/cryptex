@@ -250,6 +250,12 @@ if($p.PSObject.Properties['exchange_native_only'] -and $p.exchange_native_only) 
     $full=Invoke-TestBinary $exe '--list'
     $fullCount=@($full.stdout -split '\r?\n' | Where-Object {$_ -cmatch ': test$'}).Count
     if($full.code -ne 0 -or $fullCount -lt 1){throw 'Missing native test inventory.'}
+    if($p.m17_owner_transport) {
+        $upgrade=Invoke-TestBinary $exe 'managed_profile::exchange_install::tests::owner_upgrade:: --test-threads=1'
+        $upgrade.stdout | Write-Output
+        $upgrade.stderr | Write-Output
+        Assert-CompleteSuite $upgrade.code $upgrade.stdout 2 $true ($fullCount-2)
+    }
     $diagnosticFilter='managed_profile::worker::diagnostics::tests::'
     $diagnostics=Invoke-TestBinary $exe "$diagnosticFilter --test-threads=1"
     $diagnostics.stdout | Write-Output
@@ -275,7 +281,7 @@ if($p.PSObject.Properties['exchange_native_only'] -and $p.exchange_native_only) 
     $result.stdout | Write-Output
     $result.stderr | Write-Output
     Assert-CompleteSuite $result.code $result.stdout 1 $true ($fullCount-1)
-    @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=5} | ConvertTo-Json |
+    @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=(5+[int][bool]$p.m17_owner_transport)} | ConvertTo-Json |
         Set-Content -LiteralPath (Join-Path $p.scratch 'result.json') -Encoding UTF8
     exit 0
 }

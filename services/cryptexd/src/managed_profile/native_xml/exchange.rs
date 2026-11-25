@@ -468,12 +468,16 @@ impl<'a> ExchangeConfigPolicy<'a> {
     }
 
     pub(crate) fn binding_bytes(&self, config: &[u8]) -> ExchangeResult<Vec<u8>> {
-        let bytes = serde_json::to_vec(&self.binding(config)?)
-            .map_err(|_| ExchangeConfigError::BindingMismatch)?;
-        if bytes.len() > MAX_BINDING {
-            return Err(ExchangeConfigError::CapacityExceeded);
-        }
-        Ok(bytes)
+        encode_binding(&self.binding(config)?)
+    }
+
+    /// Exact M17 source receipt, regenerated from current canonical authority.
+    /// This is never accepted by the ordinary startup/launch verifier.
+    #[cfg(feature = "m17-owner-transport")]
+    pub(crate) fn previous_owner_binding(&self, config: &[u8]) -> ExchangeResult<Vec<u8>> {
+        let mut binding = self.binding(config)?;
+        binding.engine_version = "2.1.5".to_owned();
+        encode_binding(&binding)
     }
 
     /// Parse a bounded untrusted derived receipt and compare with fresh canonical
@@ -491,6 +495,14 @@ impl<'a> ExchangeConfigPolicy<'a> {
         }
         Ok(())
     }
+}
+
+fn encode_binding(binding: &Binding) -> ExchangeResult<Vec<u8>> {
+    let bytes = serde_json::to_vec(binding).map_err(|_| ExchangeConfigError::BindingMismatch)?;
+    if bytes.len() > MAX_BINDING {
+        return Err(ExchangeConfigError::CapacityExceeded);
+    }
+    Ok(bytes)
 }
 
 #[cfg(test)]

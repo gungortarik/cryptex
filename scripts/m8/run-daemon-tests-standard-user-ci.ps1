@@ -42,7 +42,7 @@ $executables=@($artifacts | ForEach-Object {$_ | ConvertFrom-Json} | Where-Objec
     $_.profile.test -and $_.executable
 } | ForEach-Object {$_.executable} | Sort-Object -Unique)
 $expectedArtifacts=if($M13DesktopShell -or $DesktopStartupOnly -or $DesktopSessionOnly -or $TransportPolicyOnly -or $ExchangeNativeOnly -or $LocalVerificationOnly -or $M9HistoricalDaemon -or $M9AttachmentBrowser -or $M11CrossBackup){1}else{2}
-$expectedSuites=if($M13DesktopShell){2}elseif($M9HistoricalDaemon){5}elseif($LocalVerificationOnly){1}elseif($ExchangeNativeOnly){5}elseif($TransportPolicyOnly){13}elseif($DesktopSessionOnly){3}else{$expectedArtifacts}
+$expectedSuites=if($M13DesktopShell){2}elseif($M9HistoricalDaemon){5}elseif($LocalVerificationOnly){1}elseif($ExchangeNativeOnly){5+[int][bool]$M17OwnerTransport}elseif($TransportPolicyOnly){13}elseif($DesktopSessionOnly){3}else{$expectedArtifacts}
 if($executables.Count -ne $expectedArtifacts){throw 'Expected exact daemon test artifacts.'}
 foreach($exe in $executables) {
     $full=(Resolve-Path -LiteralPath $exe).Path
@@ -90,7 +90,7 @@ try {
         Copy-Item -LiteralPath $M17SignedSmoke.PreviousDaemon -Destination (Join-Path $scratch 'previous-daemon.exe')
     }
     $payload=Join-Path $scratch 'tests.json'
-    @{schema=1;m16_cortex_recovery=[bool]$M16CortexRecovery;m16_codec_node=$(if($M16CortexRecovery){$browserNode});m14_release_smoke=[bool]$M14ReleaseSmoke;m17_signed_smoke=$M17SignedSmoke;m14_update_packages=$M14UpdatePackages;m13_desktop_shell=[bool]$M13DesktopShell;m13_browser_node=$(if($M13DesktopShell){$browserNode});m11_cross_backup=$M11CrossBackup;m9_attachment_browser_node=$browserNode;m9_historical_daemon=$M9HistoricalDaemon;m16_sync_stress=[bool]$M16SyncStress;lan_cutoff_only=[bool]$LanCutoffOnly;local_verification_only=[bool]$LocalVerificationOnly;sid=$user.SID.Value;user_name=$userName;scratch=$scratch;manifest=$manifest;executables=$executables;desktop_startup_only=[bool]$DesktopStartupOnly;desktop_session_only=[bool]$DesktopSessionOnly;transport_policy_only=[bool]$TransportPolicyOnly;lan_setup_only=[bool]$LanSetupOnly;lan_artifact=$LanArtifact;exchange_native_only=[bool]$ExchangeNativeOnly;exchange_package=$ExchangePackage;python=$python;workspace=$workspace} |
+    @{schema=1;m16_cortex_recovery=[bool]$M16CortexRecovery;m16_codec_node=$(if($M16CortexRecovery){$browserNode});m14_release_smoke=[bool]$M14ReleaseSmoke;m17_signed_smoke=$M17SignedSmoke;m14_update_packages=$M14UpdatePackages;m13_desktop_shell=[bool]$M13DesktopShell;m13_browser_node=$(if($M13DesktopShell){$browserNode});m11_cross_backup=$M11CrossBackup;m9_attachment_browser_node=$browserNode;m9_historical_daemon=$M9HistoricalDaemon;m16_sync_stress=[bool]$M16SyncStress;lan_cutoff_only=[bool]$LanCutoffOnly;local_verification_only=[bool]$LocalVerificationOnly;sid=$user.SID.Value;user_name=$userName;scratch=$scratch;manifest=$manifest;executables=$executables;desktop_startup_only=[bool]$DesktopStartupOnly;desktop_session_only=[bool]$DesktopSessionOnly;transport_policy_only=[bool]$TransportPolicyOnly;lan_setup_only=[bool]$LanSetupOnly;lan_artifact=$LanArtifact;m17_owner_transport=[bool]$M17OwnerTransport;exchange_native_only=[bool]$ExchangeNativeOnly;exchange_package=$ExchangePackage;python=$python;workspace=$workspace} |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $payload -Encoding UTF8
     $stdout=Join-Path $scratch 'stdout.log'; $stderr=Join-Path $scratch 'stderr.log'
     $bootstrap=Join-Path $PSScriptRoot 'standard-user-daemon-child.ps1'

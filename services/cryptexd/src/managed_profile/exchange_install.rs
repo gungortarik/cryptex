@@ -117,6 +117,9 @@ pub(super) fn verify_native(home: &PrivateDirectory, policy: &impl InstallPolicy
     verify_committed(&home, &journal, &journal.encode()?, policy)
 }
 
+#[cfg(feature = "m17-owner-transport")]
+pub(super) mod owner_upgrade;
+
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
 enum Phase {
