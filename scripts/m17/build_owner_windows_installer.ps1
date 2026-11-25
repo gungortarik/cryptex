@@ -110,7 +110,7 @@ try {
 } finally {
     foreach ($handle in $transportLocks) { $handle.Dispose() }
     if ($provenanceLock) { $provenanceLock.Dispose() }
-    [Environment]::SetEnvironmentVariable('CARGO_TARGET_DIR', $targetBefore)
+    $env:CARGO_TARGET_DIR = $targetBefore
     if ($copiedDaemon -and [IO.File]::Exists($copiedDaemon)) { [IO.File]::Delete($copiedDaemon) }
     if ($sidecarStage) { [IO.Directory]::Delete($sidecarStage.FullName, $false) }
     $resolved = (Resolve-Path -LiteralPath $scratch).Path

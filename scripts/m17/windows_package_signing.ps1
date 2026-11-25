@@ -47,6 +47,7 @@ try {
         }
         if (Test-Path -LiteralPath $installer) { throw 'Refused packaging published an installer' }
     }
+    $callerTarget = [Environment]::GetEnvironmentVariable('CARGO_TARGET_DIR')
     $provenance = Join-Path $repo 'apps/desktop/src-tauri/binaries/build-provenance.json'
     $original = [IO.File]::ReadAllBytes($provenance)
     try {
@@ -65,11 +66,17 @@ try {
                 if ($_.Exception.Message -ne 'Windows build provenance differs from the clean reviewed revision or target') { throw }
             }
             if (Test-Path -LiteralPath $installer) { throw 'Rejected provenance published an installer' }
+            if ($callerTarget -cne [Environment]::GetEnvironmentVariable('CARGO_TARGET_DIR')) {
+                throw 'Rejected packaging changed the Cargo target directory'
+            }
         }
     } finally {
         [IO.File]::WriteAllBytes($provenance, $original)
     }
     $report = & $package $pin $desktopHash $daemonHash $installer
+    if ($callerTarget -cne [Environment]::GetEnvironmentVariable('CARGO_TARGET_DIR')) {
+        throw 'Successful packaging changed the Cargo target directory'
+    }
     if ($report.Installer -ne $installer -or (Get-FileHash -LiteralPath $desktop).Hash -ne $desktopHash -or
         (Get-FileHash -LiteralPath $staged[0].FullName).Hash -ne $daemonHash) { throw 'Approved build inputs changed' }
     $release = $report.ReleaseSha256
