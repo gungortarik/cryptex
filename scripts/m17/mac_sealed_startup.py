@@ -8,7 +8,7 @@ import subprocess
 import sys
 import tempfile
 
-from update_fixture import ROOT, image, receipt, signer
+from update_fixture import ROOT, delivered_updater, image, receipt, signer
 
 from prepare_mac_inventory import prepare, stage_delivery, write_inventory
 from build_owner_mac_package import fingerprint, package as package_for_owner
@@ -50,8 +50,8 @@ def exercise(root, revision):
     run("cargo", "test", "--locked", "-p", "cryptex-updater", *transport_features, cwd=ROOT, timeout=900)
     run("cargo", "build", "--locked", "--release", "-p", "cryptex-updater", *transport_features,
         cwd=ROOT, timeout=900)
-    updater = ROOT / "target/release/cryptex-updater"
-    image(updater, "com.cryptex.updater")
+    updater = delivered_updater(ROOT / "target/release/cryptex-updater", root,
+                                "owner-transport-update" if profile_trial else "default")
     public_der = Path(os.environ["CRYPTEX_M17_SIGNER_DER"])
     pin = hashlib.sha256(public_der.read_bytes()).hexdigest()
     helper = Path(os.environ["CX_UPDATE_CI_CMS_HELPER"])

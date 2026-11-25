@@ -11,7 +11,6 @@ import signal
 import subprocess
 import sys
 import tempfile
-import tarfile
 import time
 import uuid
 
@@ -482,17 +481,17 @@ def main():
                         raise RuntimeError("Updater packaging accepted a wrong approval or identity")
                     if output.exists():
                         raise RuntimeError("Refused updater packaging published an archive")
-            expected = package_updater(image, approved, certificate, signer, output, keychain)
-            if digest(output) != expected or digest(image) != approved:
-                raise RuntimeError("Published archive or reviewed updater changed")
-            with tarfile.open(output, "r:gz") as archive:
-                if archive.getnames() != [image.name, "notices/rust.json"]:
-                    raise RuntimeError("Unexpected updater archive members")
-                archive.extractall(packages_dir, filter="data")
-            tool = packages_dir / image.name
-            if run(tool, "signer-fingerprint", text=True, capture_output=True).stdout.strip() != signer:
-                raise RuntimeError("Delivered updater has the wrong trust pin")
-            print("owner_updater_archive_verified=true archive_sha256=" + expected, flush=True)
+            try:
+                package_updater(image, approved, certificate, signer, output, keychain,
+                                expected_profile="owner-transport-update")
+            except ValueError as error:
+                if str(error) != "Updater differs from the required release build profile":
+                    raise
+            else:
+                raise RuntimeError("Default updater admitted as the enrolled-profile release")
+            if output.exists():
+                raise RuntimeError("Mismatched build published an archive")
+            update_fixture.delivered_updater(image, packages_dir, "default")
             packages = build_packages(packages_dir)
         for _, artifact, daemon_hash in packages:
             (artifact.parent / "daemon.sha256").write_text(daemon_hash, encoding="ascii")

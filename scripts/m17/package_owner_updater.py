@@ -20,7 +20,7 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def package(image, approved_image, public_der, pin, output, keychain=None):
+def package(image, approved_image, public_der, pin, output, keychain=None, *, expected_profile=None):
     if sys.platform not in ("darwin", "win32"):
         raise ValueError("Windows or macOS required")
     if not all(re.fullmatch(r"[0-9a-f]{64}", value) for value in (approved_image, pin)):
@@ -56,6 +56,8 @@ def package(image, approved_image, public_der, pin, output, keychain=None):
         notice_profile = subprocess.check_output([signed, "notice-profile"], text=True, timeout=15).strip()
         if notice_profile not in ("default", "owner-transport-update"):
             raise ValueError("Unrecognized updater build")
+        if expected_profile is not None and notice_profile != expected_profile:
+            raise ValueError("Updater differs from the required release build profile")
         subprocess.run(["node", ROOT / "scripts/m17/updater_notices.mjs", notices, notice_profile], cwd=ROOT,
                        check=True, timeout=120)
         # Stage in the destination directory so the public archive inherits its permissions.
@@ -86,6 +88,7 @@ if __name__ == "__main__":
     parser.add_argument("certificate_sha256")
     parser.add_argument("new_archive", type=Path)
     parser.add_argument("--keychain", type=Path)
+    parser.add_argument("--expect-profile", choices=("default", "owner-transport-update"))
     args = parser.parse_args()
     print(package(args.updater, args.approved_unsigned_sha256, args.public_der,
-                  args.certificate_sha256, args.new_archive, args.keychain))
+                  args.certificate_sha256, args.new_archive, args.keychain, expected_profile=args.expect_profile))

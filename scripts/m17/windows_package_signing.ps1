@@ -136,8 +136,8 @@ try {
     cargo build --release --locked -p cryptex-updater --features owner-transport-update
     if ($LASTEXITCODE -ne 0) { throw 'Could not build the enrolled-profile updater' }
     $tool = Join-Path $handoff.FullName 'cryptex-updater.exe'
-    Copy-Item -LiteralPath (Join-Path $repo 'target/release/cryptex-updater.exe') -Destination $tool
-    Set-AuthenticodeSignature -FilePath $tool -Certificate $cert -HashAlgorithm SHA256 | Out-Null
+    python -B "$PSScriptRoot/update_fixture.py" (Join-Path $repo 'target/release/cryptex-updater.exe') $handoff.FullName
+    if ($LASTEXITCODE -ne 0) { throw 'Could not verify the signed updater delivery' }
     Assert-ImageSigner $tool $pin
     foreach ($slot in @(@{name='working';dir=$oldImage.FullName}, @{name='candidate';dir=$destination})) {
         $approved = & $tool fingerprint $slot.dir

@@ -3,15 +3,45 @@ from contextlib import contextmanager
 import os
 from pathlib import Path
 import hashlib
+import json
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 WINDOWS = sys.platform == "win32"
 
 from sign_owner_update import sign
+from package_owner_updater import digest, package
+
+
+def delivered_updater(image, destination, profile):
+    """Exercise the executable and notices that the receiver actually extracts."""
+    if os.environ.get("RUNNER_ENVIRONMENT") != "github-hosted" or os.environ.get("GITHUB_ACTIONS") != "true":
+        raise RuntimeError("Disposable signing runner required")
+    certificate = Path(os.environ["CRYPTEX_UPDATE_SIGNER_DER"])
+    pin = digest(certificate)
+    approved = digest(image)
+    output = destination / "cryptex-local-updater.tar.gz"
+    expected = package(image, approved, certificate, pin, output, os.environ.get("CX_NATIVE_TEST_KEYCHAIN"),
+                       expected_profile=profile)
+    if digest(output) != expected or digest(image) != approved:
+        raise RuntimeError("Published archive or reviewed updater changed")
+    with tarfile.open(output, "r:gz") as archive:
+        if archive.getnames() != [image.name, "notices/rust.json"] or not all(m.isfile() for m in archive):
+            raise RuntimeError("Unexpected updater archive members")
+        archive.extractall(destination, filter="data")
+    tool = destination / image.name
+    if subprocess.check_output([tool, "signer-fingerprint"], text=True, timeout=15).strip() != pin:
+        raise RuntimeError("Delivered updater has the wrong trust pin")
+    notices = json.loads((destination / "notices/rust.json").read_bytes())
+    packages = {item["name"] for item in notices["packages"]}
+    if ("ed25519-dalek" in packages) != (profile == "owner-transport-update"):
+        raise RuntimeError("Delivered notices do not match the enrolled-profile dependency")
+    print("owner_updater_archive_verified=true archive_sha256=" + expected, flush=True)
+    return tool
 
 
 @contextmanager
@@ -96,3 +126,8 @@ def receipt(tool, package, output, wrong=False):
             subprocess.run([shutil.which("openssl"), "cms", "-sign", "-binary", "-nodetach", "-md", "sha256",
                             "-in", content, "-signer", scratch / "cert.pem", "-inkey", scratch / "key.pem",
                             "-outform", "DER", "-out", output], check=True, timeout=30)
+
+
+if __name__ == "__main__":
+    image_path, destination = map(Path, sys.argv[1:])
+    delivered_updater(image_path, destination, "owner-transport-update")

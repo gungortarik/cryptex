@@ -42,10 +42,11 @@ The standalone updater takes the independently approved public certificate at bu
 
 ### Delivering the standalone updater
 
-On each signing machine, set `CRYPTEX_UPDATE_SIGNER_DER` to the absolute path of the owner's public DER certificate for that OS. Build the reviewed checkout with `cargo build --release --locked -p cryptex-updater`. Record the SHA-256 of that unsigned executable. From the same checkout, package it with the matching OS signing identity.
+The 1.0.2 updater for an existing 1.0.1 enrollment requires the `owner-transport-update` build feature. On each signing machine, set `CRYPTEX_UPDATE_SIGNER_DER` to the absolute path of the approved public DER certificate for that OS. For the sealed Mac trial, also set `CRYPTEX_M17_SIGNER_DER` to that path and `CRYPTEX_M17_SOURCE_REVISION` to the full reviewed Git commit. The Mac trial uses the disposable profile bound to its certificate. Build from the reviewed checkout and record the SHA-256 of the resulting unsigned executable.
 
 ```sh
-python scripts/m17/package_owner_updater.py UPDATER UNSIGNED_SHA256 PUBLIC_DER CERTIFICATE_SHA256 NEW_ARCHIVE.tar.gz
+cargo build --release --locked -p cryptex-updater --features owner-transport-update
+python scripts/m17/package_owner_updater.py UPDATER UNSIGNED_SHA256 PUBLIC_DER CERTIFICATE_SHA256 NEW_ARCHIVE.tar.gz --expect-profile owner-transport-update
 ```
 
 The command signs a copy, verifies its native signature, and outputs the SHA-256 of an archive containing the signed program and its dependency notices. Compare that archive hash with the value recorded independently on the signing machine before extracting it on the receiving device. The updater's `signer-fingerprint` command reports the SHA-256 of the public certificate it uses to authenticate future packages. Packaging stops if the build lacks this pin or contains a different one. Run the updater outside the installed Desktop directory.
