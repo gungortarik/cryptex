@@ -594,6 +594,24 @@ impl<'profile> PreparedNativeProfile<'profile> {
             key_hash: self.receipt.key_blake3.clone(),
         }
     }
+    #[cfg(all(
+        feature = "m17-owner-transport",
+        any(target_os = "macos", target_arch = "x86_64")
+    ))]
+    pub(super) fn stage_previous_exchange(
+        &self,
+        stage: &PrivateDirectory,
+        store: &dyn SecureStore,
+        peers: &super::exchange_policy::ExchangePeers<'_>,
+    ) -> Result<(), super::connection_settings::Error> {
+        use super::connection_settings::{Error, backend};
+        let bootstrap = self
+            .exchange_bootstrap(store)
+            .map_err(|_| Error::NotEnrolled)?;
+        backend::stage_previous_exchange(&self.home, stage, &bootstrap, peers, self.receipt.ports)?;
+        self.validate_identity(store)
+            .map_err(|_| Error::NotEnrolled)
+    }
     pub(crate) fn install_exchange<S: SecureStore + ?Sized>(
         &mut self,
         image: super::exchange_start::ExchangeImage,

@@ -208,6 +208,64 @@ impl Location {
             .map_err(|_| Error::NotEnrolled)?;
         Ok((candidate.configured_transport_device_id().to_owned(), ports))
     }
+
+    /// Prepare only a detached native home. The installed updater retains the
+    /// active enrollment until its separate activation or rollback transaction.
+    #[cfg(all(
+        feature = "m17-owner-transport",
+        any(target_os = "macos", target_arch = "x86_64")
+    ))]
+    pub fn stage_stopped_owner_transport(
+        root: &Path,
+        candidate_package: &crate::syncthing_package::PinnedSyncthingPackage,
+        store: &dyn SecureStore,
+        environment: SecureStoreEnvironment,
+    ) -> Result<(), Error> {
+        let namespace = crate::import_staging::export_fs::Directory::open(root)
+            .map_err(|_| Error::NotEnrolled)?;
+        let _instance = crate::instance::try_acquire_instance(root).map_err(|_| Error::Held)?;
+        #[cfg(windows)]
+        let location = Self::windows_enrolled(root)?.ok_or(Error::NotEnrolled)?;
+        #[cfg(target_os = "macos")]
+        let location = Self::mac(root);
+        let _previous = crate::syncthing_package::pin_previous_owner_package(&location.package)
+            .map_err(|_| Error::NotEnrolled)?;
+        let mut profile =
+            ManagedProfile::open(&location.profile, environment).map_err(|_| Error::NotEnrolled)?;
+        let ports = profile
+            .existing_native_ports()
+            .map_err(|_| Error::NotEnrolled)?;
+        let native = profile
+            .reopen_exchange_candidate(candidate_package, store, ports)
+            .map_err(|_| Error::NotEnrolled)?;
+        let brain =
+            crate::identity_runtime::load_brain_identity(root).map_err(|_| Error::Authority)?;
+        let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
+            root,
+            &brain.brain_id,
+            store,
+            environment,
+        )
+        .map_err(|_| Error::Authority)?;
+        let anchor = resolver.local_trust_anchor().ok_or(Error::Authority)?;
+        let snapshot =
+            crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(
+                root,
+                &brain.brain_id,
+                &anchor,
+                Some(Instant::now() + Duration::from_secs(60)),
+            )
+            .map_err(|_| Error::Authority)?;
+        let peers =
+            ExchangePeers::from_snapshot(&snapshot, root, native.configured_transport_device_id())
+                .map_err(|_| Error::Authority)?;
+        let path = root.join("managed-transport-update-native");
+        let create = !path.try_exists().map_err(|_| Error::Storage)?;
+        let stage = PrivateDirectory::acquire(&path, create).map_err(|_| Error::Storage)?;
+        native.stage_previous_exchange(&stage, store, &peers)?;
+        peers.revalidate().map_err(|_| Error::Authority)?;
+        namespace.validate().map_err(|_| Error::Authority)
+    }
 }
 
 #[cfg(windows)]
@@ -871,7 +929,6 @@ impl Controller {
                 settings.save(&preferences)?;
                 self.preferences = preferences;
             }
-            let endpoints = self.preferences.endpoints(&peers);
             // Associate the roster with its verified generation before any
             // later policy or worker startup failure can expose these rows.
             self.guard = Some(
@@ -888,24 +945,8 @@ impl Controller {
                 state: State::Applying,
                 error: None,
             };
-            let local_only = self.preferences.paused
-                || peers.bindings().is_empty()
-                || self.preferences.listen.is_none()
-                || endpoints.is_none();
-            let policy = if local_only {
-                ExchangeConfigPolicy::local_only(&peers, ports)
-            } else {
-                ExchangeConfigPolicy::new(
-                    &peers,
-                    ports,
-                    SocketAddrV4::new(
-                        self.preferences.listen.ok_or(Error::InvalidEndpoint)?,
-                        ports.sync,
-                    ),
-                    endpoints.ok_or(Error::InvalidEndpoint)?,
-                )
-            }
-            .map_err(|_| Error::InvalidEndpoint)?;
+            let policy = self.preferences.policy(&peers, ports)?;
+            let local_only = policy.is_local_only();
             let tree = crate::managed_profile::platform::ensure_exchange_tree(&self.root)
                 .map_err(|_| Error::Storage)?;
             interest.check(&self.stop)?;
@@ -1101,6 +1142,47 @@ impl Preferences {
             .map(|p| Some((p.transport_id, p.endpoint?)))
             .collect()
     }
+    fn policy<'a>(
+        &self,
+        peers: &'a ExchangePeers<'a>,
+        ports: NativePorts,
+    ) -> Result<ExchangeConfigPolicy<'a>, Error> {
+        let policy = match (self.listen, self.endpoints(peers)) {
+            (Some(listen), Some(endpoints)) if !self.paused && !peers.bindings().is_empty() => {
+                ExchangeConfigPolicy::new(
+                    peers,
+                    ports,
+                    SocketAddrV4::new(listen, ports.sync),
+                    endpoints,
+                )
+            }
+            _ => ExchangeConfigPolicy::local_only(peers, ports),
+        };
+        policy.map_err(|_| Error::InvalidEndpoint)
+    }
+}
+
+/// Rebuild the stopped enrollment's policy under the same settings lease
+/// used by the running daemon. An absent or half-saved enrollment cannot
+/// supply the default preferences of a newly installed device.
+#[cfg(feature = "m17-owner-transport")]
+pub(in crate::managed_profile) fn stage_previous_exchange(
+    home: &PrivateDirectory,
+    stage: &PrivateDirectory,
+    bootstrap: &[u8],
+    peers: &ExchangePeers<'_>,
+    ports: NativePorts,
+) -> Result<(), Error> {
+    let directory =
+        PrivateDirectory::acquire(&peers.runtime_root().join("connection-settings"), false)
+            .map_err(|_| Error::Storage)?;
+    let settings = SettingsStore { directory };
+    let saved = settings.load_saved()?.ok_or(Error::NotEnrolled)?;
+    let policy = saved.policy(peers, ports)?;
+    crate::managed_profile::exchange_install::owner_upgrade::stage_exchange_upgrade(
+        home, stage, bootstrap, &policy,
+    )
+    .map_err(|_| Error::NotEnrolled)
 }
 
 // One private daemon-owned directory, independent of the active engine's lease.
@@ -1130,6 +1212,9 @@ impl SettingsStore {
         Ok(Some(bytes))
     }
     fn load(&self) -> Result<Preferences, Error> {
+        Ok(self.load_saved()?.unwrap_or_default())
+    }
+    fn load_saved(&self) -> Result<Option<Preferences>, Error> {
         if self.read_file(Leaf::Settings.temporary())?.is_some() {
             return Err(Error::PendingSettings);
         }
@@ -1139,9 +1224,9 @@ impl SettingsStore {
                 self.directory
                     .sync_settings_file()
                     .map_err(|_| Error::Storage)?;
-                Ok(value)
+                Ok(Some(value))
             }
-            None => Ok(Preferences::default()),
+            None => Ok(None),
         }
     }
     fn save(&self, value: &Preferences) -> Result<(), Error> {

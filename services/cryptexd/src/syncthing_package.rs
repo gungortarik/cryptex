@@ -64,12 +64,27 @@ use previous as pins;
     )
 ))]
 pub fn verify_previous_owner_package(directory: &Path) -> Result<(), PackageError> {
+    pin_previous_owner_package(directory).map(drop)
+}
+
+#[cfg(all(
+    feature = "m17-owner-transport",
+    any(
+        all(windows, target_arch = "x86_64"),
+        all(target_os = "macos", feature = "m8-local-startup-check")
+    )
+))]
+pub(crate) fn pin_previous_owner_package(
+    directory: &Path,
+) -> Result<Vec<std::fs::File>, PackageError> {
     #[cfg(windows)]
-    let pins = windows::open_previous(directory)?;
+    {
+        windows::open_previous(directory)
+    }
     #[cfg(target_os = "macos")]
-    let pins = macos::open_previous(directory)?;
-    drop(pins);
-    Ok(())
+    {
+        macos::open_previous(directory)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

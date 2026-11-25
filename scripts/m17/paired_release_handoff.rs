@@ -107,9 +107,21 @@ fn paired_exchange_release_handoff() {
         true,
     )
     .unwrap();
-    let original = root.join("native");
+    let original = if phase == "install_enrolled_previous" {
+        source
+            .join("managed-transport")
+            .join("00000000000000000000000000000001")
+            .join("native")
+    } else {
+        root.join("native")
+    };
     let home = PrivateDirectory::acquire(&original, phase == "write_previous").unwrap();
     match phase.as_str() {
+        "install_enrolled_previous" => {
+            assert_eq!(crate::syncthing_package::VERSION, "2.1.5");
+            install_native(&home, &policy).unwrap();
+            verify_native(&home, &policy).unwrap();
+        }
         "write_previous" => {
             seed(&home, Leaf::Config.name(), &bootstrap.bytes);
             install_native(&home, &policy).unwrap();

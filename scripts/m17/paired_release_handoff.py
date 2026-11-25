@@ -32,6 +32,11 @@ def checkout(work, label, revision):
     shutil.copyfile(Path(__file__).with_suffix(".rs"), tests / "tests/paired_release_handoff.rs")
     with (tests / "tests.rs").open("ab") as source:
         source.write(b"\nmod paired_release_handoff;\n")
+    if label == "b":
+        shutil.copyfile(Path(__file__).with_name("stopped_enrollment.rs"),
+                        tests.parent / "stopped_enrollment.rs")
+        with (tests.parent / "native.rs").open("ab") as source:
+            source.write(b'\n#[cfg(test)]\n#[path = "stopped_enrollment.rs"]\nmod stopped_enrollment;\n')
     return tree
 
 
@@ -140,7 +145,7 @@ def exercise(previous, candidate):
         if inventory(home) != before or [inventory(source), inventory(receiver)] != histories:
             raise RuntimeError("Rollback changed the previous native home or paired histories")
         print("paired_release_history_and_rollback_bytes_preserved=passed", flush=True)
-    run_trial(candidate)
+    run_trial(candidate, previous)
 
 
 if __name__ == "__main__":

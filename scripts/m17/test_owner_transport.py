@@ -3,6 +3,7 @@ import hashlib
 import io
 import os
 import platform
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -24,7 +25,7 @@ ARCHIVES = {
 }
 
 
-def run_trial(native_test=None):
+def run_trial(native_test=None, previous_test=None):
     target = {
         ("win32", "amd64"): "windows-amd64",
         ("darwin", "arm64"): "macos-arm64",
@@ -64,6 +65,21 @@ def run_trial(native_test=None):
         args = ["node", runner, "--m17-owner-transport", "--root", root,
                 "--baseline", binaries[0], "--candidate", binaries[1]]
         if native_test is not None:
+            stage_test = "managed_profile::native::stopped_enrollment::stage_enrolled_previous_release"
+            trial = Path(tmp).resolve()
+            source = trial / "source"
+            source.mkdir(mode=0o700)
+            managed = source / "managed-transport"
+            managed.mkdir(mode=0o700)
+            shutil.copytree(trial / "2.1.5", managed / "package")
+            (trial / "receiver").mkdir(mode=0o700)
+            result = subprocess.run([native_test, stage_test, "--exact", "--ignored"],
+                                    env=dict(os.environ, CRYPTEX_PAIRED_HANDOFF=str(trial),
+                                             CRYPTEX_PREVIOUS_TEST=str(previous_test)),
+                                    check=True, text=True, stdout=subprocess.PIPE, timeout=150)
+            if f"test {stage_test} ... ok" not in result.stdout:
+                raise RuntimeError("Stopped service enrollment check did not execute")
+            print("stopped_previous_pair_staged_with_saved_endpoints_and_original_credential=passed", flush=True)
             test = "managed_profile::exchange_install::tests::paired_release_handoff::recognize_retained_package"
             result = subprocess.run([native_test, test, "--exact", "--ignored"],
                                     env=dict(os.environ, CRYPTEX_M17_RELEASE_PAIR=str(Path(tmp).resolve())),

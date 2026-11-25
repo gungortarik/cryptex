@@ -218,6 +218,9 @@ impl<'a> ExchangeConfigPolicy<'a> {
     pub(crate) fn ports(&self) -> NativePorts {
         self.ports
     }
+    pub(crate) fn is_local_only(&self) -> bool {
+        self.local_only
+    }
     pub(crate) fn revalidate(&self) -> ExchangeResult<()> {
         self.current()
     }
