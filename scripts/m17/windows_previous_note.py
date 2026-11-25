@@ -62,7 +62,7 @@ def existing_enrollment(previous, installed):
         if (probe.returncode != 2 or "enrolled transport requires cold migration" not in probe.stderr
                 or probe.stdout.strip()):
             reason = next((reason for reason in (
-                "quit the running Desktop", "probe requires the installed Desktop",
+                "quit the running Desktop", "probe requires the active installed Desktop",
                 "no package transaction is running", "Desktop is running", "Update rehearsal refused",
                 "enrolled transport requires cold migration",
             ) if reason in probe.stderr), "unrecognized")
@@ -70,6 +70,19 @@ def existing_enrollment(previous, installed):
                                f"response={bool(probe.stdout.strip())}, reason={reason}")
         if {path.relative_to(root): digest(path) for path in root.rglob("*") if path.is_file()} != runtime_files:
             raise RuntimeError("Candidate health probe changed the previous runtime")
+        notice = managed / "package/AUTHORS.txt"
+        original = notice.read_bytes()
+        try:
+            notice.write_bytes(bytes([original[0] ^ 1]) + original[1:])
+            damaged = subprocess.run([installed.with_name("cryptex-desktop.exe"), "--cryptex-update-probe"],
+                                     capture_output=True, text=True, timeout=45)
+            if (damaged.returncode != 2 or "enrolled transport package could not be verified" not in damaged.stderr
+                    or damaged.stdout.strip() or "requires cold migration" in damaged.stderr):
+                raise RuntimeError("Damaged previous package qualified for cold migration")
+        finally:
+            notice.write_bytes(original)
+        if {path.relative_to(root): digest(path) for path in root.rglob("*") if path.is_file()} != runtime_files:
+            raise RuntimeError("Damaged package probe changed the historical runtime")
     if verify_note(previous, root) != before:
         raise RuntimeError("Historical service cannot verify its original note after candidate refusal")
     print("installed_desktop_refused_unmigrated_215_before_daemon_start=passed")

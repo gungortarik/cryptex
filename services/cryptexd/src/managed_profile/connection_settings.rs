@@ -200,6 +200,8 @@ pub struct Response {
 
 #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 pub(crate) mod backend;
+#[cfg(windows)]
+pub use backend::UpdatePackageError;
 #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 pub use backend::{Handle, Location, Owner};
 

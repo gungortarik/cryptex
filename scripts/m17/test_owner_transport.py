@@ -47,12 +47,30 @@ def run_trial(native_test=None):
             binary = Path(tmp) / (version + "-" + name)
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 binary.write_bytes(archive.read(f"{stem}/{name}"))
+                if native_test is not None:
+                    package = Path(tmp) / version
+                    package.mkdir(mode=0o700)
+                    for leaf in (name, "LICENSE.txt", "AUTHORS.txt"):
+                        data = archive.read(f"{stem}/{leaf}")
+                        if version == "2.1.5" and sys.platform == "win32" and leaf != name:
+                            # The Windows 1.0.1 enrollment installed the repository's LF notices.
+                            notices = Path(__file__).resolve().parents[2] / "third_party/syncthing/2.1.5"
+                            data = (notices / leaf).read_bytes()
+                        (package / leaf).write_bytes(data)
+                    (package / name).chmod(0o500)
             binary.chmod(0o500)
             binaries.append(binary)
         runner = Path(__file__).resolve().parents[2] / "tools/m0-lifecycle-compare/scripts/run-syncthing-upgrade-proof.mjs"
         args = ["node", runner, "--m17-owner-transport", "--root", root,
                 "--baseline", binaries[0], "--candidate", binaries[1]]
         if native_test is not None:
+            test = "managed_profile::exchange_install::tests::paired_release_handoff::recognize_retained_package"
+            result = subprocess.run([native_test, test, "--exact", "--ignored"],
+                                    env=dict(os.environ, CRYPTEX_M17_RELEASE_PAIR=str(Path(tmp).resolve())),
+                                    check=True, text=True, stdout=subprocess.PIPE, timeout=60)
+            if f"test {test} ... ok" not in result.stdout:
+                raise RuntimeError("Native retained-package check did not execute")
+            print("previous_and_candidate_package_pins_and_damaged_notice_checked=passed", flush=True)
             args.extend(["--native-stage-test", native_test])
         subprocess.run(args, check=True, timeout=320)
 

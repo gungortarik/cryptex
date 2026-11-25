@@ -7,6 +7,30 @@ use std::fs;
 
 #[cfg(feature = "m17-owner-transport")]
 #[test]
+#[ignore = "requires both official packages in a private disposable directory"]
+fn recognize_retained_package() {
+    use crate::syncthing_package::{
+        PackageError, PinnedSyncthingPackage, verify_previous_owner_package,
+    };
+    let root = PathBuf::from(std::env::var_os("CRYPTEX_M17_RELEASE_PAIR").unwrap());
+    let previous = root.join("2.1.5");
+    let candidate = root.join("2.1.7");
+    verify_previous_owner_package(&previous).unwrap();
+    assert!(PinnedSyncthingPackage::open(&previous).is_err());
+    PinnedSyncthingPackage::open(&candidate).unwrap();
+    assert!(verify_previous_owner_package(&candidate).is_err());
+    let notice = previous.join("AUTHORS.txt");
+    let mut bytes = fs::read(&notice).unwrap();
+    bytes[0] ^= 1;
+    fs::write(notice, bytes).unwrap();
+    assert_eq!(
+        verify_previous_owner_package(&previous),
+        Err(PackageError::DigestMismatch)
+    );
+}
+
+#[cfg(feature = "m17-owner-transport")]
+#[test]
 #[ignore = "requires a stopped pair of official native engines"]
 fn stage_stopped_engine() {
     let root = PathBuf::from(std::env::var_os("CRYPTEX_M17_ENGINE_SCENARIO").unwrap());

@@ -171,6 +171,24 @@ impl Location {
         crate::syncthing_package::PinnedSyncthingPackage::open(&self.package)
             .map_err(|_| Error::NotEnrolled)
     }
+    /// Only an intact, recognized predecessor can be considered for migration.
+    /// An unknown or damaged enrollment must not be treated as an upgrade source.
+    #[cfg(windows)]
+    pub fn pin_update_package(
+        &self,
+    ) -> Result<crate::syncthing_package::PinnedSyncthingPackage, UpdatePackageError> {
+        match self.pin_enrolled_package() {
+            Ok(package) => Ok(package),
+            #[cfg(all(feature = "m17-owner-transport", target_arch = "x86_64"))]
+            Err(Error::NotEnrolled)
+                if crate::syncthing_package::verify_previous_owner_package(&self.package)
+                    .is_ok() =>
+            {
+                Err(UpdatePackageError::Previous)
+            }
+            Err(_) => Err(UpdatePackageError::Unverified),
+        }
+    }
     pub(crate) fn candidate(
         &self,
         store: &dyn SecureStore,
@@ -190,6 +208,13 @@ impl Location {
             .map_err(|_| Error::NotEnrolled)?;
         Ok((candidate.configured_transport_device_id().to_owned(), ports))
     }
+}
+
+#[cfg(windows)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpdatePackageError {
+    Previous,
+    Unverified,
 }
 
 struct Interest {

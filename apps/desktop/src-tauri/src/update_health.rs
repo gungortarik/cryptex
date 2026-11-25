@@ -176,13 +176,19 @@ fn measure() -> Result<Health, String> {
     #[cfg(windows)]
     let _enrolled_package = match std::fs::symlink_metadata(&runtime) {
         Ok(_) => {
-            cryptexd::managed_profile::connection_settings::Location::windows_enrolled(&runtime)
-                .and_then(|location| {
-                    location
-                        .map(|location| location.pin_enrolled_package())
-                        .transpose()
-                })
-                .map_err(|_| "enrolled transport requires cold migration before update")?
+            use cryptexd::managed_profile::connection_settings::{Location, UpdatePackageError};
+            Location::windows_enrolled(&runtime)
+                .map_err(|_| "enrolled transport package could not be verified")?
+                .map(|location| location.pin_update_package())
+                .transpose()
+                .map_err(|reason| match reason {
+                    UpdatePackageError::Previous => {
+                        "enrolled transport requires cold migration before update"
+                    }
+                    UpdatePackageError::Unverified => {
+                        "enrolled transport package could not be verified"
+                    }
+                })?
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
         Err(_) => return Err("update runtime unavailable".into()),

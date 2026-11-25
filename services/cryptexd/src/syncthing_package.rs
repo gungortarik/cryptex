@@ -32,11 +32,16 @@ mod pins {
     #[cfg(windows)]
     pub const SIZES: [u64; 3] = [34_802_944, 17_099, 17_249];
 }
-#[cfg(not(feature = "m17-owner-transport"))]
-mod pins {
+#[cfg(any(
+    not(feature = "m17-owner-transport"),
+    all(windows, target_arch = "x86_64")
+))]
+mod previous {
+    #[cfg(not(feature = "m17-owner-transport"))]
     pub const REST_VERSION: &str = "v2.1.5";
     #[cfg(windows)]
     pub const SIZES: [u64; 3] = [27_448_104, 16_726, 16_811];
+    #[cfg(not(feature = "m17-owner-transport"))]
     pub const VERSION: &str = "2.1.5";
     pub const WINDOWS_AMD64_SHA256: &str =
         "36a0f7bc372f64fa7cc4f5654fa324c0dd9f7fef2e07565e00c6e1cf73f50344";
@@ -46,6 +51,26 @@ mod pins {
         "5a0044d13ddf6f013bdd5c2bc419bf45d6123c356567510237e82f304d113d48";
 }
 pub use pins::{AUTHORS_SHA256, LICENSE_SHA256, REST_VERSION, VERSION, WINDOWS_AMD64_SHA256};
+#[cfg(not(feature = "m17-owner-transport"))]
+use previous as pins;
+
+/// Recognize the exact retained package during a stopped update. Verification
+/// does not grant the new release a launch handle for the previous executable.
+#[cfg(all(
+    feature = "m17-owner-transport",
+    any(
+        all(windows, target_arch = "x86_64"),
+        all(target_os = "macos", feature = "m8-local-startup-check")
+    )
+))]
+pub fn verify_previous_owner_package(directory: &Path) -> Result<(), PackageError> {
+    #[cfg(windows)]
+    let pins = windows::open_previous(directory)?;
+    #[cfg(target_os = "macos")]
+    let pins = macos::open_previous(directory)?;
+    drop(pins);
+    Ok(())
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PackageError {

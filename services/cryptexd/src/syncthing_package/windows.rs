@@ -15,12 +15,38 @@ use windows_sys::Win32::Storage::FileSystem::{
 use super::{AUTHORS_SHA256, LICENSE_SHA256, PackageError, WINDOWS_AMD64_SHA256};
 
 pub(super) fn open_pinned(directory: &Path) -> Result<Vec<File>, PackageError> {
+    open_release(
+        directory,
+        super::pins::SIZES,
+        [WINDOWS_AMD64_SHA256, LICENSE_SHA256, AUTHORS_SHA256],
+    )
+}
+
+#[cfg(feature = "m17-owner-transport")]
+pub(super) fn open_previous(directory: &Path) -> Result<Vec<File>, PackageError> {
+    use super::previous;
+    open_release(
+        directory,
+        previous::SIZES,
+        [
+            previous::WINDOWS_AMD64_SHA256,
+            previous::LICENSE_SHA256,
+            previous::AUTHORS_SHA256,
+        ],
+    )
+}
+
+fn open_release(
+    directory: &Path,
+    sizes: [u64; 3],
+    hashes: [&str; 3],
+) -> Result<Vec<File>, PackageError> {
     let mut files = pin_directories(directory)?;
-    for (name, length, digest) in [
-        ("syncthing.exe", super::pins::SIZES[0], WINDOWS_AMD64_SHA256),
-        ("LICENSE.txt", super::pins::SIZES[1], LICENSE_SHA256),
-        ("AUTHORS.txt", super::pins::SIZES[2], AUTHORS_SHA256),
-    ] {
+    for ((name, length), digest) in ["syncthing.exe", "LICENSE.txt", "AUTHORS.txt"]
+        .into_iter()
+        .zip(sizes)
+        .zip(hashes)
+    {
         // Notices have small fixed upper bounds. Their exact bytes are still
         // required by the digest; no CRLF normalization or alternate digest.
         let mut file = open_file(&directory.join(name))?;
