@@ -64,6 +64,14 @@ mod native_transfer_test;
     test
 ))]
 pub(crate) mod native_xml;
+#[cfg(all(
+    feature = "m17-owner-transport",
+    any(
+        all(windows, target_arch = "x86_64"),
+        all(target_os = "macos", feature = "m8-local-startup-check")
+    )
+))]
+pub mod owner_transport_update;
 #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 pub(crate) mod sealed_export;
 

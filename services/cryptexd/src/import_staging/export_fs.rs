@@ -33,6 +33,15 @@ pub(crate) struct Directory {
     native: macos_fs::Directory,
 }
 impl Directory {
+    #[cfg(feature = "m17-owner-transport")]
+    pub(crate) fn identity(&self) -> Result<(u64, u64, u64), Error> {
+        self.validate()?;
+        #[cfg(windows)]
+        let file = self.pins.last().ok_or(Error::Unsafe)?;
+        #[cfg(target_os = "macos")]
+        let file = self.native.last()?;
+        Ok(source_snapshot(file)?.identity)
+    }
     #[cfg(target_os = "macos")]
     pub(crate) fn into_mac_namespace(self) -> macos_fs::Directory {
         self.native

@@ -76,10 +76,11 @@ def run_trial(native_test=None, previous_test=None):
             result = subprocess.run([native_test, stage_test, "--exact", "--ignored"],
                                     env=dict(os.environ, CRYPTEX_PAIRED_HANDOFF=str(trial),
                                              CRYPTEX_PREVIOUS_TEST=str(previous_test)),
-                                    check=True, text=True, stdout=subprocess.PIPE, timeout=150)
-            if f"test {stage_test} ... ok" not in result.stdout:
-                raise RuntimeError("Stopped service enrollment check did not execute")
+                                    text=True, stdout=subprocess.PIPE, timeout=240)
+            if result.returncode or f"test {stage_test} ... ok" not in result.stdout:
+                raise RuntimeError(f"Stopped service enrollment check failed: {result.stdout[-2048:]}")
             print("stopped_previous_pair_staged_with_saved_endpoints_and_original_credential=passed", flush=True)
+            print("enrolled_transport_eight_interrupted_selections_restored=passed", flush=True)
             test = "managed_profile::exchange_install::tests::paired_release_handoff::recognize_retained_package"
             result = subprocess.run([native_test, test, "--exact", "--ignored"],
                                     env=dict(os.environ, CRYPTEX_M17_RELEASE_PAIR=str(Path(tmp).resolve())),

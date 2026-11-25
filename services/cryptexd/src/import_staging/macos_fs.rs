@@ -414,7 +414,7 @@ impl Directory {
         Ok(())
     }
 
-    fn last(&self) -> io::Result<&File> {
+    pub(super) fn last(&self) -> io::Result<&File> {
         self.files
             .last()
             .map(AsRef::as_ref)

@@ -220,7 +220,7 @@ impl Location {
         candidate_package: &crate::syncthing_package::PinnedSyncthingPackage,
         store: &dyn SecureStore,
         environment: SecureStoreEnvironment,
-    ) -> Result<(), Error> {
+    ) -> Result<crate::managed_profile::owner_transport_update::TransportTransition, Error> {
         crate::paths::assert_outside_repository(root).map_err(|_| Error::Authority)?;
         let namespace = crate::import_staging::export_fs::Directory::open(root)
             .map_err(|_| Error::NotEnrolled)?;
@@ -287,7 +287,9 @@ impl Location {
             .map_err(|_| Error::Storage)?;
         peers.revalidate().map_err(|_| Error::Authority)?;
         package_directory.validate().map_err(|_| Error::Authority)?;
-        namespace.validate().map_err(|_| Error::Authority)
+        namespace.validate().map_err(|_| Error::Authority)?;
+        crate::managed_profile::owner_transport_update::TransportTransition::capture(root)
+            .map_err(|_| Error::Storage)
     }
 }
 

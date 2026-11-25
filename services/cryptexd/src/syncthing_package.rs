@@ -78,13 +78,32 @@ pub(crate) fn pin_previous_owner_package(
     directory: &Path,
 ) -> Result<Vec<std::fs::File>, PackageError> {
     #[cfg(windows)]
-    {
-        windows::open_previous(directory)
-    }
+    let files = windows::open_previous(directory)?;
     #[cfg(target_os = "macos")]
-    {
-        macos::open_previous(directory)
+    let files = macos::open_previous(directory)?;
+    check_owner_package_entries(directory)?;
+    Ok(files)
+}
+
+#[cfg(all(
+    feature = "m17-owner-transport",
+    any(
+        all(windows, target_arch = "x86_64"),
+        all(target_os = "macos", feature = "m8-local-startup-check")
+    )
+))]
+fn check_owner_package_entries(path: &Path) -> Result<(), PackageError> {
+    // Both pin readers hold the three expected regular files open during this check.
+    let entries = std::fs::read_dir(path).map_err(|_| PackageError::Io)?;
+    let mut count = 0;
+    for entry in entries.take(4) {
+        entry.map_err(|_| PackageError::Io)?;
+        count += 1;
     }
+    if count != 3 {
+        return Err(PackageError::UnsafeObject);
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -198,21 +217,20 @@ impl PinnedSyncthingPackage {
             directory
         };
         let path = root.join(SLOT);
-        let package = Self::open(&path)?;
-        // All three fixed files are pinned above. An unexplained fourth
-        // entry cannot be carried into a later launch directory.
-        let mut count = 0;
-        for entry in std::fs::read_dir(&path).map_err(|_| PackageError::Io)? {
-            entry.map_err(|_| PackageError::Io)?;
-            count += 1;
-            if count > 3 {
-                return Err(PackageError::UnsafeObject);
-            }
-        }
-        if count != 3 {
-            return Err(PackageError::UnsafeObject);
-        }
+        let package = Self::open_owner_slot(&path)?;
         slot.validate().map_err(|_| PackageError::UnsafeObject)?;
+        Ok(package)
+    }
+    #[cfg(all(
+        feature = "m17-owner-transport",
+        any(
+            all(windows, target_arch = "x86_64"),
+            all(target_os = "macos", feature = "m8-local-startup-check")
+        )
+    ))]
+    pub(crate) fn open_owner_slot(path: &Path) -> Result<Self, PackageError> {
+        let package = Self::open(path)?;
+        check_owner_package_entries(path)?;
         Ok(package)
     }
     pub fn open(directory: &Path) -> Result<Self, PackageError> {

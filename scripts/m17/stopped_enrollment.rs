@@ -8,6 +8,24 @@ use std::path::PathBuf;
 use std::process::Command;
 
 #[test]
+#[ignore = "interruption child for a disposable stopped enrollment"]
+fn interrupt_transition() {
+    let root = PathBuf::from(std::env::var_os("CRYPTEX_PAIRED_HANDOFF").unwrap());
+    let saved = fs::read(root.join("transition.json")).unwrap();
+    let change: crate::managed_profile::owner_transport_update::TransportTransition =
+        serde_json::from_slice(&saved).unwrap();
+    match std::env::var("CRYPTEX_TEST_SWITCH_DIRECTION")
+        .unwrap()
+        .as_str()
+    {
+        "activate" => change.activate(&root.join("source")).unwrap(),
+        "restore" => change.restore(&root.join("source")).unwrap(),
+        _ => panic!("unknown fixture direction"),
+    }
+    panic!("interruption did not occur");
+}
+
+#[test]
 #[ignore = "requires the previous release reader and both verified packages"]
 fn stage_enrolled_previous_release() {
     let root = PathBuf::from(std::env::var_os("CRYPTEX_PAIRED_HANDOFF").unwrap());
@@ -132,8 +150,8 @@ fn stage_enrolled_previous_release() {
     assert!(!package_stage.exists());
     fs::write(&settings_file, &saved).unwrap();
     fs::write(native.join("index.db"), b"synthetic cold database").unwrap();
-    attempt(&store).unwrap();
-    attempt(&store).unwrap();
+    let transition = attempt(&store).unwrap();
+    assert_eq!(attempt(&store).unwrap(), transition);
     PinnedSyncthingPackage::open(&package_stage).unwrap();
     crate::syncthing_package::verify_previous_owner_package(
         &source.join("managed-transport").join("package"),
@@ -142,6 +160,8 @@ fn stage_enrolled_previous_release() {
     let unrecognized = package_stage.join("unexpected");
     fs::write(&unrecognized, b"foreign entry").unwrap();
     assert!(attempt(&store).is_err());
+    assert!(transition.activate(&source).is_err());
+    assert!(old_journal == fs::read(native.join("exchange-install.json")).unwrap());
     assert!(fs::read(&unrecognized).unwrap() == b"foreign entry");
     for leaf in ["config.xml", "index.db", "cert.pem", "key.pem"] {
         assert!(fs::read(stage.join(leaf)).unwrap() == fs::read(native.join(leaf)).unwrap());
@@ -149,4 +169,46 @@ fn stage_enrolled_previous_release() {
     assert!(old_journal == fs::read(native.join("exchange-install.json")).unwrap());
     assert!(old_journal != fs::read(stage.join("exchange-install.json")).unwrap());
     assert!(fs::read(&settings_file).unwrap() == saved);
+    fs::remove_file(unrecognized).unwrap();
+    let durable = serde_json::to_vec(&transition).unwrap();
+    transition.activate(&source).unwrap();
+    fs::write(native.join("index.db"), b"candidate database after startup").unwrap();
+    // Reconstruct only from the serialized receipt, as after updater exit.
+    let reopened: crate::managed_profile::owner_transport_update::TransportTransition =
+        serde_json::from_slice(&durable).unwrap();
+    reopened.restore(&source).unwrap();
+    reopened.restore(&source).unwrap();
+    assert!(old_journal == fs::read(native.join("exchange-install.json")).unwrap());
+    assert!(fs::read(native.join("index.db")).unwrap() == b"synthetic cold database");
+    assert!(fs::read(stage.join("index.db")).unwrap() == b"candidate database after startup");
+    fs::write(root.join("transition.json"), durable).unwrap();
+    for direction in ["activate", "restore"] {
+        for boundary in [
+            "detach-package",
+            "detach-native",
+            "attach-native",
+            "attach-package",
+        ] {
+            if direction == "restore" {
+                reopened.activate(&source).unwrap();
+            }
+            let status = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "managed_profile::native::stopped_enrollment::interrupt_transition",
+                    "--ignored",
+                    "--exact",
+                ])
+                .env("CRYPTEX_TEST_SWITCH_DIRECTION", direction)
+                .env("CRYPTEX_TEST_STOP_TRANSPORT_MOVE", boundary)
+                .status()
+                .unwrap();
+            assert_eq!(status.code(), Some(76), "{direction} at {boundary}");
+            reopened.restore(&source).unwrap();
+            assert!(fs::read(native.join("index.db")).unwrap() == b"synthetic cold database");
+            assert!(
+                fs::read(stage.join("index.db")).unwrap() == b"candidate database after startup"
+            );
+            assert!(old_journal == fs::read(native.join("exchange-install.json")).unwrap());
+        }
+    }
 }
