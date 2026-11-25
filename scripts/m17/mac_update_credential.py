@@ -33,6 +33,9 @@ def exercise(root, desktop, updater, delivery, revision, pin, scope, profile):
                     "--keychain", os.environ["CX_NATIVE_TEST_KEYCHAIN"], "--sign",
                     os.environ["CX_NATIVE_TEST_SIGNER"], "--identifier", "com.cryptex.daemon",
                     package / "Contents/MacOS/cryptexd"], check=True, timeout=60)
+    # Distinguish the two signed frontend resource envelopes as well as the daemons.
+    with (package / "Contents/Resources/notices/frontend.json").open("ab") as out:
+        out.write(b"\n")
     image(package, "com.cryptex.desktop")
     subprocess.run(["/usr/bin/ditto", package, pending], check=True, timeout=90)
     digest = hashlib.sha256((package / "Contents/MacOS/cryptex-desktop").read_bytes()).hexdigest()

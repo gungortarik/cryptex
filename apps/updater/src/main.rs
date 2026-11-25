@@ -169,7 +169,8 @@ fn probe(layout: &Layout, package: &Path, digest: &str, mode: &str) -> io::Resul
     let Ok(health) = serde_json::from_slice::<Health>(&bytes) else {
         return Ok(Probe::InvalidReply);
     };
-    if health.desktop_pid != child.id()
+    if !key_reply_matches(mode, &health)
+        || health.desktop_pid != child.id()
         || health.daemon_pid == 0
         || !matches!(
             (
@@ -182,6 +183,20 @@ fn probe(layout: &Layout, package: &Path, digest: &str, mode: &str) -> io::Resul
         return Ok(Probe::InvalidReply);
     }
     Ok(Probe::Replied(health))
+}
+
+fn key_reply_matches(mode: &str, health: &Health) -> bool {
+    let expected_prompt = match mode {
+        cryptex_updater::KEYCHAIN_PROBE => Some(true),
+        cryptex_updater::KEYCHAIN_REOPEN => Some(false),
+        _ => None,
+    };
+    health.key_check.as_ref().map(|r| r.prompted_access_allowed) == expected_prompt
+        && health.key_check.as_ref().is_none_or(|r| {
+            r.verifier_pid != 0
+                && r.verifier_pid != health.desktop_pid
+                && health.requires_existing_key
+        })
 }
 
 // Each check is a fresh, independently verified Desktop/daemon pair. The second
@@ -458,7 +473,26 @@ mod keychain_update_tests {
             desktop_protocol: 1,
             daemon_protocol: 1,
             requires_existing_key,
+            key_check: None,
         }
+    }
+
+    #[test]
+    fn a_health_reply_or_interactive_receipt_cannot_satisfy_the_silent_probe() {
+        let mut reply = health(true);
+        assert!(key_reply_matches(PROBE, &reply));
+        assert!(!key_reply_matches(KEYCHAIN_REOPEN, &reply));
+        reply.key_check = Some(cryptex_updater::KeyCheck {
+            prompted_access_allowed: true,
+            verifier_pid: 3,
+        });
+        assert!(key_reply_matches(KEYCHAIN_PROBE, &reply));
+        assert!(!key_reply_matches(PROBE, &reply));
+        assert!(!key_reply_matches(KEYCHAIN_REOPEN, &reply));
+        reply.key_check.as_mut().unwrap().prompted_access_allowed = false;
+        assert!(key_reply_matches(KEYCHAIN_REOPEN, &reply));
+        reply.key_check.as_mut().unwrap().verifier_pid = reply.desktop_pid;
+        assert!(!key_reply_matches(KEYCHAIN_REOPEN, &reply));
     }
 
     #[test]

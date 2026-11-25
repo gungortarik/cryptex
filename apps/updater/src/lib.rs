@@ -14,6 +14,13 @@ pub const PROBE: &str = "--cryptex-update-probe";
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+pub struct KeyCheck {
+    pub prompted_access_allowed: bool,
+    pub verifier_pid: u32,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Health {
     pub status: String,
     pub desktop_pid: u32,
@@ -22,6 +29,8 @@ pub struct Health {
     pub daemon_protocol: u32,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub requires_existing_key: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_check: Option<KeyCheck>,
 }
 
 pub struct Layout {

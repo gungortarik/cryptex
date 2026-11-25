@@ -43,6 +43,7 @@ fn health_for_child(runtime: &std::path::Path, pid: u32) -> Result<Health, Strin
         daemon_pid: pid,
         desktop_protocol: cryptexd::compat::DAEMON_PROTOCOL_VERSION,
         daemon_protocol: protocol,
+        key_check: None,
         requires_existing_key: cfg!(all(
             target_os = "macos",
             feature = "m17-sealed-profile-trial"
@@ -103,7 +104,7 @@ fn measure() -> Result<Health, String> {
         .canonicalize()
         .map_err(|_| "update_probe_runtime")?;
     #[cfg(feature = "m17-sealed-profile-trial")]
-    if let Some(mode) = env::args()
+    let key_check = if let Some(mode) = env::args()
         .nth(1)
         .filter(|arg| arg != cryptex_updater::PROBE)
     {
@@ -124,13 +125,26 @@ fn measure() -> Result<Health, String> {
         let session = Prepared::current_profile(Duration::from_secs(10), ContentProfile::Ephemeral)
             .map_err(|e| e.to_string())?;
         let cmd = super::daemon_hold_command(&session.daemon_path(), &root)?;
-        session
+        let verifier = session
             .launch(cmd, &root.join("ready"))
-            .map_err(|e| e.to_string())?
-            .check_update_credential(mode == cryptex_updater::KEYCHAIN_PROBE)
+            .map_err(|e| e.to_string())?;
+        let verifier_pid = verifier
+            .owned_child_id()
+            .ok_or("missing authenticated key verifier")?;
+        let prompted_access_allowed = mode == cryptex_updater::KEYCHAIN_PROBE;
+        verifier
+            .check_update_credential(prompted_access_allowed)
             .map_err(|e| e.to_string())?;
         scope.close().map_err(|_| "update_key_cleanup")?;
-    }
+        Some(cryptex_updater::KeyCheck {
+            prompted_access_allowed,
+            verifier_pid,
+        })
+    } else {
+        None
+    };
+    #[cfg(not(feature = "m17-sealed-profile-trial"))]
+    let key_check = None;
     let prepared = Prepared::current_desktop(Duration::from_secs(10)).map_err(|e| e.to_string())?;
     let command = super::daemon_hold_command(&prepared.daemon_path(), &runtime)?;
     let daemon = prepared
@@ -144,7 +158,9 @@ fn measure() -> Result<Health, String> {
         .shutdown(&runtime.join("stop"))
         .map_err(|e| e.to_string())?;
     scratch.close().map_err(|_| "update_probe_cleanup")?;
-    health
+    let mut health = health?;
+    health.key_check = key_check;
+    Ok(health)
 }
 
 #[cfg(not(all(target_os = "macos", feature = "m17-sealed-startup-check")))]
