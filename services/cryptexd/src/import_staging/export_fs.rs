@@ -2,6 +2,9 @@
 //! All leaves are backend-generated. No pathname from the renderer is accepted.
 use super::*;
 
+#[cfg(feature = "m17-owner-transport")]
+pub(crate) mod cold_native;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Error {
     Unsafe,
@@ -57,6 +60,9 @@ impl Directory {
     }
     pub(crate) fn child(&self, name: &str, create: bool) -> Result<Self, Error> {
         leaf(name)?;
+        self.child_validated(name, create)
+    }
+    fn child_validated(&self, name: &str, create: bool) -> Result<Self, Error> {
         self.validate()?;
         let path = self.path.join(name);
         #[cfg(windows)]
@@ -81,11 +87,14 @@ impl Directory {
     /// Enrollment must never adopt a pre-existing or partially prepared tree.
     pub(crate) fn create_child_exclusive(&self, name: &str) -> Result<Self, Error> {
         leaf(name)?;
+        self.create_child_exclusive_validated(name)
+    }
+    fn create_child_exclusive_validated(&self, name: &str) -> Result<Self, Error> {
         self.validate()?;
         #[cfg(windows)]
         {
             fs::create_dir(self.path.join(name))?;
-            self.child(name, false)
+            self.child_validated(name, false)
         }
         #[cfg(target_os = "macos")]
         Ok(Self {
@@ -112,6 +121,9 @@ impl Directory {
     }
     pub(crate) fn open_file(&self, name: &str, create: bool) -> Result<File, Error> {
         leaf(name)?;
+        self.open_file_validated(name, create)
+    }
+    fn open_file_validated(&self, name: &str, create: bool) -> Result<File, Error> {
         self.validate()?;
         #[cfg(windows)]
         let file = {

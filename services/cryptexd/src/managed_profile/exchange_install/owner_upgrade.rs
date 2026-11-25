@@ -1,4 +1,4 @@
-//! Prepare only the three derived exchange files for a detached cold generation.
+//! Prepare the stopped native engine state and exchange journal in a detached generation.
 //! The caller owns the stopped enrollment, an independently checked bootstrap,
 //! a locked canonical policy and a private staging directory. Never rebind a
 //! journal to the staging path: it must reopen at the same enrolled native home.
@@ -56,6 +56,8 @@ pub(in crate::managed_profile) fn stage_exchange_upgrade(
             return Err(InstallError::UnrecognizedState);
         }
     }
+    crate::import_staging::export_fs::cold_native::stage(source.path(), staging.path())
+        .map_err(|_| InstallError::Storage(ProfileError::InvalidState))?;
     for (leaf, expected) in leaves.into_iter().zip(contents) {
         if staging.stage(leaf)?.is_some() || staging.read(leaf)?.as_deref() != Some(expected) {
             staging.replace(leaf, expected)?;

@@ -3,6 +3,7 @@ import hashlib
 import os
 from pathlib import Path
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -54,6 +55,20 @@ def inventory(root):
             for p in root.rglob("*") if p.is_file()}
 
 
+def check_database(path, expected, *, update=False):
+    db = sqlite3.connect(path.as_uri() + ("?mode=rw" if update else "?mode=ro"), uri=True)
+    try:
+        if db.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
+            raise RuntimeError("Cold database failed its integrity check")
+        if db.execute("SELECT label, length(data) FROM proof").fetchall() != [(expected, 262144)]:
+            raise RuntimeError("Unexpected restored database contents")
+        if update:
+            db.execute("UPDATE proof SET label = 'candidate'")
+            db.commit()
+    finally:
+        db.close()
+
+
 def main():
     if sys.platform not in ("darwin", "win32"):
         raise RuntimeError("Native Mac or Windows required")
@@ -77,6 +92,16 @@ def main():
         home = runtime / "native"
         source = runtime / "source"
         receiver = runtime / "receiver"
+        # A multi-page synthetic database accompanies the genuine 1.0.1 journal.
+        database = Path("index-v2") / "index.db"
+        (home / database.parent).mkdir(mode=0o700)
+        db = sqlite3.connect(home / database)
+        try:
+            db.execute("CREATE TABLE proof (label TEXT, data BLOB)")
+            db.execute("INSERT INTO proof VALUES ('previous', zeroblob(262144))")
+            db.commit()
+        finally:
+            db.close()
         before = inventory(home)
         histories = [inventory(source), inventory(receiver)]
         run_phase(candidate, True, "stage_candidate", runtime, target)
@@ -86,9 +111,12 @@ def main():
         home.rename(retained)
         (runtime / "staged").rename(home)
         run_phase(candidate, True, "verify_candidate", runtime, target)
+        check_database(home / database, "previous", update=True)
+        check_database(home / database, "candidate")
         home.rename(runtime / "rejected")
         retained.rename(home)
         run_phase(previous, False, "verify_restored", runtime, target)
+        check_database(home / database, "previous")
         if inventory(home) != before or [inventory(source), inventory(receiver)] != histories:
             raise RuntimeError("Rollback changed the previous native home or paired histories")
         print("paired_release_history_and_rollback_bytes_preserved=passed", flush=True)

@@ -15,6 +15,8 @@ on:
       - 'scripts/m8/run-daemon-tests-standard-user-ci.ps1'
       - 'scripts/m8/standard-user-daemon-child.ps1'
       - 'services/cryptexd/src/managed_profile/**'
+      - 'services/cryptexd/src/import_staging/export_fs.rs'
+      - 'services/cryptexd/src/import_staging/export_fs/**'
       - 'services/cryptexd/src/syncthing_package.rs'
       - 'services/cryptexd/src/syncthing_package/**'
       - 'tools/m0-lifecycle-compare/scripts/*syncthing*.mjs'
