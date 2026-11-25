@@ -66,7 +66,7 @@ def sign_fixture_image(run, target, signer, identifier, keychain, password, stag
     run([*args, target], stage)
 
 
-def check_native_exchange_role_refusal(run, cargo, root, package):
+def check_native_exchange_role_refusal(run, cargo, root, package, features="m8-local-startup-check"):
     # Mac engines may only launch inside the authenticated helper role. A normal
     # libtest must prove refusal, not bypass the role to mimic the Windows probe.
     # Positive Mac exchange config roundtrip belongs to the helper integration.
@@ -78,7 +78,7 @@ def check_native_exchange_role_refusal(run, cargo, root, package):
     try:
         os.environ.update(values)
         result = run(fixture_rust_command(cargo, "test", "--locked", "-p", "cryptexd",
-                     "--features", "m8-local-startup-check", "--lib", selection, "--",
+                     "--features", features, "--lib", selection, "--",
                      "--ignored", "--exact", "--test-threads=1"),
                      "native_exchange_role_refusal", 180)
         if (f"test {selection} ... ok" not in result or
@@ -94,7 +94,7 @@ def check_native_exchange_role_refusal(run, cargo, root, package):
 
 
 def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain,
-                            password, fingerprint):
+                            password, fingerprint, *, owner_package=None):
     def run(args, stage, timeout=30):
         outcome = run_bounded([str(arg) for arg in args], timeout)
         if outcome.code or outcome.timed_out or outcome.limited or outcome.pipe_failed:
@@ -116,6 +116,10 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
         os.environ["CARGO_PROFILE_DEV_DEBUG"] = "0"
         os.environ["CARGO"] = str(cargo)
         features = "cryptex-desktop/m8-local-startup-check"
+        daemon_features = "m8-local-startup-check"
+        if owner_package is not None:
+            features += ",cryptexd/m17-owner-transport"
+            daemon_features += ",m17-owner-transport"
         # run_bounded intentionally removes plugin discovery from PATH.
         # cargo-clippy expects the Cargo subcommand token, then invokes CARGO.
         run(fixture_rust_command(clippy, "clippy", "--locked", "-p", "cryptexd", "-p", "cryptex-desktop",
@@ -168,8 +172,11 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
                            keychain, password, "sign_real_" + role)
     (resources / "startup-check.txt").write_bytes(b"Public local startup fixture.\n")
     shutil.copytree(Path("apps/desktop/dist"), resources / "frontend")
-    prepare_transport(resources / "transport", run)
-    check_native_exchange_role_refusal(run, cargo, root, resources / "transport")
+    if owner_package is None:
+        prepare_transport(resources / "transport", run)
+    else:
+        shutil.copytree(owner_package, resources / "transport")
+    check_native_exchange_role_refusal(run, cargo, root, resources / "transport", daemon_features)
     architecture = {"arm64": "arm64", "x86_64": "x86_64"}[platform.machine()]
 
     def inventory(bundle, *, role_hash=None, parent_hash=None, release="m8-local-startup-v1"):
@@ -217,6 +224,9 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
     check_native_pairing(positive / "Contents/MacOS/cryptex-desktop",
                          root / "pairing-runtime", run,
                          exchange_ip=exchange_interface(run(["/sbin/ifconfig", "-a"], "read_ci_private_interface")))
+    if owner_package is not None:
+        print("owner_transport_native_pairing_exchange_restart=passed", flush=True)
+        return
     check_parent_loss(positive / "Contents/MacOS/cryptexd", root / "parent-loss-runtime", run)
     check_combined_loss(positive / "Contents/MacOS/cryptexd", root / "combined-loss-runtime", run)
     result = run([positive / "Contents/MacOS/cryptex-desktop",

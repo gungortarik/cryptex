@@ -6,6 +6,15 @@ on:
     paths:
       - '.github/workflows/m17-owner-transport.yml'
       - 'scripts/m17/test_owner_transport.py'
+      - 'scripts/m17/owner_transport.py'
+      - 'scripts/m17/mac_owner_transport_exchange.py'
+      - 'scripts/m8/mac_local_startup_ci.py'
+      - 'scripts/m8/mac_transport_check.py'
+      - 'scripts/m8/run-daemon-tests-standard-user-ci.ps1'
+      - 'scripts/m8/standard-user-daemon-child.ps1'
+      - 'services/cryptexd/src/managed_profile/**'
+      - 'services/cryptexd/src/syncthing_package.rs'
+      - 'services/cryptexd/src/syncthing_package/**'
       - 'tools/m0-lifecycle-compare/scripts/*syncthing*.mjs'
 permissions:
   contents: read
@@ -29,3 +38,39 @@ jobs:
           python-version: '3.12'
       - run: node --test tools/m0-lifecycle-compare/scripts/syncthing-upgrade.test.mjs
       - run: python -B scripts/m17/test_owner_transport.py
+  windows-product-exchange:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run two Cryptex connection owners with release transport pins as a standard user
+        shell: pwsh
+        run: |
+          $package = Join-Path $env:RUNNER_TEMP 'owner-transport'
+          python -B scripts/m17/owner_transport.py prepare $package x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -ExchangeNativeOnly -M17OwnerTransport -ExchangePackage $package
+  mac-product-exchange:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cryptex/desktop build
+      - run: python3 -B scripts/m17/mac_owner_transport_exchange.py

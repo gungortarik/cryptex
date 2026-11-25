@@ -1,10 +1,11 @@
-param([switch]$M16CortexRecovery,[switch]$M16SyncStress,[switch]$M14ReleaseSmoke,[hashtable]$M17SignedSmoke,[string]$M14UpdatePackages,[switch]$M13DesktopShell,[switch]$DesktopStartupOnly,[switch]$DesktopSessionOnly,[switch]$TransportPolicyOnly,[switch]$LanSetupOnly,[switch]$LanCutoffOnly,[string]$LanArtifact,[switch]$ExchangeNativeOnly,[string]$ExchangePackage,[switch]$LocalVerificationOnly,[string]$M9HistoricalDaemon,[switch]$M9AttachmentBrowser,[ValidateSet('prepare','restore')][string]$M11CrossBackup)
+param([switch]$M17OwnerTransport,[switch]$M16CortexRecovery,[switch]$M16SyncStress,[switch]$M14ReleaseSmoke,[hashtable]$M17SignedSmoke,[string]$M14UpdatePackages,[switch]$M13DesktopShell,[switch]$DesktopStartupOnly,[switch]$DesktopSessionOnly,[switch]$TransportPolicyOnly,[switch]$LanSetupOnly,[switch]$LanCutoffOnly,[string]$LanArtifact,[switch]$ExchangeNativeOnly,[string]$ExchangePackage,[switch]$LocalVerificationOnly,[string]$M9HistoricalDaemon,[switch]$M9AttachmentBrowser,[ValidateSet('prepare','restore')][string]$M11CrossBackup)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 if(([int][bool]$M16CortexRecovery+[int][bool]$M16SyncStress+[int][bool]$M14ReleaseSmoke+[int][bool]$M14UpdatePackages+[int][bool]$M13DesktopShell+[int][bool]$DesktopStartupOnly+[int][bool]$DesktopSessionOnly+[int][bool]$TransportPolicyOnly+[int][bool]$LanSetupOnly+[int][bool]$LanCutoffOnly+[int][bool]$ExchangeNativeOnly+[int][bool]$LocalVerificationOnly+[int][bool]$M9HistoricalDaemon+[int][bool]$M9AttachmentBrowser+[int][bool]$M11CrossBackup) -gt 1){throw 'Choose one scoped suite.'}
 if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows') {
     throw 'Disposable GitHub-hosted Windows runner required.'
 }
+if($M17OwnerTransport -and -not $ExchangeNativeOnly){throw 'Owner transport pins require the native exchange suite.'}
 if($M17SignedSmoke -and -not $M14ReleaseSmoke){throw 'Signed package checks require the release smoke suite.'}
 $workspace=(Resolve-Path -LiteralPath $env:GITHUB_WORKSPACE).Path
 $manifest=Join-Path $workspace 'services\cryptexd'
@@ -32,6 +33,7 @@ if($M16CortexRecovery) {
 $buildArgs=@('test','--locked','-p','cryptexd','--no-run','--message-format=json')
 if($DesktopStartupOnly){$buildArgs+=@('--test','desktop_startup')}
 if($M13DesktopShell -or $DesktopSessionOnly -or $TransportPolicyOnly -or $ExchangeNativeOnly -or $LocalVerificationOnly -or $M9HistoricalDaemon -or $M9AttachmentBrowser -or $M11CrossBackup){$buildArgs+=@('--lib')}
+if($M17OwnerTransport){$buildArgs+=@('--features','m17-owner-transport')}
 $artifacts=@(& cargo @buildArgs)
 if($LASTEXITCODE -ne 0){throw 'Daemon test build failed.'}
 $executables=@($artifacts | ForEach-Object {$_ | ConvertFrom-Json} | Where-Object {
