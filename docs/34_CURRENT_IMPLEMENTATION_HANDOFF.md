@@ -2,6 +2,8 @@
 
 ## M17 personal-device release preparation
 
+The owner authorized a design-only review of M7 alternatives. The [November 25 review](../evidence/m7/m7-alternative-containment-design-20261125.md) found that a dedicated volume must also accommodate M6 replacing the managed directory while an edit is pending. Editor-buffer capture, process isolation and a separate volume each leave an outstanding containment requirement for stock Obsidian. Managed-note I/O remains disabled.
+
 The [owner package checks at `a3711ec`](../evidence/m17/personal-packaging.md#source-verification-before-signing) verify the clean build record, source revision and native target before signing. Windows and Mac signed startup, both Mac profile trials and both native shell jobs passed. The final installer and personal-use review still depend on the release gates below.
 
 The owner approved [the two-device delivery policy and candidate version 1.0.1](proposals/m17-personal-device-signing.md#accepted-delivery-and-version-policy-for-the-two-personal-devices). Native CI verified the [signed 1.0.1 installations and live startup](../evidence/m17/personal-packaging.md#first-numbered-owner-candidate) on both systems. The owner-device first-install receipts below precede this numbered candidate.
