@@ -45,8 +45,8 @@ def exercise(root, desktop, updater, delivery, revision, pin, scope, profile):
     prepare(package, revision, pin, digest, helper, active.parent)
     statement = staging / "candidate.cms"
     receipt(updater, package, statement)
-    for path, cms in ((active, delivery / "update.cms"), (pending, statement)):
-        subprocess.run([updater, "admit", path, cms], check=True, timeout=90)
+    working_statement = delivery / "update.cms"
+    subprocess.run([updater, "admit", active, working_statement], check=True, timeout=90)
     working_sum, staged_sum = fingerprint(updater, active), fingerprint(updater, pending)
     if staged_sum == working_sum:
         raise RuntimeError("Missing distinct candidate")
@@ -57,6 +57,24 @@ def exercise(root, desktop, updater, delivery, revision, pin, scope, profile):
     account = "device-event-signing-seed:" + str(uuid.UUID(_metadata(profile / "identity/local_device.json")["device_id"]))
     from mac_ci_credential_keychain import require_item
     require_item(scope.run([probe, account, original, candidate, scope.path], "original_only"), False)
+
+    # A real signature from the approved owner, but covering the previous app.
+    # The candidate has valid native signatures of its own.
+    refused = subprocess.run([updater, "admit", pending, working_statement],
+                             capture_output=True, text=True, timeout=90)
+    if not refused.returncode or "owner release receipt verification failed" not in refused.stderr:
+        raise RuntimeError("Expected refusal of a receipt covering the wrong image")
+    state = Path.home() / "Library/Application Support/Cryptex-Updater"
+    if (state / "release-receipts" / staged_sum).exists():
+        raise RuntimeError("Refused receipt admitted the candidate")
+    refused = subprocess.run([updater, "apply", staged_sum], capture_output=True, timeout=90)
+    if (not refused.returncode or (state / "package-transition.json").exists()
+            or active.with_suffix(".app.previous").exists() or fingerprint(updater, active) != working_sum
+            or fingerprint(updater, pending) != staged_sum or profile_snapshot(profile) != initial):
+        raise RuntimeError("Unadmitted update changed the installation or signed history")
+    require_item(scope.run([probe, account, original, candidate, scope.path], "refused_package"), False)
+    print("wrong_package_receipt_refused_before_activation_original_grant_preserved=passed", flush=True)
+    subprocess.run([updater, "admit", pending, statement], check=True, timeout=90)
 
     def apply(outcome, selected):
         report = json.loads(subprocess.check_output([updater, "apply", staged_sum],
