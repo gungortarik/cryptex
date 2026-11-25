@@ -18,8 +18,10 @@ function fixture(t) {
   return { root, home, receipt, backup: path.join(root, 'backup') };
 }
 test('upgrade fixture versions exact and ordinary baseline remains pinned', async () => {
-  for (const version of ['2.1.2', '2.1.5']) assertSyncthingUpgradeVersion(`syncthing v${version} x`, version);
+  for (const version of ['2.1.2', '2.1.5', '2.1.7']) assertSyncthingUpgradeVersion(`syncthing v${version} x`, version);
   for (const [actual, expected] of [['syncthing v2.1.2-rc.1 x', '2.1.2'], ['syncthing v2.1.5 x', '2.1.2'], ['syncthing v2.1.50 x', '2.1.5'], ['syncthing v2.1.4 x', '2.1.4']]) assert.throws(() => assertSyncthingUpgradeVersion(actual, expected), { code: 'SYNCTHING_UPGRADE_PIN_MISMATCH' });
+  await assert.rejects(startSyncthingUpgradePilot('/unused', '/unused', '2.1.7', true, '2.1.2'), { code: 'SYNCTHING_UPGRADE_PIN_MISMATCH' });
+  assert.throws(() => assertSyncthingVersion('syncthing v2.1.7 x'), { code: 'SYNCTHING_PIN_MISMATCH' });
   assert.throws(() => assertSyncthingVersion('syncthing v2.1.2 x'), { code: 'SYNCTHING_PIN_MISMATCH' });
   await assert.rejects(startSyncthingUpgradePilot('/unused', '/unused', '2.1.5'), { code: 'SYNCTHING_UPGRADE_PIN_MISMATCH' });
 });

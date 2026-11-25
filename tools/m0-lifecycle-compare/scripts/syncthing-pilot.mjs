@@ -66,11 +66,13 @@ export async function startSyncthingPilot(binary, home, reuse = false) {
 }
 // Explicit test-only upgrade path; the ordinary managed pin remains 2.1.5.
 export function assertSyncthingUpgradeVersion(version, expected) {
-  if (!['2.1.2', '2.1.5'].includes(expected) || !version.startsWith(`syncthing v${expected} `)) throw new PackageError('SYNCTHING_UPGRADE_PIN_MISMATCH', 'Exact stable upgrade fixture version required');
+  if (!['2.1.2', '2.1.5', '2.1.7'].includes(expected) || !version.startsWith(`syncthing v${expected} `)) throw new PackageError('SYNCTHING_UPGRADE_PIN_MISMATCH', 'Exact stable upgrade fixture version required');
 }
-export async function startSyncthingUpgradePilot(binary, home, expected, reuse = false) {
-  if (!['2.1.2', '2.1.5'].includes(expected) || (!reuse && expected !== '2.1.2')) throw new PackageError('SYNCTHING_UPGRADE_PIN_MISMATCH', 'Fresh historical fixture or explicit retained upgrade required');
-  return startOwnedPilot(binary, home, reuse, expected, 'm0-syncthing-upgrade-pilot', '2.1.2');
+export async function startSyncthingUpgradePilot(binary, home, expected, reuse = false, baseline = '2.1.2') {
+  const supportedTransition = (baseline === '2.1.2' && expected === '2.1.5')
+    || (baseline === '2.1.5' && expected === '2.1.7');
+  if (!['2.1.2', '2.1.5'].includes(baseline) || (expected !== baseline && !(reuse && supportedTransition))) throw new PackageError('SYNCTHING_UPGRADE_PIN_MISMATCH', 'Fresh historical fixture or explicit retained upgrade required');
+  return startOwnedPilot(binary, home, reuse, expected, 'm0-syncthing-upgrade-pilot', baseline);
 }
 async function startOwnedPilot(binary, home, reuse, expected, markerScope, profilePin) {
   if (!path.isAbsolute(binary ?? '') || !path.isAbsolute(home ?? '')) throw new PackageError('INVALID_SYNCTHING_ARGS', 'Absolute binary/fresh home required');

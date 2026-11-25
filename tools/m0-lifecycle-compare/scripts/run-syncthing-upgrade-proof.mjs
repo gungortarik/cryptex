@@ -38,12 +38,12 @@ function requireRetained(node, id, certificate, privateKey, originalFile) {
   if (node.id !== id || digest(path.join(node.home, 'cert.pem')) !== certificate || digest(path.join(node.home, 'key.pem')) !== privateKey
     || readSyncthingFixture(path.join(node.home, 'payload', 'before.txt')) !== originalFile) throw new PackageError('SYNCTHING_UPGRADE_RETENTION_FAILED', 'Synthetic identity/payload changed');
 }
-async function scenario(root, baseline, candidate, reject) {
+async function scenario(root, baseline, candidate, reject, baselineVersion, candidateVersion) {
   fs.mkdirSync(root); const stops = []; let first; let second; let failure; let result;
   async function stopSecond() { const receipt = await second.stop(); stops.push(receipt); second = null; return receipt; }
   try {
-    first = await startSyncthingUpgradePilot(baseline, path.join(root, 'first'), '2.1.2');
-    second = await startSyncthingUpgradePilot(baseline, path.join(root, 'second'), '2.1.2');
+    first = await startSyncthingUpgradePilot(baseline, path.join(root, 'first'), baselineVersion, false, baselineVersion);
+    second = await startSyncthingUpgradePilot(baseline, path.join(root, 'second'), baselineVersion, false, baselineVersion);
     if (first.id === second.id) throw new PackageError('SYNCTHING_IDENTITY_COLLISION', 'Distinct synthetic peers required');
     await pair(first, second); await pair(second, first);
     await folderPause(first, false); await folderPause(second, false);
@@ -53,8 +53,8 @@ async function scenario(root, baseline, candidate, reject) {
     await folderPause(first, true); await folderPause(second, true);
     const identity = second.id; const home = second.home;
     const cert = digest(path.join(home, 'cert.pem')); const key = digest(path.join(home, 'key.pem'));
-    const snapshot = snapshotSyncthingProfile(home, path.join(root, 'cold-baseline'), await stopSecond());
-    second = await startSyncthingUpgradePilot(candidate, home, '2.1.5', true);
+    const snapshot = snapshotSyncthingProfile(home, path.join(root, 'cold-baseline'), await stopSecond(), baselineVersion);
+    second = await startSyncthingUpgradePilot(candidate, home, candidateVersion, true, baselineVersion);
     const candidatePid = second.pid;
     requireRetained(second, identity, cert, key, 'synthetic-before-upgrade\n');
     const folder = await second.request('/rest/config/folders/m0-managed-fixture');
@@ -64,13 +64,13 @@ async function scenario(root, baseline, candidate, reject) {
       // Native candidate is genuinely running and authenticated. Only the
       // compatibility expectation is injected; no claim of native failure.
       const observed = await second.request('/rest/system/version');
-      assertSyncthingUpgradeHealth(observed);
+      assertSyncthingUpgradeHealth(observed, 'v' + candidateVersion);
       let rejected = false;
       try { assertSyncthingUpgradeHealth(observed, 'v2.1.999'); }
       catch (cause) { if (cause.code !== 'SYNCTHING_UPGRADE_HEALTH_REJECTED') throw cause; rejected = true; }
       if (!rejected) throw new PackageError('SYNCTHING_HEALTH_REJECTION_UNPROVEN', 'Injected version-health rejection not established');
       const restored = restoreSyncthingProfile(snapshot, await stopSecond(), path.join(root, 'rejected-candidate'));
-      second = await startSyncthingUpgradePilot(baseline, home, '2.1.2', true);
+      second = await startSyncthingUpgradePilot(baseline, home, baselineVersion, true, baselineVersion);
       requireRetained(second, identity, cert, key, 'synthetic-before-upgrade\n');
       await folderPause(first, false); await folderPause(second, false);
       await transfer(first, second, 'after-rollback.txt', 'synthetic-after-cold-rollback\n');
@@ -80,7 +80,7 @@ async function scenario(root, baseline, candidate, reject) {
       await folderPause(first, false); await folderPause(second, false);
       await transfer(first, second, 'after-upgrade.txt', 'synthetic-after-real-upgrade\n');
       await stopSecond();
-      second = await startSyncthingUpgradePilot(candidate, home, '2.1.5', true);
+      second = await startSyncthingUpgradePilot(candidate, home, candidateVersion, true, baselineVersion);
       requireRetained(second, identity, cert, key, 'synthetic-before-upgrade\n');
       if (readSyncthingFixture(path.join(home, 'payload', 'after-upgrade.txt')) !== 'synthetic-after-real-upgrade\n') throw new PackageError('SYNCTHING_UPGRADE_RETENTION_FAILED', 'Upgraded payload absent after restart');
       await transfer(first, second, 'after-upgrade-restart.txt', 'synthetic-after-upgraded-restart\n');
@@ -100,7 +100,12 @@ async function scenario(root, baseline, candidate, reject) {
   return { ...result, stops };
 }
 async function main() {
-  const args = process.argv.slice(2); const values = {};
+  const args = process.argv.slice(2);
+  const ownerTrial = args[0] === '--m17-owner-transport';
+  if (ownerTrial) args.shift();
+  const baselineVersion = ownerTrial ? '2.1.5' : '2.1.2';
+  const candidateVersion = ownerTrial ? '2.1.7' : '2.1.5';
+  const values = {};
   for (let index = 0; index < args.length; index += 2) {
     if (!['--root', '--baseline', '--candidate'].includes(args[index]) || !args[index + 1] || Object.hasOwn(values, args[index])) throw new PackageError('INVALID_SYNCTHING_UPGRADE_ARGS', 'Unique absolute root/baseline/candidate flags required');
     values[args[index]] = args[index + 1];
@@ -118,17 +123,28 @@ async function main() {
   fs.copyFileSync(baselineSource, baseline, fs.constants.COPYFILE_EXCL);
   if (process.platform !== 'win32') fs.chmodSync(baseline, sourceInfo.mode & 0o777);
   if (digest(baseline) !== baselineHash || digest(baselineSource) !== baselineHash) throw new PackageError('SYNCTHING_UPGRADE_BINARY_CHANGED', 'Baseline copy differs');
-  const bundle = stageSyncthingBundle(fs.realpathSync(candidateInput), path.join(root, 'candidate-package'));
-  if (digest(bundle.binary) === baselineHash) throw new PackageError('SYNCTHING_UPGRADE_SAME_BYTES', 'Real distinct versions/bytes required');
+  const bundle = ownerTrial ? null : stageSyncthingBundle(fs.realpathSync(candidateInput), path.join(root, 'candidate-package'));
+  const candidate = bundle?.binary ?? fs.realpathSync(candidateInput);
+  const candidateHash = digest(candidate);
+  if (ownerTrial) {
+    const pins = {
+      'win32-x64': ['36a0f7bc372f64fa7cc4f5654fa324c0dd9f7fef2e07565e00c6e1cf73f50344', 'cd9aea20afda2b9bdba5aff2e6ac964ed5c2e741ed4ceb48ad9e1be096ca7891'],
+      'darwin-arm64': ['6de41132c8a3fc78fc57486df32f9ac69d6f53db1e1910bb46f548ee7f29725e', '38aab77073e47a717ec59eab082670b4fccf28c256fa0f7935aebb3f4665bb01'],
+    };
+    const approved = pins[process.platform + '-' + process.arch];
+    if (!approved || approved[0] !== baselineHash || approved[1] !== candidateHash) throw new PackageError('SYNCTHING_PIN_MISMATCH', 'Owner trial requires the approved native executable pair');
+  }
+  if (candidateHash === baselineHash) throw new PackageError('SYNCTHING_UPGRADE_SAME_BYTES', 'Real distinct versions/bytes required');
   const globalConfig = process.platform === 'win32' ? path.join(process.env.LOCALAPPDATA, 'Syncthing', 'config.xml') : path.join(process.env.HOME, 'Library', 'Application Support', 'Syncthing', 'config.xml');
   const globalBefore = fs.existsSync(globalConfig) ? digest(globalConfig) : null;
-  const compatible = await scenario(path.join(root, 'compatible'), baseline, bundle.binary, false);
-  const rejected = await scenario(path.join(root, 'health-reject'), baseline, bundle.binary, true);
-  verifySyncthingBundle(bundle.root);
+  const compatible = await scenario(path.join(root, 'compatible'), baseline, candidate, false, baselineVersion, candidateVersion);
+  const rejected = await scenario(path.join(root, 'health-reject'), baseline, candidate, true, baselineVersion, candidateVersion);
+  if (bundle) verifySyncthingBundle(bundle.root);
+  if (digest(candidate) !== candidateHash) throw new PackageError('SYNCTHING_UPGRADE_BINARY_CHANGED', 'Candidate changed during proof');
   if (digest(baseline) !== baselineHash || digest(baselineSource) !== baselineHash) throw new PackageError('SYNCTHING_UPGRADE_BINARY_CHANGED', 'Baseline changed during proof');
   if ((fs.existsSync(globalConfig) ? digest(globalConfig) : null) !== globalBefore) throw new PackageError('GLOBAL_SYNCTHING_CONFIG_CHANGED', 'Observed global config changed');
-  const report = { schema: 1, scope: 'm0-syncthing-upgrade-pilot', platform: process.platform, arch: process.arch, node: process.version,
-    baseline_version: '2.1.2', candidate_version: '2.1.5', baseline_sha256: baselineHash, candidate_sha256: digest(bundle.binary),
+  const report = { schema: 1, scope: ownerTrial ? 'm17-owner-transport-trial' : 'm0-syncthing-upgrade-pilot', platform: process.platform, arch: process.arch, node: process.version,
+    baseline_version: baselineVersion, candidate_version: candidateVersion, baseline_sha256: baselineHash, candidate_sha256: candidateHash,
     compatible, rejected, global_config_unchanged: true, policy: 'quiesce-cold-snapshot-before-candidate; rejected-profile-quarantine-and-cold-restore',
     production_updater_verified: false, crash_atomicity_verified: false, power_loss_verified: false, publisher_authenticated: false, production_secret_storage_verified: false };
   fs.writeFileSync(path.join(root, 'syncthing-upgrade-report.json'), `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx', mode: 0o600 });

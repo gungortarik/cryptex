@@ -82,7 +82,7 @@ No checkbox may be marked complete without actual evidence from the applicable m
 - [x] Backup/restore drills have passed.
   - Evidence: [Restore after purging an imported note on both platforms](../evidence/m16/hardening.md#restore-after-purging-an-accepted-cortex-note).
 - [ ] No known high-severity blocker remains open for the release scope.
-  - Evidence: [Personal-use release hold for managed Syncthing](../evidence/m16/hardening.md#personal-use-release-hold).
+  - Evidence: [Owner risk acceptance for official Syncthing 2.1.7 on two devices](../docs/proposals/m17-personal-device-signing.md#owner-acceptance-of-syncthing-217). Final installed transport review is pending.
 
 ## F. Release artifacts
 
@@ -92,7 +92,7 @@ No checkbox may be marked complete without actual evidence from the applicable m
 - [ ] Final third-party notices are included.
   - Evidence: [Frontend, native Rust dependencies and embedded component notices](../evidence/m17/personal-packaging.md). Final installed inventory and transport review are pending.
 - [ ] Syncthing/other bundled dependency notice obligations are satisfied.
-  - Evidence: [Official transport archive contents and linked dependency notices](https://github.com/gungortarik/cryptex/actions/runs/45262814860). Installed-payload verification awaits selection of the corrected transport.
+  - Evidence: [Official transport archive contents and linked dependency notices](https://github.com/gungortarik/cryptex/actions/runs/45262814860). Verify the final installed payload and its notices against the selected 2.1.7 archives.
 - [ ] Release artifacts are traceable to repository-controlled source and pinned dependencies.
   - Evidence: [Installed provenance matched the clean source revision and build inputs on both platforms](https://github.com/gungortarik/cryptex/actions/runs/45261329297). Repeat against the final release candidate.
 - [ ] Final release checklist has been reviewed by the human owner.

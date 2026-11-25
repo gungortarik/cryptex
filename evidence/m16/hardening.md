@@ -111,6 +111,8 @@ The [risk register](../../docs/22_RISK_REGISTER.md) tracks the package decision.
 
 ### Personal-use release hold
 
+Historical M16 decision. The [November 25 owner decision](../../docs/proposals/m17-personal-device-signing.md#owner-acceptance-of-syncthing-217) supersedes the upstream-fix condition for two personal devices.
+
 On November 23, 2026 the owner chose to retain the official-package policy and hold personal use until Cryptex verifies a corrected official Syncthing release. Temporary-profile hardening can continue under this decision. The review of 2.1.7 found the same four in-range binary advisory IDs on Windows x64 and macOS arm64: GO-2026-5932, GO-2026-6859, GO-2026-6860 and GO-2026-6866. The scanner also named GO-2022-0888, whose affected Syncthing versions predate both releases. These findings identify matching components. Their reachability in Cryptex has not been established. [Go vulnerability database](https://vuln.go.dev/) · [Upstream 2.1.7 release](https://github.com/syncthing/syncthing/releases/tag/v2.1.7)
 
 To lift the hold, verify the candidate's upstream archive digests and license inventory, inspect the embedded Go and module versions, and rescan the actual executables on both targets. Review any remaining findings. Exercise managed startup, pairing, transfer, a compatible upgrade and recovery of the last working pair after upgrade rejection in disposable native profiles before accepting the replacement pin. [Managed transport and rollback decision](../../docs/adr/ADR-0004-managed-syncthing-implementation-addendum.md)

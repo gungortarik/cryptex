@@ -2,6 +2,8 @@
 
 ## M17 personal-device release preparation
 
+The [November 25 two-device decision](proposals/m17-personal-device-signing.md#owner-acceptance-of-syncthing-217) selects official Syncthing 2.1.7 for low-sensitivity notes and accepts the four known findings. The current managed baseline is 2.1.5. Native compatibility and verification of the final signed packages are the next transport steps.
+
 The owner authorized a design-only review of M7 alternatives. The [November 25 review](../evidence/m7/m7-alternative-containment-design-20261125.md) found that a dedicated volume must also accommodate M6 replacing the managed directory while an edit is pending. Editor-buffer capture, process isolation and a separate volume each leave an outstanding containment requirement for stock Obsidian. Managed-note I/O remains disabled.
 
 The [owner package checks at `a3711ec`](../evidence/m17/personal-packaging.md#source-verification-before-signing) verify the clean build record, source revision and native target before signing. Windows and Mac signed startup, both Mac profile trials and both native shell jobs passed. The final installer and personal-use review still depend on the release gates below.
@@ -10,7 +12,7 @@ The owner approved [the two-device delivery policy and candidate version 1.0.1](
 
 The owner supplied passing first-install receipts from the temporary accounts on the [Windows VM](../evidence/m17/personal-packaging.md#owner-vm-result) and [Apple Silicon Mac](../evidence/m17/personal-packaging.md#owner-mac-result). Both matched their approved build inputs. Repeat-run coverage comes from hosted tests. Personal-profile activation and the release decision remain open.
 
-The [official transport notice check](../evidence/m17/personal-packaging.md#distribution-notices-for-the-inspected-transport) now refuses distribution when a linked module lacks a primary notice. Both v2.1.7 outputs preserved all 62 distinct module documents per platform. A corrected upstream release and its final installed notices still need verification before personal use.
+The [official transport notice check](../evidence/m17/personal-packaging.md#distribution-notices-for-the-inspected-transport) now refuses distribution when a linked module lacks a primary notice. Both v2.1.7 outputs preserved all 62 distinct module documents per platform. The selected release still needs verification with its notices in the final installation.
 
 The owner intends to use Cryptex on their own Mac and Windows VM. The [beta checklist](../checklists/BETA_RELEASE_GATE.md) now links the M16 recovery and hardening results. The package work starts at `207dd15` with the bundled frontend and vendored Unicode attribution. The [installed package rehearsal](https://github.com/gungortarik/cryptex/actions/runs/45249384781) checks the installed notice bytes.
 
@@ -18,7 +20,7 @@ The [owner-signed release updater](https://github.com/gungortarik/cryptex/action
 
 Both [standalone updater deliveries](../evidence/m17/personal-packaging.md#standalone-updater-delivery-from-the-owners-signing-machine) were signed on native CI and used for the installed update transactions. The [Mac removal test](../evidence/m17/personal-packaging.md#removing-an-approved-mac-installation) verifies the matching login file and signed note across reinstall. The [installed Mac search](../evidence/m17/personal-packaging.md#search-after-a-normal-mac-quit-and-reopen) now also covers a pre-enrolled disposable profile with a Keychain identity. Real-profile selection and owner enrollment remain pending.
 
-Paid publisher credentials and invited-user distribution have not been selected. The existing [Mac image policy](proposals/m8-macos-release-image-policy.md) supports an independently pinned local certificate for controlled development and has separate release activation conditions. M17 still requires verification of the final signed artifacts, installed notices with the selected transport, final candidate checks, and explicit release approval. Personal data enrollment is still on hold pending verification of a corrected official transport.
+Paid publisher credentials and invited-user distribution have not been selected. The existing [Mac image policy](proposals/m8-macos-release-image-policy.md) supports an independently pinned local certificate for controlled development and has separate release activation conditions. M17 still requires verification of the final signed artifacts, installed notices with the selected transport, final candidate checks, and explicit release approval.
 
 The [personal-device signing proposal](proposals/m17-personal-device-signing.md) covers the first install, update and rollback trust decisions. The [M17 package record](../evidence/m17/personal-packaging.md) tracks installation, notice and official transport checks.
 
@@ -34,7 +36,7 @@ The [Windows and Mac installed updater](https://github.com/gungortarik/cryptex/a
 
 On November 23, 2026 the owner reviewed candidate `d06eaf5` and approved closure conditional on native CI and the final technical review. All 13 candidate workflows passed on Windows and macOS, with 33 successful jobs. The [acceptance record](../evidence/m16/hardening.md#final-candidate-review) covers scale and reconstruction, repeated offline sync, physical sleep observations, recovery after an accepted Cortex purge, security review and installed-app checks.
 
-M17 is the next milestone. Personal onboarding and distribution for personal use remain on hold until a corrected official Syncthing release passes the [recorded checks](../evidence/m16/hardening.md#personal-use-release-hold) on both platforms.
+M17 is the next milestone. M16 closed with a [personal-use release hold](../evidence/m16/hardening.md#personal-use-release-hold). The [November 25 two-device decision](proposals/m17-personal-device-signing.md#owner-acceptance-of-syncthing-217) supersedes its upstream-fix condition.
 
 ## M15 closed for disposable Cortex imports
 

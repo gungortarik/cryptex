@@ -1,6 +1,6 @@
 # M17 personal-device packages
 
-The owner selected their own Mac and Windows VM as the audience. The packaging rehearsal uses a macOS app bundle and a Windows per-user NSIS installer. Apple notarization and public publisher credentials would be separate distribution decisions. The [release requirements](../../docs/27_RELEASE_DISTRIBUTION_AND_SIGNING.md) and the [M16 personal-use hold](../m16/hardening.md#personal-use-release-hold) still apply.
+The owner selected their own Mac and Windows VM as the audience. The packaging rehearsal uses a macOS app bundle and a Windows per-user NSIS installer. Apple notarization and public publisher credentials would be separate distribution decisions. The [release requirements](../../docs/27_RELEASE_DISTRIBUTION_AND_SIGNING.md) and the [current two-device transport decision](../../docs/proposals/m17-personal-device-signing.md#owner-acceptance-of-syncthing-217) apply.
 
 ## Package inventory
 

@@ -63,13 +63,13 @@ function copyProfile(source, destination, expected) {
   if (process.platform !== 'win32') for (const entry of [...expected].reverse().filter(e => e.directory)) fs.chmodSync(path.join(destination, ...entry.path.split('/')), entry.mode);
   equalInventory(source, expected); equalInventory(destination, expected);
 }
-export function snapshotSyncthingProfile(home, backup, receipt) {
+export function snapshotSyncthingProfile(home, backup, receipt, baseline = '2.1.2') {
   assertColdSyncthingProfile(home, receipt);
   const entries = inventory(home);
   let marker;
   try { marker = JSON.parse(fs.readFileSync(path.join(home, 'pilot-owned.json'), 'utf8')); }
   catch (cause) { throw new PackageError('CORRUPT_SYNCTHING_UPGRADE_PROFILE', 'Synthetic ownership metadata unreadable', { cause }); }
-  if (marker?.scope !== 'm0-syncthing-upgrade-pilot' || marker.schema !== 1 || marker.pin !== '2.1.2') fail('UNOWNED_SYNCTHING_UPGRADE_PROFILE');
+  if (marker?.scope !== 'm0-syncthing-upgrade-pilot' || marker.schema !== 1 || !['2.1.2', '2.1.5'].includes(baseline) || marker.pin !== baseline) fail('UNOWNED_SYNCTHING_UPGRADE_PROFILE');
   copyProfile(home, backup, entries);
   return { home, backup, entries };
 }

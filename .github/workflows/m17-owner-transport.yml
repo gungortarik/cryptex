@@ -1,0 +1,31 @@
+name: M17 owner transport compatibility
+on:
+  workflow_dispatch:
+  push:
+    branches: ['codex/m17-release-candidate']
+    paths:
+      - '.github/workflows/m17-owner-transport.yml'
+      - 'scripts/m17/test_owner_transport.py'
+      - 'tools/m0-lifecycle-compare/scripts/*syncthing*.mjs'
+permissions:
+  contents: read
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: node --test tools/m0-lifecycle-compare/scripts/syncthing-upgrade.test.mjs
+      - run: python -B scripts/m17/test_owner_transport.py
