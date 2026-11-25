@@ -59,7 +59,9 @@ if($releaseSmoke -or ($p.PSObject.Properties['m14_update_packages'] -and $p.m14_
             if($install.ExitCode -ne 0){throw 'Signed installation failed.'}
             & $verify (Join-Path $destination 'cryptex-desktop.exe') $record.Certificate $record.Desktop
             & $verify (Join-Path $destination 'cryptexd.exe') $record.Certificate $record.Daemon
-            $profileRoot = New-Item -ItemType Directory -Path (Join-Path $env:TEMP ([guid]::NewGuid()))
+            # The private transport ACLs belong to this disposable user. Windows
+            # removes the fixture with its profile at the end of the rehearsal.
+            $profileRoot = New-Item -ItemType Directory -Path (Join-Path $env:LOCALAPPDATA ([guid]::NewGuid()))
             [IO.File]::WriteAllText((Join-Path $profileRoot.FullName 'pilot-runtime.marker'), "m0-native-desktop-runtime-v1`n")
             $installedDaemon = Join-Path $destination 'cryptexd.exe'
             & $installedDaemon pilot-fixture signed-transfer-v1 --runtime-root $profileRoot.FullName --confirm-isolated-pilot
