@@ -4,6 +4,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -54,7 +55,7 @@ def previous_package(folder):
 
 def exercise(work, desktop, updater, pin):
     from mac_ci_credential_keychain import CredentialKeychain, require_hosted_mac
-    from mac_identity_preflight import run_bounded
+    from mac_identity_preflight import run_bounded, checked
     from mac_product_key_startup import profile_snapshot
     from mac_transport_check import _metadata
     require_hosted_mac()
@@ -78,8 +79,13 @@ def exercise(work, desktop, updater, pin):
         (profile / "pilot-runtime.marker").write_bytes(b"m0-native-desktop-runtime-v1\n")
         with CredentialKeychain(work, run_bounded) as scope:
             test = "managed_profile::exchange_install::tests::installed_previous_pair::installed_previous_pair"
-            result = scope.run(["/usr/bin/env", "CRYPTEX_TEST_ENROLLED_ROOT=" + str(profile), tool,
-                                test, "--ignored", "--exact"], "seed_installed_previous_pair", 150)
+            seed = scope.fence.outcome(["/usr/bin/env", "CRYPTEX_TEST_ENROLLED_ROOT=" + str(profile), tool,
+                                        test, "--ignored", "--exact"], 150)
+            if seed.code:
+                line = re.search(r"installed_previous_pair\.rs:(\d+):", seed.output)
+                if line:
+                    print("historical_mac_enrollment_failed_at_fixture_line=" + line[1], flush=True)
+            result = checked(lambda *_: seed, [], "seed_installed_previous_pair", 150)
             if f"test {test} ... ok" not in result:
                 raise RuntimeError("Historical paired enrollment did not execute")
             scope.run(["/usr/bin/xcrun", "clang", "-fobjc-arc", "-Wno-deprecated-declarations",

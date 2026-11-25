@@ -3,10 +3,25 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import time
 import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "m14"))
 from installed_update import ROOT, digest, verify_note
+
+
+def park_test_profile(root, destination):
+    # A completed native process can leave a transient Windows sharing conflict.
+    # Preserve the entire tree and fail if the observed profile stays busy.
+    deadline = time.monotonic() + 15
+    while True:
+        try:
+            root.rename(destination)
+            return
+        except PermissionError as error:
+            if error.winerror not in (5, 32, 33) or time.monotonic() >= deadline:
+                raise
+            time.sleep(0.25)
 
 
 def historical_profile(previous, root=None):
@@ -92,7 +107,7 @@ def existing_enrollment(previous, installed):
         raise RuntimeError("Historical service cannot verify its original note after candidate refusal")
     print("installed_desktop_refused_unmigrated_215_before_daemon_start=passed")
     # The next release smoke creates a separate fresh profile at the fixed pathname.
-    root.rename(root.with_name("preserved-previous-" + str(uuid.uuid4())))
+    park_test_profile(root, root.with_name("preserved-previous-" + str(uuid.uuid4())))
     print("historically_enrolled_215_preserved_on_candidate_reenrollment_refusal=passed")
 
 

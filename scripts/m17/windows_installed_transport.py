@@ -10,6 +10,7 @@ import sys
 import time
 
 from paired_release_handoff import ROOT, inventory
+from windows_previous_note import park_test_profile
 
 sys.path.insert(0, str(ROOT / "scripts/m14"))
 from installed_update import wait_for_desktop_exit
@@ -44,11 +45,13 @@ def exercise(active):
     runtime.mkdir(exist_ok=False)
     (runtime / "pilot-runtime.marker").write_bytes(b"m0-native-desktop-runtime-v1\n")
     target = "managed_profile::exchange_install::tests::installed_previous_pair::installed_previous_pair"
-    seed = subprocess.check_output([fixture / "seed-pair.exe", target, "--ignored", "--exact"],
-                                   env=dict(os.environ, CRYPTEX_TEST_ENROLLED_ROOT=str(runtime),
-                                            CRYPTEX_TEST_PREVIOUS_PACKAGE=str(previous)), text=True, timeout=180)
-    if f"test {target} ... ok" not in seed:
-        raise RuntimeError("The 1.0.1 service did not seed its paired profile")
+    seed_env = dict(os.environ, CRYPTEX_TEST_ENROLLED_ROOT=str(runtime),
+                    CRYPTEX_TEST_PREVIOUS_PACKAGE=str(previous))
+    seed = subprocess.run([fixture / "seed-pair.exe", target, "--ignored", "--exact"],
+                          env=seed_env, capture_output=True, text=True, timeout=180)
+    if seed.returncode or f"test {target} ... ok" not in seed.stdout:
+        line = re.search(r"installed_previous_pair\.rs:(\d+):", seed.stdout + seed.stderr)
+        raise RuntimeError("Historical Windows enrollment failed at fixture line " + (line[1] if line else "unknown"))
     events = runtime / "canonical/events"
     identity = runtime / "identity"
     history = inventory(events), inventory(identity)
@@ -77,7 +80,7 @@ def exercise(active):
             or inventory(native).get(journal) in (None, baseline[journal])
             or installed[Path("syncthing.exe")] != hashlib.sha256((active / "transport/syncthing.exe").read_bytes()).digest()):
         raise RuntimeError("The installed update did not retain its prior database, package and signed history")
-    runtime.rename(runtime.with_name("verified-paired-upgrade"))
+    park_test_profile(runtime, runtime.with_name("verified-paired-upgrade"))
     print("installed_101_to_102_paired_transport_reopened_same_history_and_retained_database=passed", flush=True)
 
 
