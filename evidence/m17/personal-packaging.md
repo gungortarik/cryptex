@@ -241,6 +241,8 @@ Review of the M16-to-`8c33eff` runtime diff covered the twenty changed source fi
 
 ### Mac update admission and Keychain access
 
+The diagnostic review from `8c33eff` through `9bf3ad3` covered the installed migration. The Windows daemon returns a SHA-256 over the stopped directory identities. The Mac verifier returns the same fingerprint in its authenticated reply. Neither response includes the exchange journal or its local API credential. The updater reports a fixed outcome, process IDs, protocol versions and connection checks. The [six-transaction Windows and Mac receipts](https://github.com/gungortarik/cryptex/actions/runs/45720395332) contained only test scope, outcomes, process and version metadata, timing and verification flags. The logs for those two jobs and the [failed Mac pairing rehearsal](https://github.com/gungortarik/cryptex/actions/runs/45720395421/job/139576975127) contained zero matches for the synthetic note body, a PEM private-key header or a populated Syncthing API-key XML element. These checks covered the disposable builds and the specified output patterns.
+
 The [Mac admission and rollback trial at `48acbee`](https://github.com/gungortarik/cryptex/actions/runs/45575472228) also covered an owner-signed receipt for the wrong application digest. Admission and apply both refused, both installed image digests and the signed note stayed intact, and the candidate gained no device-key grant. With the correct receipt, the same trial verified rollback on denial, rollback on missing transport access, and an unattended reopen with the original note when both grants were present. The fixture controlled the disposable Keychain grants. It did not measure the physical consent dialog.
 
 ### Previously enrolled Windows profile

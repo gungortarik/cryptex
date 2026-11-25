@@ -73,6 +73,22 @@ def inventory(root):
             for p in root.rglob("*") if p.is_file()}
 
 
+def verify_installed_journals(retained, active):
+    """The stopped exchange receipt changes only its engine pin on this upgrade."""
+    receipts = []
+    for native, version in ((retained, "2.1.5"), (active, "2.1.7")):
+        journal = json.loads((native / "exchange-install.json").read_bytes())
+        binding_bytes = (native / "exchange-binding.json").read_bytes()
+        if journal.get("phase") != "committed" or journal.pop("binding").encode() != binding_bytes:
+            raise RuntimeError("Installed exchange journal does not match its committed binding")
+        binding = json.loads(binding_bytes)
+        if binding.pop("engine_version") != version:
+            raise RuntimeError("Installed exchange binding has an unexpected engine version")
+        receipts.append((journal, binding))
+    if receipts[0] != receipts[1]:
+        raise RuntimeError("The installed upgrade changed the stopped exchange configuration")
+
+
 def check_database(path, expected, *, update=False):
     db = sqlite3.connect(path.as_uri() + ("?mode=rw" if update else "?mode=ro"), uri=True)
     try:
@@ -136,6 +152,7 @@ def exercise(previous, candidate):
         home.rename(retained)
         (runtime / "staged").rename(home)
         run_phase(candidate, "verify_candidate", runtime)
+        verify_installed_journals(retained, home)
         check_database(home / database, "previous", update=True)
         check_database(home / database, "candidate")
         home.rename(runtime / "rejected")

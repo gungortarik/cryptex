@@ -13,7 +13,7 @@ import urllib.request
 import uuid
 import zipfile
 
-from paired_release_handoff import REVISION, ROOT, build, checkout, inventory
+from paired_release_handoff import REVISION, ROOT, build, checkout, inventory, verify_installed_journals
 from test_owner_transport import ARCHIVES
 from update_fixture import image
 
@@ -164,9 +164,9 @@ def exercise(work, desktop, updater, pin):
                             str(report["reopened_pid"])], check=True, timeout=90)
             scope.fence.checked([sys.executable, "-B", Path(__file__).with_name("mac_sealed_profile.py"), desktop],
                                 "search_after_paired_transport_update", 110)
+            verify_installed_journals(profile / "managed-transport-previous-native", enrollment / "native")
             if (profile_snapshot(profile) != notes or inventory(profile / "managed-transport-previous-native") != original
                     or inventory(profile / "managed-transport-previous-package") != old_files
-                    or inventory(enrollment / "native").get(Path("exchange-install.json")) == original[Path("exchange-install.json")]
                     or (helper / "package/syncthing").read_bytes() != (active / "Contents/Resources/transport/syncthing").read_bytes()):
                 raise RuntimeError("Updated transport, retained enrollment or canonical history mismatch")
         shutil.rmtree(profile)

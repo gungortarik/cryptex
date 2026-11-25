@@ -15,11 +15,11 @@ No checkbox may be marked complete without actual evidence from the applicable m
   - On November 25 the owner kept M7 at the design stage and authorized the remaining M17 work. Its implementation and acceptance remain prerequisites to full M17 closure.
   - Open prerequisite: [M7 controlled Obsidian write-back](../docs/milestones/M7_OBSIDIAN_CONTROLLED_WRITEBACK.md#completion-gate). The owner approved a change in sequence. M7 still requires evidence that the Vault API confines reads and writes to the managed directory on both platforms. On November 23, 2026 the [public API request](https://forum.obsidian.md/t/api-request-physically-contained-vault-operations-for-managed-paths/119512) contained the original post and zero public replies.
 - [ ] All required accepted ADRs/addenda are current.
-  - Evidence:
+  - [ADR-0004’s two-device addendum](../docs/adr/ADR-0004-managed-syncthing-implementation-addendum.md#m17-owner-package-selection--november-25-2026) records the 2.1.7 pin and the required cold migration from 2.1.5. [ADR-0012](../docs/adr/ADR-0012-background-runtime-implementation-proposal.md#mandatory-production-gates-retained) keeps canonical storage outside package rollback. The installed paired-profile migration remains under test.
 - [ ] No unresolved architecture conflict is being hidden by implementation convenience.
   - Evidence:
 - [ ] Master Spec reflects any accepted architecture changes discovered during implementation.
-  - Evidence:
+  - The [Master Spec](../docs/00_MASTER_SPEC.md#8-replication) assigns transport to Syncthing and peer trust and signatures to Cryptex. The [two-device distribution decision](../docs/27_RELEASE_DISTRIBUTION_AND_SIGNING.md#17-distribution-decisions) selects the signing and delivery method within that boundary. Reconcile any further changes at final review.
 
 ## B. Recovery confidence
 
@@ -56,6 +56,7 @@ No checkbox may be marked complete without actual evidence from the applicable m
 - [x] Purge/recovery are not autonomous AI tools.
   - Evidence: [Authenticated client discovery and three-tool catalog](../evidence/m12/local-mcp-review.md).
 - [ ] Logs/diagnostics do not expose memory bodies, secrets, credentials or recovery material by default.
+  - [Installed migration output and receipt review](../evidence/m17/personal-packaging.md#mac-update-admission-and-keychain-access) covers the Windows and Mac updater transactions and the failed hosted Mac pairing trial. Repeat with the final signed packages.
   - Evidence: [Reviewed health and diagnostic surfaces](../evidence/m16/hardening.md#security-and-recovery-review). All 27 status, connection and capture policy tests passed on Windows at `03857d4`. Final candidate log review remains open.
 
 ## D. Cross-platform product verification

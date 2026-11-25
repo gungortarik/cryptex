@@ -9,7 +9,7 @@ import subprocess
 import sys
 import time
 
-from paired_release_handoff import ROOT, inventory
+from paired_release_handoff import ROOT, inventory, verify_installed_journals
 from windows_previous_note import park_test_profile
 
 sys.path.insert(0, str(ROOT / "scripts/m14"))
@@ -59,9 +59,6 @@ def exercise(active):
     native = helper / ("0" * 31 + "1") / "native"
     baseline = inventory(native)
     old_package = inventory(helper / "package")
-    journal = Path("exchange-install.json")
-    if journal not in baseline:
-        raise RuntimeError("Missing committed previous journal")
     descriptor = runtime / "signed-probe.json"
     descriptor_hash = digest(descriptor)
     # Only the local device writes canonical events in this paired fixture.
@@ -116,12 +113,12 @@ def exercise(active):
     stage.write_text("verify", encoding="ascii")
     verify_note_signature(active / "cryptexd.exe", note, descriptor)
     installed = inventory(helper / "package")
+    verify_installed_journals(runtime / "managed-transport-previous-native", native)
     if (subprocess.check_output([tool, "fingerprint", active], text=True, timeout=90).strip() != approved
             or digest(descriptor) != descriptor_hash
             or history != (inventory(events), inventory(identity))
             or inventory(runtime / "managed-transport-previous-native") != baseline
             or inventory(runtime / "managed-transport-previous-package") != old_package
-            or inventory(native).get(journal) in (None, baseline[journal])
             or installed[Path("syncthing.exe")] != hashlib.sha256((active / "transport/syncthing.exe").read_bytes()).digest()):
         raise RuntimeError("The installed update did not retain its prior database, package and signed history")
     park_test_profile(runtime, runtime.with_name("verified-paired-upgrade"))

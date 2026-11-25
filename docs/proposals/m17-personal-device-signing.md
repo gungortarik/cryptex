@@ -111,7 +111,7 @@ On November 24, 2026 the owner approved the following policy for their Mac and W
 | Identify an update | Use the same three-part numeric release version for both platforms. Assign the first owner candidate `1.0.1`; increment the final component for each subsequent candidate in that series, including a rebuild for changed release inputs. Record the source revision, platform-specific package hash and signing certificate fingerprint alongside that number. A version label alone grants no update authority. |
 | Remove Cryptex | Use the per-user uninstaller on Windows or the verified Mac removal command above. The application and its matching login registration are removed. Keep the Brain, keys and backups available for reinstall. Erasing memory requires the existing separate purge process. |
 
-The [Desktop configuration](../../apps/desktop/src-tauri/tauri.conf.json) declares the approved first candidate version `1.0.1`. Check that value in both installed packages and their release records. Approval of a disposable Windows signing exercise authorizes only that exercise.
+The [first candidate's Desktop configuration](https://github.com/gungortarik/cryptex/blob/a8e1d3fe1fb4c31b370fec0baac649e94a982688/apps/desktop/src-tauri/tauri.conf.json) declares `1.0.1`. The [current Desktop configuration](../../apps/desktop/src-tauri/tauri.conf.json) declares `1.0.2`. Verify the version of each installed package against its own signed delivery and release record.
 
 Private CI jobs use disposable identities and synthetic data. Their certificates expire or are discarded. The release decision requires a verified owner-controlled installation on both target systems, the beta checklist and explicit approval.
 
