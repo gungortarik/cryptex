@@ -10,6 +10,8 @@ on:
       - 'scripts/m8/*standard-user*.ps1'
       - 'scripts/m17/windows_package_signing.ps1'
       - 'scripts/m17/owner_transport.py'
+      - 'scripts/m17/previous_daemon.py'
+      - 'scripts/m17/windows_previous_note.py'
       - 'third_party/syncthing/2.1.7/**'
       - 'scripts/m17/build_owner_windows_installer.ps1'
       - 'scripts/m17/verify_first_install_*'
@@ -37,6 +39,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
         with:
           version: 11.28.0
@@ -57,6 +60,9 @@ jobs:
       - name: Build the unsigned Windows binaries
         if: runner.os == 'Windows'
         run: pnpm --filter @cryptex/desktop tauri:package-smoke
+      - name: Build the previous Windows daemon from the 1.0.1 source
+        if: runner.os == 'Windows'
+        run: python -B scripts/m17/previous_daemon.py
       - name: Sign the Windows installer and inspect the installed images
         if: runner.os == 'Windows'
         timeout-minutes: 12

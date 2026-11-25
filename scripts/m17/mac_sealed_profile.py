@@ -21,7 +21,7 @@ def observe(desktop):
         raise RuntimeError("Installed window did not return the signed note and quit cleanly")
 
 
-def check(work, desktop, pin):
+def check(work, desktop, pin, creator):
     from mac_ci_credential_keychain import CredentialKeychain
     from mac_identity_preflight import run_bounded
     from mac_product_key_startup import profile_snapshot
@@ -36,7 +36,7 @@ def check(work, desktop, pin):
     (profile / "pilot-runtime.marker").write_bytes(b"m0-native-desktop-runtime-v1\n")
     with CredentialKeychain(work, run_bounded) as scope:
         daemon = desktop.with_name("cryptexd")
-        scope.run([daemon, "pilot-fixture", "signed-transfer-v1", "--runtime-root", profile,
+        scope.run([creator, "pilot-fixture", "signed-transfer-v1", "--runtime-root", profile,
                    "--confirm-isolated-pilot"], "seed_disposable_signed_note", 45)
         baseline = profile_snapshot(profile)
         if not baseline["events"]:

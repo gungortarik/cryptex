@@ -114,7 +114,12 @@ try {
             if ($_.Exception.Message -ne 'Unexpected Authenticode signer') { throw }
         }
     }
+    $previousDaemon = Join-Path $env:RUNNER_TEMP 'm17-previous/cryptexd.exe'
+    Set-AuthenticodeSignature -FilePath $previousDaemon -Certificate $cert -HashAlgorithm SHA256 | Out-Null
+    Assert-ImageSigner $previousDaemon $pin
     $trial = @{
+        PreviousDaemon = $previousDaemon
+        PreviousDaemonHash = (Get-FileHash -LiteralPath $previousDaemon).Hash
         Installer = $installer; Certificate = $pin; Setup = $release
         Desktop = (Get-FileHash -LiteralPath (Join-Path $destination 'cryptex-desktop.exe')).Hash
         Daemon = (Get-FileHash -LiteralPath (Join-Path $destination 'cryptexd.exe')).Hash

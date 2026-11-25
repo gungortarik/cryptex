@@ -70,6 +70,10 @@ if($releaseSmoke -or ($p.PSObject.Properties['m14_update_packages'] -and $p.m14_
             if ($LASTEXITCODE -ne 0) { throw 'Installed daemon could not enroll its packaged transport' }
             $managed = Get-FileHash -LiteralPath (Join-Path $profileRoot.FullName 'managed-transport/package/syncthing.exe')
             if ($managed.Hash -ine 'cd9aea20afda2b9bdba5aff2e6ac964ed5c2e741ed4ceb48ad9e1be096ca7891') { throw 'Unexpected enrolled engine' }
+            $previousDaemon = Join-Path $p.scratch 'previous-daemon.exe'
+            & $verify $previousDaemon $record.Certificate $record.PreviousDaemonHash
+            & $p.python -B (Join-Path $p.workspace 'scripts/m17/windows_previous_note.py') $previousDaemon $installedDaemon
+            if ($LASTEXITCODE -ne 0) {throw 'Historical note verification failed.'}
             & $p.python -B (Join-Path $p.workspace 'scripts/m14/release_smoke.py') --installed $destination
         } elseif($ObserveConsoleLogin) {
             & $p.python -B $observer observe

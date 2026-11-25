@@ -85,6 +85,7 @@ try {
     }
     if($M17SignedSmoke) {
         Copy-Item -LiteralPath $M17SignedSmoke.Installer -Destination (Join-Path $scratch 'signed-setup.exe')
+        Copy-Item -LiteralPath $M17SignedSmoke.PreviousDaemon -Destination (Join-Path $scratch 'previous-daemon.exe')
     }
     $payload=Join-Path $scratch 'tests.json'
     @{schema=1;m16_cortex_recovery=[bool]$M16CortexRecovery;m16_codec_node=$(if($M16CortexRecovery){$browserNode});m14_release_smoke=[bool]$M14ReleaseSmoke;m17_signed_smoke=$M17SignedSmoke;m14_update_packages=$M14UpdatePackages;m13_desktop_shell=[bool]$M13DesktopShell;m13_browser_node=$(if($M13DesktopShell){$browserNode});m11_cross_backup=$M11CrossBackup;m9_attachment_browser_node=$browserNode;m9_historical_daemon=$M9HistoricalDaemon;m16_sync_stress=[bool]$M16SyncStress;lan_cutoff_only=[bool]$LanCutoffOnly;local_verification_only=[bool]$LocalVerificationOnly;sid=$user.SID.Value;user_name=$userName;scratch=$scratch;manifest=$manifest;executables=$executables;desktop_startup_only=[bool]$DesktopStartupOnly;desktop_session_only=[bool]$DesktopSessionOnly;transport_policy_only=[bool]$TransportPolicyOnly;lan_setup_only=[bool]$LanSetupOnly;lan_artifact=$LanArtifact;exchange_native_only=[bool]$ExchangeNativeOnly;exchange_package=$ExchangePackage;python=$python;workspace=$workspace} |
