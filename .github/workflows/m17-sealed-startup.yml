@@ -18,6 +18,8 @@ on:
       - 'apps/updater/**'
       - 'scripts/m17/update_fixture.py'
       - 'scripts/m8/mac_lan_setup.py'
+      - 'scripts/m8/mac_ci_credential_keychain.py'
+      - 'scripts/m8/mac_keychain_item_probe.m'
       - 'apps/desktop/scripts/prepare-cryptexd-sidecar.mjs'
       - 'apps/desktop/src-tauri/**'
       - 'services/cryptexd/build.rs'

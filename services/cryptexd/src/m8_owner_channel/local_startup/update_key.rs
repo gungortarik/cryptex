@@ -69,12 +69,33 @@ fn verify_existing_key(allow_prompt: bool) -> Result<(), Error> {
     } else {
         Some(SecKeychain::disable_user_interaction().map_err(|_| Error::Unavailable)?)
     };
+    let store = crate::MacosKeychainStore::new();
+    let environment = crate::secure_store::SecureStoreEnvironment::Dev;
     crate::ipc::native_profile::bind_verified_namespace(
         &root,
         &lock,
         &namespace,
-        &crate::MacosKeychainStore::new(),
-        crate::secure_store::SecureStoreEnvironment::Dev,
+        &store,
+        environment,
     )
-    .map_err(|_| Error::Unavailable)
+    .map_err(|_| Error::Unavailable)?;
+    if !allow_prompt {
+        // An enrolled profile also needs the existing transport credential.
+        // Use its ordinary read-only reopen check in the noninteractive daemon.
+        let directory = crate::import_staging::export_fs::Directory::open(&root)
+            .map_err(|_| Error::Instance)?;
+        if directory
+            .exists("managed-transport")
+            .map_err(|_| Error::Instance)?
+        {
+            namespace
+                .pin(&root.join("managed-transport"))
+                .map_err(|_| Error::Instance)?;
+            crate::managed_profile::connection_settings::Location::mac(&root)
+                .candidate(&store, environment)
+                .map_err(|_| Error::Unavailable)?;
+        }
+        directory.validate().map_err(|_| Error::Instance)?;
+    }
+    namespace.validate().map_err(|_| Error::Instance)
 }

@@ -55,10 +55,12 @@ int main(int argc, const char **argv) {
         OSStatus status = SecKeychainSetUserInteractionAllowed(false);
         report[@"interaction_disabled_status"] = @(status);
         if (status != errSecSuccess) return 3;
+        NSString *account = [NSString stringWithUTF8String:argv[1]];
+        NSString *service = [account hasPrefix:@"api:"] ? @"Cryptex-Dev-ManagedSyncthing" : @"Cryptex-Dev-DeviceCredentials";
         NSDictionary *query = @{
             (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
-            (__bridge id)kSecAttrService: @"Cryptex-Dev-DeviceCredentials",
-            (__bridge id)kSecAttrAccount: [NSString stringWithUTF8String:argv[1]],
+            (__bridge id)kSecAttrService: service,
+            (__bridge id)kSecAttrAccount: account,
             (__bridge id)kSecReturnRef: @YES,
             (__bridge id)kSecMatchLimit: (__bridge id)kSecMatchLimitAll
         };

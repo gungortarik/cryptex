@@ -63,15 +63,22 @@ def exercise(root, desktop, updater, delivery, revision, pin, scope, profile):
                                                     timeout=260, text=True))
         if report["outcome"] != outcome or fingerprint(updater, active) != selected:
             raise RuntimeError("Installed credential update selected the wrong package or outcome")
-        subprocess.run(["/usr/bin/swift", ROOT / "scripts/m17/mac_reopened_window.swift", desktop,
-                        str(report["reopened_pid"])], check=True, timeout=90)
-        scope.run([sys.executable, "-B", Path(__file__).with_name("mac_sealed_profile.py"), desktop],
-                  "search_note_after_credential_update", 110)
+        window = subprocess.run(["/usr/bin/swift", ROOT / "scripts/m17/mac_reopened_window.swift", desktop,
+                                 str(report["reopened_pid"])], timeout=90)
+        # Keep the exact reopened-PID result and independently check the note
+        # in the next session. Only fixed diagnostic stages may reach CI.
+        scope.fence.checked([sys.executable, "-B", Path(__file__).with_name("mac_sealed_profile.py"), desktop],
+                            "search_note_after_credential_update", 110)
+        window.check_returncode()
         if initial != profile_snapshot(profile):
             raise RuntimeError("Credential update changed the signed note or public identity")
 
     apply("rolled_back_keychain_check", working_sum)
     print("unavailable_existing_key_restored_working_image_and_note=passed", flush=True)
     scope.authorize(probe, account, original, candidate)
+    apply("rolled_back_keychain_check", working_sum)
+    print("missing_transport_grant_restored_working_image_and_note=passed", flush=True)
+    transport = profile / "managed-transport" / ("0" * 31 + "1") / "profile.json"
+    scope.authorize(probe, "api:" + _metadata(transport)["credential_id"], original, candidate)
     apply("updated", staged_sum)
     print("granted_existing_key_unattended_reopen_same_signed_note=passed", flush=True)

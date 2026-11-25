@@ -157,13 +157,18 @@ class CredentialKeychain:
         return False
 
     def authorize(self, probe, account, creator, daemon):
+        service = SERVICE
+        if account.startswith('api:'):
+            if not re.fullmatch(r'api:[0-9a-f]{32}', account):
+                raise PreflightError('ci_transport_credential_label_invalid')
+            service = 'Cryptex-Dev-ManagedSyncthing'
         args = [probe, account, creator, daemon, self.path]
         require_item(self.run(args, 'inspect_credential_before'), False)
         hashes = [image_hash(self.run(['/usr/bin/codesign', '-d', '--verbose=4', binary],
                                      'inspect_credential_image')) for binary in (creator, daemon)]
         if hashes[0] == hashes[1]:
             raise PreflightError('ci_credential_images_not_distinct')
-        self.run([SECURITY, 'set-generic-password-partition-list', '-s', SERVICE,
+        self.run([SECURITY, 'set-generic-password-partition-list', '-s', service,
                   '-a', account, '-S', ','.join('cdhash:' + value for value in hashes),
                   '-k', self.password, self.path], 'authorize_exact_ci_credential')
         require_item(self.run(args, 'inspect_credential_after'), True)
