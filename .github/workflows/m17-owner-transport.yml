@@ -5,6 +5,9 @@ on:
     branches: ['codex/m17-release-candidate']
     paths:
       - '.github/workflows/m17-owner-transport.yml'
+      - 'apps/updater/**'
+      - 'services/cryptexd/src/main.rs'
+      - 'services/cryptexd/src/paths.rs'
       - 'scripts/m17/test_owner_transport.py'
       - 'scripts/m17/native_stage_trial.mjs'
       - 'scripts/m17/owner_transport.py'
@@ -44,6 +47,12 @@ jobs:
           python-version: '3.12'
       - run: node --test tools/m0-lifecycle-compare/scripts/syncthing-upgrade.test.mjs
       - run: python -B scripts/m17/test_owner_transport.py
+      - name: Check the installed Windows updater and its service together
+        if: runner.os == 'Windows'
+        run: |
+          cargo clippy --locked -p cryptex-updater -p cryptexd --features cryptex-updater/owner-transport-update -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --locked -p cryptex-updater --features owner-transport-update
   previous-release-journal:
     strategy:
       fail-fast: false

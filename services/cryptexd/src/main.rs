@@ -1054,6 +1054,50 @@ fn run_lifecycle(
         .ok_or_else(|| LifecycleError::Usage(usage_text()))?;
 
     match command.as_str() {
+        #[cfg(all(windows, target_arch = "x86_64", feature = "m17-owner-transport"))]
+        "prepare-installed-transport-update" if args.len() == 1 => {
+            use cryptexd::managed_profile::connection_settings::Location;
+            let root = cryptexd::paths::installed_windows_update_root()?;
+            let local = PathBuf::from(
+                env::var_os("LOCALAPPDATA")
+                    .ok_or_else(|| LifecycleError::Usage("missing install directory".into()))?,
+            );
+            let install = local.join("Programs/Cryptex");
+            let updater = local.join("Cryptex-Updater");
+            let lease = fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(updater.join("update.lock"))?;
+            let executable = env::current_exe()?.canonicalize()?;
+            if executable != install.join("cryptexd.exe").canonicalize()?
+                || !matches!(
+                    lease.try_lock_shared(),
+                    Err(std::fs::TryLockError::WouldBlock)
+                )
+                || !updater.join("package-transition.json").is_file()
+                || !local.join("Programs/Cryptex.previous").is_dir()
+            {
+                return Err(LifecycleError::Attention(
+                    "installed_update_transaction_required".into(),
+                ));
+            }
+            let package = cryptexd::syncthing_package::PinnedSyncthingPackage::open(
+                &install.join("transport"),
+            )
+            .map_err(|_| LifecycleError::Attention("installed_update_package_refused".into()))?;
+            let prepared = Location::stage_stopped_owner_transport(
+                &root,
+                &package,
+                &cryptexd::WindowsCredentialStore::new(),
+                SecureStoreEnvironment::Dev,
+            )
+            .map_err(|_| LifecycleError::Attention("installed_update_enrollment_refused".into()))?;
+            println!(
+                "{}",
+                serde_json::to_string(&prepared.fingerprint()).expect("fixed-size numeric receipt")
+            );
+            Ok(())
+        }
         #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
         "migrate-profile-m9" | "prepare-reader-rejoin-m9" | "prepare-first-device-m11" => {
             let [_, flag, root] = args else {

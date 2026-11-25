@@ -57,6 +57,11 @@ def existing_enrollment(previous, installed):
         lease.seek(0)
         msvcrt.locking(lease.fileno(), msvcrt.LK_NBLCK, 1)
         runtime_files = {path.relative_to(root): digest(path) for path in root.rglob("*") if path.is_file()}
+        prep = subprocess.run([installed, "lifecycle", "prepare-installed-transport-update"],
+                              capture_output=True, text=True, timeout=45)
+        if (prep.returncode != 2 or prep.stdout.strip()
+                or "installed_update_transaction_required" not in prep.stderr):
+            raise RuntimeError("Installed migration must require the updater's staged transaction")
         probe = subprocess.run([installed.with_name("cryptex-desktop.exe"), "--cryptex-update-probe"],
                                capture_output=True, text=True, timeout=45)
         if (probe.returncode != 2 or "enrolled transport requires cold migration" not in probe.stderr

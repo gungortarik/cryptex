@@ -42,6 +42,11 @@ test("the standalone updater ships its own locked notice set", () => {
   const names = new Set(report.packages.map(pkg => pkg.name));
   for (const name of ["process-wrap", "sha2", "cc"]) assert.ok(names.has(name), name);
   assert.ok(!names.has("tauri"));
+  const enrolled = collectRustNotices(root, host, host, ["cryptex-updater"], ["cryptex-updater/owner-transport-update"]);
+  const withTransport = new Set(enrolled.packages.map(pkg => pkg.name));
+  for (const name of ["rusqlite", "ed25519-dalek"]) {
+    assert.ok(!names.has(name) && withTransport.has(name), name);
+  }
   for (const pkg of report.packages) {
     assert.ok(pkg.documents.length, pkg.name);
     for (const doc of pkg.documents) {

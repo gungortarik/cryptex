@@ -19,8 +19,9 @@ function noticeDocument(directory, name, texts, expectedHash) {
   return { name: relative.split(path.sep).join("/"), sha256 };
 }
 
-export function collectRustNotices(root, triple, hostTriple = triple, products = ["cryptex-desktop", "cryptexd"]) {
-  const features = products.includes("cryptex-desktop") ? ["--features", "tauri/custom-protocol,cryptexd/m17-owner-transport"] : [];
+export function collectRustNotices(root, triple, hostTriple = triple, products = ["cryptex-desktop", "cryptexd"],
+  enabled = products.includes("cryptex-desktop") ? ["tauri/custom-protocol", "cryptexd/m17-owner-transport"] : []) {
+  const features = enabled.length ? ["--features", enabled.join(",")] : [];
   const filter = triple === hostTriple ? ["--filter-platform", triple] : [];
   const metadata = JSON.parse(cargo(root, ["metadata", "--locked", "--format-version", "1", ...filter, ...features]));
   const tree = cargo(root, ["tree", "--locked", "--target", triple, ...products.flatMap(name => ["-p", name]),

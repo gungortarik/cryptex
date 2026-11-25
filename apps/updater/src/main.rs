@@ -68,8 +68,8 @@ fn package_digest(path: &Path) -> io::Result<String> {
     ))
 }
 
-enum Probe {
-    Replied(Health),
+enum Probe<T = Health> {
+    Replied(T),
     TimedOut,
     Failed,
     InvalidReply,
@@ -109,16 +109,7 @@ fn terminate_probe(child: &mut dyn ChildWrapper) -> io::Result<()> {
 fn probe(layout: &Layout, digest: &str, mode: &str) -> io::Result<Probe> {
     release::verify(layout, &layout.active, digest)?;
     let mut command = Command::new(desktop(&layout.active));
-    command
-        .arg(mode)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped());
-    let mut command = CommandWrap::from(command);
-    #[cfg(windows)]
-    command.wrap(process_wrap::std::JobObject);
-    #[cfg(unix)]
-    command.wrap(process_wrap::std::ProcessGroup::leader());
-    let mut child = command.spawn()?;
+    command.arg(mode);
     let timeout = if matches!(
         mode,
         cryptex_updater::KEYCHAIN_PROBE | cryptex_updater::KEYCHAIN_REOPEN
@@ -127,6 +118,22 @@ fn probe(layout: &Layout, digest: &str, mode: &str) -> io::Result<Probe> {
     } else {
         cryptex_updater::PROBE_TIMEOUT
     };
+    match bounded_probe(command, timeout)? {
+        Probe::Replied((pid, bytes)) => Ok(decode_health(mode, pid, &bytes)),
+        Probe::TimedOut => Ok(Probe::TimedOut),
+        Probe::Failed => Ok(Probe::Failed),
+        Probe::InvalidReply => Ok(Probe::InvalidReply),
+    }
+}
+
+fn bounded_probe(mut command: Command, timeout: Duration) -> io::Result<Probe<(u32, Vec<u8>)>> {
+    command.stdin(Stdio::null()).stdout(Stdio::piped());
+    let mut command = CommandWrap::from(command);
+    #[cfg(windows)]
+    command.wrap(process_wrap::std::JobObject);
+    #[cfg(unix)]
+    command.wrap(process_wrap::std::ProcessGroup::leader());
+    let mut child = command.spawn()?;
     let deadline = Instant::now() + timeout;
     let stdout = child
         .stdout()
@@ -169,11 +176,15 @@ fn probe(layout: &Layout, digest: &str, mode: &str) -> io::Result<Probe> {
     if !exit.success() {
         return Ok(Probe::Failed);
     }
-    let Ok(health) = serde_json::from_slice::<Health>(&bytes) else {
-        return Ok(Probe::InvalidReply);
+    Ok(Probe::Replied((child.id(), bytes)))
+}
+
+fn decode_health(mode: &str, pid: u32, bytes: &[u8]) -> Probe {
+    let Ok(health) = serde_json::from_slice::<Health>(bytes) else {
+        return Probe::InvalidReply;
     };
     if !key_reply_matches(mode, &health)
-        || health.desktop_pid != child.id()
+        || health.desktop_pid != pid
         || health.daemon_pid == 0
         || !matches!(
             (
@@ -183,9 +194,20 @@ fn probe(layout: &Layout, digest: &str, mode: &str) -> io::Result<Probe> {
             ("connected", true) | ("incompatible", false)
         )
     {
-        return Ok(Probe::InvalidReply);
+        return Probe::InvalidReply;
     }
-    Ok(Probe::Replied(health))
+    Probe::Replied(health)
+}
+
+#[cfg(all(target_os = "macos", feature = "owner-transport-update"))]
+fn transport_runtime() -> io::Result<std::path::PathBuf> {
+    cryptexd::local_signed_startup::sealed_trial_root()
+        .map_err(|_| error("sealed profile unavailable"))
+}
+
+#[cfg(all(windows, target_arch = "x86_64", feature = "owner-transport-update"))]
+fn transport_runtime() -> io::Result<std::path::PathBuf> {
+    cryptexd::paths::installed_windows_update_root().map_err(io::Error::other)
 }
 
 fn key_reply_matches(mode: &str, health: &Health) -> bool {
@@ -242,12 +264,44 @@ fn vacant(path: &Path) -> io::Result<bool> {
 struct Intent {
     working: String,
     staged: String,
-    #[cfg(all(target_os = "macos", feature = "mac-owner-transport-update"))]
+    #[cfg(all(
+        any(target_os = "macos", all(windows, target_arch = "x86_64")),
+        feature = "owner-transport-update"
+    ))]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     transport: Option<cryptexd::managed_profile::owner_transport_update::TransportTransition>,
 }
 
 impl Intent {
+    #[cfg(all(windows, target_arch = "x86_64", feature = "owner-transport-update"))]
+    fn prepare_windows_transport(&mut self, layout: &Layout) -> io::Result<()> {
+        use cryptexd::managed_profile::connection_settings::{Location, UpdatePackageError};
+        let root = transport_runtime()?;
+        if vacant(&root)? {
+            return Ok(());
+        }
+        let Some(location) =
+            Location::windows_enrolled(&root).map_err(|_| error("invalid Windows enrollment"))?
+        else {
+            return Ok(());
+        };
+        match location.pin_update_package() {
+            Ok(_) => return Ok(()),
+            Err(UpdatePackageError::Unverified) => {
+                return Err(error("unrecognized Windows transport"));
+            }
+            Err(UpdatePackageError::Previous) => (),
+        }
+        drop(location);
+        release::verify(layout, &layout.active, &self.staged)?;
+        let mut daemon = Command::new(desktop(&layout.active).with_file_name("cryptexd.exe"));
+        daemon.args(["lifecycle", "prepare-installed-transport-update"]);
+        let Probe::Replied((_, bytes)) = bounded_probe(daemon, Duration::from_secs(150))? else {
+            return Err(error("stopped Windows enrollment could not be prepared"));
+        };
+        self.select_transport(layout, serde_json::from_slice(&bytes)?)
+    }
+
     fn write_intent(&self, file: &Path) -> io::Result<tempfile::NamedTempFile> {
         let temp = tempfile::NamedTempFile::new_in(
             file.parent()
@@ -258,14 +312,16 @@ impl Intent {
         Ok(temp)
     }
 
-    #[cfg(all(target_os = "macos", feature = "mac-owner-transport-update"))]
+    #[cfg(all(
+        any(target_os = "macos", all(windows, target_arch = "x86_64")),
+        feature = "owner-transport-update"
+    ))]
     fn select_transport(&mut self, layout: &Layout, reported: [u8; 32]) -> io::Result<()> {
         use cryptexd::managed_profile::owner_transport_update::TransportTransition;
         if self.transport.is_some() {
             return Err(error("transport generation already selected"));
         }
-        let root = cryptexd::local_signed_startup::sealed_trial_root()
-            .map_err(|_| error("sealed profile unavailable"))?;
+        let root = transport_runtime()?;
         let stopped = layout.stopped_desktop()?;
         let transition = TransportTransition::capture(&root)
             .map_err(|_| error("staged transport unavailable"))?;
@@ -277,6 +333,7 @@ impl Intent {
         self.transport = Some(transition);
         let path = layout.intent();
         self.write_intent(&path)?.persist(&path)?;
+        #[cfg(target_os = "macos")]
         fs::File::open(
             path.parent()
                 .ok_or_else(|| error("missing transaction directory"))?,
@@ -291,7 +348,10 @@ impl Intent {
         Ok(())
     }
 
-    #[cfg(not(all(target_os = "macos", feature = "mac-owner-transport-update")))]
+    #[cfg(not(all(
+        any(target_os = "macos", all(windows, target_arch = "x86_64")),
+        feature = "owner-transport-update"
+    )))]
     fn select_transport(&mut self, _: &Layout, _: [u8; 32]) -> io::Result<()> {
         Err(error(
             "updater does not support this enrolled transport transition",
@@ -319,23 +379,27 @@ impl Intent {
         let stopped = layout.stopped_desktop()?;
         let old = working.ok_or_else(|| error("working image missing during recovery"))?;
         let new = staged.ok_or_else(|| error("staged image missing during recovery"))?;
+        if !((old == &layout.active && new == &layout.pending)
+            || (old == &layout.pending && new == &layout.active)
+            || (old == &layout.previous && (new == &layout.active || new == &layout.pending)))
+        {
+            return Err(error("unexpected package positions during recovery"));
+        }
         // Authenticate the retained image without launching its daemon against
         // any state left behind by the interrupted candidate.
         release::verify(layout, old, &self.working)?;
-        #[cfg(all(target_os = "macos", feature = "mac-owner-transport-update"))]
+        #[cfg(all(
+            any(target_os = "macos", all(windows, target_arch = "x86_64")),
+            feature = "owner-transport-update"
+        ))]
         if let Some(transport) = &self.transport {
-            let root = cryptexd::local_signed_startup::sealed_trial_root()
-                .map_err(|_| error("sealed profile unavailable"))?;
+            let root = transport_runtime()?;
             transport
                 .restore(&root)
                 .map_err(|_| error("could not restore retained native transport"))?;
         }
         if old == &layout.pending && new == &layout.active {
             fs::rename(old, &layout.previous)?;
-        } else if !((old == &layout.active && new == &layout.pending)
-            || (old == &layout.previous && (new == &layout.active || new == &layout.pending)))
-        {
-            return Err(error("unexpected package positions during recovery"));
         }
         if new == &layout.active {
             fs::rename(new, &layout.pending)?;
@@ -414,7 +478,10 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
     let mut intent = Intent {
         working: original.clone(),
         staged: approved.to_owned(),
-        #[cfg(all(target_os = "macos", feature = "mac-owner-transport-update"))]
+        #[cfg(all(
+            any(target_os = "macos", all(windows, target_arch = "x86_64")),
+            feature = "owner-transport-update"
+        ))]
         transport: None,
     };
     intent.write_intent(&journal)?.persist_noclobber(&journal)?;
@@ -426,11 +493,19 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
     if package_digest(&layout.active)? != approved {
         return Err(error("activated package changed"));
     }
-    let response = candidate_health(
-        &before,
-        |mode| probe(layout, approved, mode),
-        |reported| intent.select_transport(layout, reported),
-    );
+    #[cfg(all(windows, target_arch = "x86_64", feature = "owner-transport-update"))]
+    let prepared = intent.prepare_windows_transport(layout);
+    #[cfg(not(all(windows, target_arch = "x86_64", feature = "owner-transport-update")))]
+    let prepared: io::Result<()> = Ok(());
+    let response = prepared
+        .map_err(|_| "rolled_back_transport_preparation")
+        .and_then(|()| {
+            candidate_health(
+                &before,
+                |mode| probe(layout, approved, mode),
+                |reported| intent.select_transport(layout, reported),
+            )
+        });
     let candidate = match response {
         Ok(health) => health,
         Err(outcome) => {
@@ -441,6 +516,14 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
     };
     let mut checks = vec![before, candidate];
     let outcome = if checks[1].status == "incompatible" {
+        #[cfg(all(
+            any(target_os = "macos", all(windows, target_arch = "x86_64")),
+            feature = "owner-transport-update"
+        ))]
+        if intent.transport.is_some() {
+            checks.extend(intent.restore(layout)?);
+            return reopen(layout, transaction, &original, "rolled_back", checks);
+        }
         fs::rename(&layout.active, &layout.pending)?;
         fs::rename(&layout.previous, &layout.active)?;
         if package_digest(&layout.active)? != original {
@@ -515,6 +598,17 @@ fn candidate_health(
 fn main() -> io::Result<()> {
     let args = env::args_os().skip(1).collect::<Vec<_>>();
     match args.as_slice() {
+        [command] if command == "notice-profile" => {
+            println!(
+                "{}",
+                if cfg!(feature = "owner-transport-update") {
+                    "owner-transport-update"
+                } else {
+                    "default"
+                }
+            );
+            Ok(())
+        }
         [command] if command == "signer-fingerprint" => {
             println!("{}", release::signer_fingerprint()?);
             Ok(())

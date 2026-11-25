@@ -46,7 +46,7 @@ def exercise(root, revision):
         installed = root / "Applications/Cryptex.app"
         installed.parent.mkdir()
     unsigned = ROOT / "target/release/bundle/macos/Cryptex.app"
-    transport_features = ["--features", "mac-owner-transport-update"] if profile_trial else []
+    transport_features = ["--features", "owner-transport-update"] if profile_trial else []
     run("cargo", "test", "--locked", "-p", "cryptex-updater", *transport_features, cwd=ROOT, timeout=900)
     run("cargo", "build", "--locked", "--release", "-p", "cryptex-updater", *transport_features,
         cwd=ROOT, timeout=900)

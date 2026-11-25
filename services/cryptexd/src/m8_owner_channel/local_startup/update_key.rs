@@ -10,14 +10,9 @@ const VERIFIED: u8 = 8;
 const REFUSED: u8 = 9;
 const TRANSPORT_STAGED: u8 = 10;
 
-fn budget(allow_prompt: bool) -> Duration {
-    // A silent check on the predecessor may need to copy a stopped database.
-    Duration::from_secs(if allow_prompt || cfg!(feature = "m17-owner-transport") {
-        120
-    } else {
-        12
-    })
-}
+// Both signed peers must allow time for the user's decision or a cold database
+// copy, including when only the packaged daemon enables transport migration.
+const UPDATE_CHECK_TIMEOUT: Duration = Duration::from_secs(120);
 
 impl LocalDaemon {
     pub fn check_update_credential(
@@ -28,7 +23,7 @@ impl LocalDaemon {
             return Err(Error::Arguments);
         }
         let binding = *self.content()?.binding();
-        let deadline = Instant::now() + budget(allow_prompt);
+        let deadline = Instant::now() + UPDATE_CHECK_TIMEOUT;
         let channel = self.channel.as_mut().ok_or(Error::Channel)?;
         let phase = if allow_prompt { INTERACTIVE } else { SILENT };
         channel.send(&frame(phase, &self.epoch, &binding), deadline)?;
@@ -59,7 +54,7 @@ impl ChildGuard {
         binding: &[u8; 32],
         allow_prompt: bool,
     ) -> Result<(), Error> {
-        let deadline = Instant::now() + budget(allow_prompt);
+        let deadline = Instant::now() + UPDATE_CHECK_TIMEOUT;
         let result = match verify_existing_key(allow_prompt) {
             Ok(None) => frame(VERIFIED, &self.epoch, binding),
             Ok(Some(fingerprint)) => {
@@ -120,7 +115,8 @@ fn verify_existing_key(allow_prompt: bool) -> Result<Option<[u8; 32]>, Error> {
                 crate::syncthing_package::verify_previous_owner_package(&previous)
                     .map_err(|_| Error::Unavailable)?;
                 let source = tempfile::tempdir().map_err(|_| Error::Instance)?;
-                let release = Release::current(Role::Daemon, Instant::now() + budget(false))?;
+                let release =
+                    Release::current(Role::Daemon, Instant::now() + UPDATE_CHECK_TIMEOUT)?;
                 let package =
                     crate::m8_owner_channel::transport_helper::package(&release, source.path())
                         .map_err(|_| Error::Unavailable)?;

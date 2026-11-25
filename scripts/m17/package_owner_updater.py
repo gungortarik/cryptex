@@ -53,7 +53,10 @@ def package(image, approved_image, public_der, pin, output, keychain=None):
             subprocess.run([*args, signed], check=True, timeout=90)
             verify_image(signed, signed, "com.cryptex.updater", pin)
         notices = stage / "rust.json"
-        subprocess.run(["node", ROOT / "scripts/m17/updater_notices.mjs", notices], cwd=ROOT,
+        notice_profile = subprocess.check_output([signed, "notice-profile"], text=True, timeout=15).strip()
+        if notice_profile not in ("default", "owner-transport-update"):
+            raise ValueError("Unrecognized updater build")
+        subprocess.run(["node", ROOT / "scripts/m17/updater_notices.mjs", notices, notice_profile], cwd=ROOT,
                        check=True, timeout=120)
         # Stage in the destination directory so the public archive inherits its permissions.
         with tempfile.NamedTemporaryFile(dir=output.parent, delete=False) as handle:

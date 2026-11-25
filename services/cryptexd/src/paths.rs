@@ -9,6 +9,17 @@ use crate::error::{LifecycleError, LifecycleResult};
 /// Intentionally isolated from P0-1 Syncthing paths (`syncthing-p0-1*`).
 pub const P0_2_NAMESPACE: &str = "p0-2";
 
+#[cfg(all(windows, target_arch = "x86_64", feature = "m17-owner-transport"))]
+pub fn installed_windows_update_root() -> LifecycleResult<PathBuf> {
+    let local = env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .ok_or_else(|| LifecycleError::Io("missing absolute local application directory".into()))?;
+    let root = local.join("Cryptex-Dev/runtime/p0-2");
+    assert_outside_repository(&root)?;
+    Ok(root)
+}
+
 /// Resolve the default development runtime root for P0-2.
 ///
 /// - macOS: `~/Library/Application Support/Cryptex-Dev/p0-2`
