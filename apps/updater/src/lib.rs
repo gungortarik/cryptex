@@ -114,12 +114,14 @@ impl Layout {
     }
 
     pub fn probe_session(&self) -> io::Result<File> {
-        let exe = env::current_exe()?.canonicalize()?;
-        if ![&self.active, &self.pending, &self.previous]
-            .iter()
-            .any(|image| desktop(image).canonicalize().is_ok_and(|path| path == exe))
-        {
-            return Err(io::Error::other("probe requires the installed Desktop"));
+        self.probe_session_for(&env::current_exe()?)
+    }
+
+    fn probe_session_for(&self, executable: &Path) -> io::Result<File> {
+        if desktop(&self.active).canonicalize()? != executable.canonicalize()? {
+            return Err(io::Error::other(
+                "probe requires the active installed Desktop",
+            ));
         }
         let session = self.lock_file("desktop.lock")?;
         session
@@ -146,5 +148,36 @@ pub fn desktop(package: &Path) -> PathBuf {
         package.join("cryptex-desktop.exe")
     } else {
         package.join("Contents/MacOS/cryptex-desktop")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_active_image_can_probe_during_recovery() -> io::Result<()> {
+        let root = tempfile::tempdir()?;
+        let layout = Layout {
+            active: root.path().join("active"),
+            pending: root.path().join("pending"),
+            previous: root.path().join("previous"),
+            state: root.path().join("state"),
+        };
+        for image in [&layout.active, &layout.pending, &layout.previous] {
+            let executable = desktop(image);
+            fs::create_dir_all(executable.parent().unwrap())?;
+            fs::write(executable, b"desktop")?;
+        }
+        let _transaction = layout.begin_update()?;
+        for retained in [&layout.pending, &layout.previous] {
+            let err = layout.probe_session_for(&desktop(retained)).unwrap_err();
+            assert_eq!(
+                err.to_string(),
+                "probe requires the active installed Desktop"
+            );
+        }
+        let _session = layout.probe_session_for(&desktop(&layout.active))?;
+        Ok(())
     }
 }

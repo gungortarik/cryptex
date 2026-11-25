@@ -75,8 +75,8 @@ enum Probe {
     InvalidReply,
 }
 
-fn require_connection_check(layout: &Layout, package: &Path, digest: &str) -> io::Result<Health> {
-    match probe(layout, package, digest, PROBE)? {
+fn require_connection_check(layout: &Layout, digest: &str) -> io::Result<Health> {
+    match probe(layout, digest, PROBE)? {
         Probe::Replied(health) => Ok(health),
         Probe::TimedOut => Err(error("working Desktop update probe timed out")),
         Probe::Failed => Err(error("working Desktop failed its update probe")),
@@ -106,9 +106,9 @@ fn terminate_probe(child: &mut dyn ChildWrapper) -> io::Result<()> {
     Ok(())
 }
 
-fn probe(layout: &Layout, package: &Path, digest: &str, mode: &str) -> io::Result<Probe> {
-    release::verify(layout, package, digest)?;
-    let mut command = Command::new(desktop(package));
+fn probe(layout: &Layout, digest: &str, mode: &str) -> io::Result<Probe> {
+    release::verify(layout, &layout.active, digest)?;
+    let mut command = Command::new(desktop(&layout.active));
     command
         .arg(mode)
         .stdin(Stdio::null())
@@ -272,10 +272,9 @@ impl Intent {
         }
         let old = working.ok_or_else(|| error("working image missing during recovery"))?;
         let new = staged.ok_or_else(|| error("staged image missing during recovery"))?;
-        let verified = require_connection_check(layout, old, &self.working)?;
-        if verified.status != "connected" {
-            return Err(error("retained Desktop could not reconnect"));
-        }
+        // Authenticate the retained image without launching its daemon against
+        // any state left behind by the interrupted candidate.
+        release::verify(layout, old, &self.working)?;
         if old == &layout.pending && new == &layout.active {
             fs::rename(old, &layout.previous)?;
         } else if !((old == &layout.active && new == &layout.pending)
@@ -289,7 +288,12 @@ impl Intent {
         if old != &layout.active {
             fs::rename(&layout.previous, &layout.active)?;
         }
-        let restored = require_connection_check(layout, &layout.active, &self.working)?;
+        let verified = require_connection_check(layout, &self.working)?;
+        if verified.status != "connected" {
+            return Err(error("retained Desktop could not reconnect"));
+        }
+        // Reopen independently after the first owned daemon has drained.
+        let restored = require_connection_check(layout, &self.working)?;
         if restored.status != "connected" || restored.desktop_protocol != verified.desktop_protocol
         {
             return Err(error("recovered Desktop could not reconnect"));
@@ -347,7 +351,7 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
         ));
     }
     release::verify(layout, &layout.pending, approved)?;
-    let before = require_connection_check(layout, &layout.active, &original)?;
+    let before = require_connection_check(layout, &original)?;
     if before.status != "connected" {
         return Err(error("current Desktop does not have a working daemon"));
     }
@@ -364,11 +368,9 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
     if package_digest(&layout.active)? != approved {
         return Err(error("activated package changed"));
     }
-    let response = match probe(layout, &layout.active, approved, PROBE)? {
+    let response = match probe(layout, approved, PROBE)? {
         Probe::Replied(health) => {
-            if check_candidate_key(&before, &health, |mode| {
-                probe(layout, &layout.active, approved, mode)
-            })? {
+            if check_candidate_key(&before, &health, |mode| probe(layout, approved, mode))? {
                 Ok(health)
             } else {
                 Err("rolled_back_keychain_check")
@@ -393,7 +395,7 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
         if package_digest(&layout.active)? != original {
             return Err(error("previous package changed"));
         }
-        let restored = require_connection_check(layout, &layout.active, &original)?;
+        let restored = require_connection_check(layout, &original)?;
         if restored.status != "connected" || restored.desktop_protocol != checks[0].desktop_protocol
         {
             return Err(error("restored Desktop could not reconnect"));

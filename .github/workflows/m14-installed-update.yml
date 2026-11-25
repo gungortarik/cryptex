@@ -41,6 +41,8 @@ jobs:
           python-version: '3.12'
       - run: pnpm install --frozen-lockfile
       - run: cargo fmt --all -- --check
+      - name: Check active-image probe admission and credential rollback decisions
+        run: cargo test --locked -p cryptex-updater
       - name: Build the three signed Mac bundles and updater
         if: runner.os == 'macOS'
         run: python -B scripts/m14/installed_update.py build "${{ runner.temp }}/m14-packages"
