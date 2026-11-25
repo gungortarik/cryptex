@@ -55,6 +55,8 @@ if($releaseSmoke -or ($p.PSObject.Properties['m14_update_packages'] -and $p.m14_
     if($releaseSmoke) {
         $observer=Join-Path $p.workspace 'scripts/m14/windows_console_login.py'
         if($p.m17_signed_smoke) {
+            $stagePath = Join-Path $p.scratch 'signed-trial-stage.txt'
+            [IO.File]::WriteAllText($stagePath, 'install')
             $record=$p.m17_signed_smoke
             $verify=Join-Path $p.workspace 'scripts/m17/verify_first_install_windows.ps1'
             $setup=Join-Path $p.scratch 'signed-setup.exe'
@@ -73,16 +75,20 @@ if($releaseSmoke -or ($p.PSObject.Properties['m14_update_packages'] -and $p.m14_
             $installedDaemon = Join-Path $destination 'cryptexd.exe'
             & $installedDaemon pilot-fixture signed-transfer-v1 --runtime-root $profileRoot.FullName --confirm-isolated-pilot
             if ($LASTEXITCODE -ne 0) { throw 'Temporary signed-note setup failed' }
+            [IO.File]::WriteAllText($stagePath, 'enroll')
             & $installedDaemon transport enroll-local-dev --runtime-root $profileRoot.FullName --confirm-local-only
             if ($LASTEXITCODE -ne 0) { throw 'Installed daemon could not enroll its packaged transport' }
             $managed = Get-FileHash -LiteralPath (Join-Path $profileRoot.FullName 'managed-transport/package/syncthing.exe')
             if ($managed.Hash -ine 'cd9aea20afda2b9bdba5aff2e6ac964ed5c2e741ed4ceb48ad9e1be096ca7891') { throw 'Unexpected enrolled engine' }
             $previousDaemon = Join-Path $p.scratch 'previous-daemon.exe'
             & $verify $previousDaemon $record.Certificate $record.PreviousDaemonHash
+            [IO.File]::WriteAllText($stagePath, 'previous')
             & $p.python -B (Join-Path $p.workspace 'scripts/m17/windows_previous_note.py') $previousDaemon $installedDaemon
             if ($LASTEXITCODE -ne 0) {throw 'Historical note verification failed.'}
+            [IO.File]::WriteAllText($stagePath, 'pair')
             & $p.python -B (Join-Path $p.workspace 'scripts/m17/windows_installed_transport.py') $destination
             if ($LASTEXITCODE -ne 0) {throw 'Installed paired-profile update failed.'}
+            [IO.File]::WriteAllText($stagePath, 'desktop')
             & $p.python -B (Join-Path $p.workspace 'scripts/m14/release_smoke.py') --installed $destination
         } elseif($ObserveConsoleLogin) {
             & $p.python -B $observer observe

@@ -54,6 +54,7 @@ $userName='cpxCi'+$nonce
 $scratch=Join-Path $env:RUNNER_TEMP ('cryptex-standard-'+$nonce)
 New-Item -ItemType Directory -Path $scratch | Out-Null
 $user=$null; $child=$null; $failure=$null
+$cleanupErrors = [Collections.Generic.List[string]]::new()
 try {
     $bytes=New-Object byte[] 32
     $rng=[Security.Cryptography.RandomNumberGenerator]::Create()
@@ -111,7 +112,18 @@ try {
         -Credential $credential -LoadUserProfile -WindowStyle Hidden -PassThru `
         -Environment @{GITHUB_ACTIONS='true';RUNNER_ENVIRONMENT='github-hosted';RUNNER_OS='Windows'} `
         -WorkingDirectory $manifest -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-      if(-not $child.WaitForExit(1200000)){throw 'Standard-user daemon tests timed out.'}
+      if(-not $child.WaitForExit(1200000)){
+          if($M17SignedSmoke) {
+              $stagePath = Join-Path $scratch 'signed-trial-stage.txt'
+              if(Test-Path -LiteralPath $stagePath) {
+                  $stage = Get-Content -LiteralPath $stagePath -TotalCount 1
+                  if($stage -in 'install','enroll','previous','pair','seed','admit','apply','reopen','verify','desktop') {
+                      Write-Output "Timed out during the installed Windows trial stage $stage."
+                  }
+              }
+          }
+          throw 'Standard-user daemon tests timed out.'
+      }
       $child.WaitForExit()
       Get-Content -LiteralPath $stdout
       Get-Content -LiteralPath $stderr
@@ -146,7 +158,7 @@ finally {
     if($null -ne $child) {
         if(-not $child.HasExited) {
             & taskkill.exe /PID $child.Id /T /F | Out-Null
-            if(-not $child.WaitForExit(10000)){$failure='Test process cleanup failed.'}
+            if(-not $child.WaitForExit(10000)){$cleanupErrors.Add('Test process cleanup failed.')}
         }
         $child.Dispose()
     }
@@ -165,13 +177,13 @@ finally {
                     [IO.Path]::GetFileName($profilePath) -notmatch ('^'+[regex]::Escape($userName)+'(\..*)?$')){throw 'Unexpected/loaded CI profile.'}
                 Remove-CimInstance -InputObject $profile
             }
-        } catch {$failure='Temporary profile cleanup failed.'}
+        } catch {$cleanupErrors.Add('Temporary profile cleanup failed.')}
         try {
             Remove-LocalUser -SID $user.SID
             if(Get-LocalUser -SID $user.SID -ErrorAction SilentlyContinue){throw 'CI account still exists.'}
-        } catch {$failure='Temporary account cleanup failed.'}
+        } catch {$cleanupErrors.Add('Temporary account cleanup failed.')}
     }
-    if(-not $failure) {
+    if(-not $failure -and -not $cleanupErrors.Count) {
         $full=[IO.Path]::GetFullPath($scratch)
         $parent=[IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\')+'\'
         if(-not $full.StartsWith($parent,[StringComparison]::OrdinalIgnoreCase) -or
@@ -184,5 +196,5 @@ finally {
     }
     # Failure diagnostics remain only on the disposable runner; no profile/key archive uploaded.
 }
-if($failure){throw $failure}
+if($failure -or $cleanupErrors.Count){throw ((@($failure) + $cleanupErrors.ToArray() | Where-Object { $_ }) -join ' ')}
 Write-Output 'standard_user_daemon_tests=passed; temporary_account_profile_removed=true'

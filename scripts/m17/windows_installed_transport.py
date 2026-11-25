@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT / "scripts/m14"))
 from installed_update import wait_for_desktop_exit
 
 
-def reopened(root, pid):
+def verify_reopened(root, pid):
     deadline = time.monotonic() + 60
     snapshot = root / "gui-proof.snapshot"
     while time.monotonic() < deadline:
@@ -24,8 +24,6 @@ def reopened(root, pid):
             values = dict(line.split("=", 1) for line in snapshot.read_text().splitlines() if "=" in line)
             if (values.get("desktop_pid") == str(pid) and values.get("daemon_pid_observation") == "live"
                     and values.get("window_visible") == "true" and values.get("note") == "desktop_launched"):
-                (root / "quit.request").touch(exist_ok=False)
-                wait_for_desktop_exit(pid)
                 return
         time.sleep(0.15)
     raise RuntimeError("Updated signed Desktop did not reopen with a live daemon")
@@ -38,6 +36,7 @@ def exercise(active):
             or active != local / "Programs/Cryptex"):
         raise RuntimeError("Expected the disposable standard user's installed Cryptex")
     scratch = Path(os.environ["RUNNER_TEMP"])
+    stage = scratch / "signed-trial-stage.txt"
     fixture = scratch / "paired-update"
     previous = scratch / "exchange-package"
     tool = fixture / "cryptex-updater.exe"
@@ -47,6 +46,7 @@ def exercise(active):
     target = "managed_profile::exchange_install::tests::installed_previous_pair::installed_previous_pair"
     seed_env = dict(os.environ, CRYPTEX_TEST_ENROLLED_ROOT=str(runtime),
                     CRYPTEX_TEST_PREVIOUS_PACKAGE=str(previous))
+    stage.write_text("seed", encoding="ascii")
     seed = subprocess.run([fixture / "seed-pair.exe", target, "--ignored", "--exact"],
                           env=seed_env, capture_output=True, text=True, timeout=180)
     if seed.returncode or f"test {target} ... ok" not in seed.stdout:
@@ -65,13 +65,23 @@ def exercise(active):
     pending = active.with_name("Cryptex.pending")
     active.rename(pending)
     shutil.copytree(fixture / "working", active)
+    stage.write_text("admit", encoding="ascii")
     for directory, name in ((active, "working"), (pending, "candidate")):
         subprocess.run([tool, "admit", directory, fixture / (name + ".cms")], check=True, timeout=90)
     approved = subprocess.check_output([tool, "fingerprint", pending], text=True, timeout=90).strip()
+    stage.write_text("apply", encoding="ascii")
     report = json.loads(subprocess.check_output([tool, "apply", approved], text=True, timeout=360))
-    if report["outcome"] != "updated" or [c["status"] for c in report["checks"]] != ["connected", "connected"]:
-        raise RuntimeError("Installed paired upgrade returned " + report["outcome"])
-    reopened(runtime, report["reopened_pid"])
+    stage.write_text("reopen", encoding="ascii")
+    pid = report["reopened_pid"]
+    try:
+        if report["outcome"] != "updated" or [c["status"] for c in report["checks"]] != ["connected", "connected"]:
+            raise RuntimeError("Installed paired upgrade returned " + report["outcome"])
+        verify_reopened(runtime, pid)
+    finally:
+        # A rollback also opens a Desktop. Release the disposable profile on either path.
+        (runtime / "quit.request").touch(exist_ok=True)
+        wait_for_desktop_exit(pid)
+    stage.write_text("verify", encoding="ascii")
     installed = inventory(helper / "package")
     if (subprocess.check_output([tool, "fingerprint", active], text=True, timeout=90).strip() != approved
             or history != (inventory(events), inventory(identity))
