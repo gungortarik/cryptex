@@ -1,7 +1,7 @@
-param([switch]$M17OwnerTransport,[switch]$M16CortexRecovery,[switch]$M16SyncStress,[switch]$M14ReleaseSmoke,[hashtable]$M17SignedSmoke,[string]$M14UpdatePackages,[switch]$M13DesktopShell,[switch]$DesktopStartupOnly,[switch]$DesktopSessionOnly,[switch]$TransportPolicyOnly,[switch]$LanSetupOnly,[switch]$LanCutoffOnly,[string]$LanArtifact,[switch]$ExchangeNativeOnly,[string]$ExchangePackage,[switch]$LocalVerificationOnly,[string]$M9HistoricalDaemon,[switch]$M9AttachmentBrowser,[ValidateSet('prepare','restore')][string]$M11CrossBackup)
+param([switch]$M17PairedRelease,[switch]$M17OwnerTransport,[switch]$M16CortexRecovery,[switch]$M16SyncStress,[switch]$M14ReleaseSmoke,[hashtable]$M17SignedSmoke,[string]$M14UpdatePackages,[switch]$M13DesktopShell,[switch]$DesktopStartupOnly,[switch]$DesktopSessionOnly,[switch]$TransportPolicyOnly,[switch]$LanSetupOnly,[switch]$LanCutoffOnly,[string]$LanArtifact,[switch]$ExchangeNativeOnly,[string]$ExchangePackage,[switch]$LocalVerificationOnly,[string]$M9HistoricalDaemon,[switch]$M9AttachmentBrowser,[ValidateSet('prepare','restore')][string]$M11CrossBackup)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
-if(([int][bool]$M16CortexRecovery+[int][bool]$M16SyncStress+[int][bool]$M14ReleaseSmoke+[int][bool]$M14UpdatePackages+[int][bool]$M13DesktopShell+[int][bool]$DesktopStartupOnly+[int][bool]$DesktopSessionOnly+[int][bool]$TransportPolicyOnly+[int][bool]$LanSetupOnly+[int][bool]$LanCutoffOnly+[int][bool]$ExchangeNativeOnly+[int][bool]$LocalVerificationOnly+[int][bool]$M9HistoricalDaemon+[int][bool]$M9AttachmentBrowser+[int][bool]$M11CrossBackup) -gt 1){throw 'Choose one scoped suite.'}
+if(([int][bool]$M17PairedRelease+[int][bool]$M16CortexRecovery+[int][bool]$M16SyncStress+[int][bool]$M14ReleaseSmoke+[int][bool]$M14UpdatePackages+[int][bool]$M13DesktopShell+[int][bool]$DesktopStartupOnly+[int][bool]$DesktopSessionOnly+[int][bool]$TransportPolicyOnly+[int][bool]$LanSetupOnly+[int][bool]$LanCutoffOnly+[int][bool]$ExchangeNativeOnly+[int][bool]$LocalVerificationOnly+[int][bool]$M9HistoricalDaemon+[int][bool]$M9AttachmentBrowser+[int][bool]$M11CrossBackup) -gt 1){throw 'Choose one scoped suite.'}
 if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows') {
     throw 'Disposable GitHub-hosted Windows runner required.'
 }
@@ -21,7 +21,7 @@ if($M16CortexRecovery) {
     $python=(Get-Command python -CommandType Application | Select-Object -First 1).Source
     $browserNode=(Get-Command node -CommandType Application | Select-Object -First 1).Source
     $expectedSuites=1
-} elseif($M14UpdatePackages -or $M14ReleaseSmoke) {
+} elseif($M17PairedRelease -or $M14UpdatePackages -or $M14ReleaseSmoke) {
     if($M14UpdatePackages){$M14UpdatePackages=(Resolve-Path -LiteralPath $M14UpdatePackages).Path}
     $python=(Get-Command python -CommandType Application | Select-Object -First 1).Source
     $executables=@(); $expectedSuites=1
@@ -89,8 +89,14 @@ try {
         Copy-Item -LiteralPath $M17SignedSmoke.Installer -Destination (Join-Path $scratch 'signed-setup.exe')
         Copy-Item -LiteralPath $M17SignedSmoke.PreviousDaemon -Destination (Join-Path $scratch 'previous-daemon.exe')
     }
+    if($M17PairedRelease) {
+        $compiled=Join-Path $env:RUNNER_TEMP 'm17-paired-binaries'
+        foreach($name in @('previous.exe','candidate.exe')) {
+            [IO.File]::Copy((Join-Path $compiled $name),(Join-Path $scratch $name),$false)
+        }
+    }
     $payload=Join-Path $scratch 'tests.json'
-    @{schema=1;m16_cortex_recovery=[bool]$M16CortexRecovery;m16_codec_node=$(if($M16CortexRecovery){$browserNode});m14_release_smoke=[bool]$M14ReleaseSmoke;m17_signed_smoke=$M17SignedSmoke;m14_update_packages=$M14UpdatePackages;m13_desktop_shell=[bool]$M13DesktopShell;m13_browser_node=$(if($M13DesktopShell){$browserNode});m11_cross_backup=$M11CrossBackup;m9_attachment_browser_node=$browserNode;m9_historical_daemon=$M9HistoricalDaemon;m16_sync_stress=[bool]$M16SyncStress;lan_cutoff_only=[bool]$LanCutoffOnly;local_verification_only=[bool]$LocalVerificationOnly;sid=$user.SID.Value;user_name=$userName;scratch=$scratch;manifest=$manifest;executables=$executables;desktop_startup_only=[bool]$DesktopStartupOnly;desktop_session_only=[bool]$DesktopSessionOnly;transport_policy_only=[bool]$TransportPolicyOnly;lan_setup_only=[bool]$LanSetupOnly;lan_artifact=$LanArtifact;m17_owner_transport=[bool]$M17OwnerTransport;exchange_native_only=[bool]$ExchangeNativeOnly;exchange_package=$ExchangePackage;python=$python;workspace=$workspace} |
+    @{schema=1;m17_paired_release=[bool]$M17PairedRelease;m16_cortex_recovery=[bool]$M16CortexRecovery;m16_codec_node=$(if($M16CortexRecovery){$browserNode});m14_release_smoke=[bool]$M14ReleaseSmoke;m17_signed_smoke=$M17SignedSmoke;m14_update_packages=$M14UpdatePackages;m13_desktop_shell=[bool]$M13DesktopShell;m13_browser_node=$(if($M13DesktopShell){$browserNode});m11_cross_backup=$M11CrossBackup;m9_attachment_browser_node=$browserNode;m9_historical_daemon=$M9HistoricalDaemon;m16_sync_stress=[bool]$M16SyncStress;lan_cutoff_only=[bool]$LanCutoffOnly;local_verification_only=[bool]$LocalVerificationOnly;sid=$user.SID.Value;user_name=$userName;scratch=$scratch;manifest=$manifest;executables=$executables;desktop_startup_only=[bool]$DesktopStartupOnly;desktop_session_only=[bool]$DesktopSessionOnly;transport_policy_only=[bool]$TransportPolicyOnly;lan_setup_only=[bool]$LanSetupOnly;lan_artifact=$LanArtifact;m17_owner_transport=[bool]$M17OwnerTransport;exchange_native_only=[bool]$ExchangeNativeOnly;exchange_package=$ExchangePackage;python=$python;workspace=$workspace} |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $payload -Encoding UTF8
     $stdout=Join-Path $scratch 'stdout.log'; $stderr=Join-Path $scratch 'stderr.log'
     $bootstrap=Join-Path $PSScriptRoot 'standard-user-daemon-child.ps1'

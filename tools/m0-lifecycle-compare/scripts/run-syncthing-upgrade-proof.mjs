@@ -38,7 +38,7 @@ function requireRetained(node, id, certificate, privateKey, originalFile) {
   if (node.id !== id || digest(path.join(node.home, 'cert.pem')) !== certificate || digest(path.join(node.home, 'key.pem')) !== privateKey
     || readSyncthingFixture(path.join(node.home, 'payload', 'before.txt')) !== originalFile) throw new PackageError('SYNCTHING_UPGRADE_RETENTION_FAILED', 'Synthetic identity/payload changed');
 }
-async function scenario(root, baseline, candidate, reject, baselineVersion, candidateVersion) {
+async function scenario(root, baseline, candidate, reject, baselineVersion, candidateVersion, nativeStageTest) {
   fs.mkdirSync(root); const stops = []; let first; let second; let failure; let result;
   async function stopSecond() { const receipt = await second.stop(); stops.push(receipt); second = null; return receipt; }
   try {
@@ -54,6 +54,8 @@ async function scenario(root, baseline, candidate, reject, baselineVersion, cand
     const identity = second.id; const home = second.home;
     const cert = digest(path.join(home, 'cert.pem')); const key = digest(path.join(home, 'key.pem'));
     const snapshot = snapshotSyncthingProfile(home, path.join(root, 'cold-baseline'), await stopSecond(), baselineVersion);
+    const ownerStage = nativeStageTest ? await import('../../../scripts/m17/native_stage_trial.mjs') : null;
+    if (ownerStage) ownerStage.stageOwnerEngine(nativeStageTest, snapshot);
     second = await startSyncthingUpgradePilot(candidate, home, candidateVersion, true, baselineVersion);
     const candidatePid = second.pid;
     requireRetained(second, identity, cert, key, 'synthetic-before-upgrade\n');
@@ -69,7 +71,8 @@ async function scenario(root, baseline, candidate, reject, baselineVersion, cand
       try { assertSyncthingUpgradeHealth(observed, 'v2.1.999'); }
       catch (cause) { if (cause.code !== 'SYNCTHING_UPGRADE_HEALTH_REJECTED') throw cause; rejected = true; }
       if (!rejected) throw new PackageError('SYNCTHING_HEALTH_REJECTION_UNPROVEN', 'Injected version-health rejection not established');
-      const restored = restoreSyncthingProfile(snapshot, await stopSecond(), path.join(root, 'rejected-candidate'));
+      const restore = ownerStage ? ownerStage.restoreOwnerEngine : restoreSyncthingProfile;
+      const restored = restore(snapshot, await stopSecond(), path.join(root, 'rejected-candidate'));
       second = await startSyncthingUpgradePilot(baseline, home, baselineVersion, true, baselineVersion);
       requireRetained(second, identity, cert, key, 'synthetic-before-upgrade\n');
       await folderPause(first, false); await folderPause(second, false);
@@ -107,7 +110,8 @@ async function main() {
   const candidateVersion = ownerTrial ? '2.1.7' : '2.1.5';
   const values = {};
   for (let index = 0; index < args.length; index += 2) {
-    if (!['--root', '--baseline', '--candidate'].includes(args[index]) || !args[index + 1] || Object.hasOwn(values, args[index])) throw new PackageError('INVALID_SYNCTHING_UPGRADE_ARGS', 'Unique absolute root/baseline/candidate flags required');
+    const allowed = ['--root', '--baseline', '--candidate', ...(ownerTrial ? ['--native-stage-test'] : [])];
+    if (!allowed.includes(args[index]) || !args[index + 1] || Object.hasOwn(values, args[index])) throw new PackageError('INVALID_SYNCTHING_UPGRADE_ARGS', 'Unique explicit trial flags required');
     values[args[index]] = args[index + 1];
   }
   const root = values['--root']; const baselineInput = values['--baseline']; const candidateInput = values['--candidate'];
@@ -137,15 +141,17 @@ async function main() {
   if (candidateHash === baselineHash) throw new PackageError('SYNCTHING_UPGRADE_SAME_BYTES', 'Real distinct versions/bytes required');
   const globalConfig = process.platform === 'win32' ? path.join(process.env.LOCALAPPDATA, 'Syncthing', 'config.xml') : path.join(process.env.HOME, 'Library', 'Application Support', 'Syncthing', 'config.xml');
   const globalBefore = fs.existsSync(globalConfig) ? digest(globalConfig) : null;
-  const compatible = await scenario(path.join(root, 'compatible'), baseline, candidate, false, baselineVersion, candidateVersion);
-  const rejected = await scenario(path.join(root, 'health-reject'), baseline, candidate, true, baselineVersion, candidateVersion);
+  const nativeStageTest = values['--native-stage-test'];
+  if (nativeStageTest && !path.isAbsolute(nativeStageTest)) throw new PackageError('INVALID_SYNCTHING_UPGRADE_ARGS', 'Absolute native test binary required');
+  const compatible = await scenario(path.join(root, 'compatible'), baseline, candidate, false, baselineVersion, candidateVersion, nativeStageTest);
+  const rejected = await scenario(path.join(root, 'health-reject'), baseline, candidate, true, baselineVersion, candidateVersion, nativeStageTest);
   if (bundle) verifySyncthingBundle(bundle.root);
   if (digest(candidate) !== candidateHash) throw new PackageError('SYNCTHING_UPGRADE_BINARY_CHANGED', 'Candidate changed during proof');
   if (digest(baseline) !== baselineHash || digest(baselineSource) !== baselineHash) throw new PackageError('SYNCTHING_UPGRADE_BINARY_CHANGED', 'Baseline changed during proof');
   if ((fs.existsSync(globalConfig) ? digest(globalConfig) : null) !== globalBefore) throw new PackageError('GLOBAL_SYNCTHING_CONFIG_CHANGED', 'Observed global config changed');
   const report = { schema: 1, scope: ownerTrial ? 'm17-owner-transport-trial' : 'm0-syncthing-upgrade-pilot', platform: process.platform, arch: process.arch, node: process.version,
     baseline_version: baselineVersion, candidate_version: candidateVersion, baseline_sha256: baselineHash, candidate_sha256: candidateHash,
-    compatible, rejected, global_config_unchanged: true, policy: 'quiesce-cold-snapshot-before-candidate; rejected-profile-quarantine-and-cold-restore',
+    compatible, rejected, native_database_staged_by_cryptex: Boolean(nativeStageTest), global_config_unchanged: true, policy: 'quiesce-cold-snapshot-before-candidate; rejected-profile-quarantine-and-cold-restore',
     production_updater_verified: false, crash_atomicity_verified: false, power_loss_verified: false, publisher_authenticated: false, production_secret_storage_verified: false };
   fs.writeFileSync(path.join(root, 'syncthing-upgrade-report.json'), `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
   console.log(JSON.stringify(report));

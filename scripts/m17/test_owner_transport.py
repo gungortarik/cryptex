@@ -24,7 +24,7 @@ ARCHIVES = {
 }
 
 
-def main():
+def run_trial(native_test=None):
     target = {
         ("win32", "amd64"): "windows-amd64",
         ("darwin", "arm64"): "macos-arm64",
@@ -50,9 +50,12 @@ def main():
             binary.chmod(0o500)
             binaries.append(binary)
         runner = Path(__file__).resolve().parents[2] / "tools/m0-lifecycle-compare/scripts/run-syncthing-upgrade-proof.mjs"
-        subprocess.run(["node", runner, "--m17-owner-transport", "--root", root,
-                        "--baseline", binaries[0], "--candidate", binaries[1]], check=True)
+        args = ["node", runner, "--m17-owner-transport", "--root", root,
+                "--baseline", binaries[0], "--candidate", binaries[1]]
+        if native_test is not None:
+            args.extend(["--native-stage-test", native_test])
+        subprocess.run(args, check=True, timeout=320)
 
 
 if __name__ == "__main__":
-    main()
+    run_trial()

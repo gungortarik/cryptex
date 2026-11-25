@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/m17-owner-transport.yml'
       - 'scripts/m17/test_owner_transport.py'
+      - 'scripts/m17/native_stage_trial.mjs'
       - 'scripts/m17/owner_transport.py'
       - 'scripts/m17/paired_release_handoff.*'
       - 'scripts/m17/previous_daemon.py'
@@ -60,8 +61,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Read and restore a journal produced by the 1.0.1 service source
-        run: python -B scripts/m17/paired_release_handoff.py
+      - name: Build the two release readers independently
+        run: python -B scripts/m17/paired_release_handoff.py prepare "${{ runner.temp }}/m17-paired-binaries"
+      - name: Verify the transition in a temporary Windows standard account
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -M17PairedRelease
+      - name: Verify the transition in the disposable Mac account
+        if: runner.os == 'macOS'
+        run: python -B scripts/m17/paired_release_handoff.py exercise "$RUNNER_TEMP/m17-paired-binaries/previous" "$RUNNER_TEMP/m17-paired-binaries/candidate"
   windows-product-exchange:
     runs-on: windows-latest
     timeout-minutes: 30

@@ -1,5 +1,6 @@
 """Read a previous release's committed paired journal with both native release builds."""
 import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
@@ -10,6 +11,7 @@ import tempfile
 import zipfile
 
 from previous_daemon import REVISION
+from test_owner_transport import run_trial
 
 ROOT = Path(__file__).resolve().parents[2]
 TEST = "managed_profile::exchange_install::tests::paired_release_handoff::paired_exchange_release_handoff"
@@ -33,7 +35,7 @@ def checkout(work, label, revision):
     return tree
 
 
-def run_phase(tree, current, phase, root, target):
+def build(tree, current, target, destination):
     args = ["cargo", "test", "--locked", "-p", "cryptexd", "--lib", "--target-dir", target]
     features = []
     if sys.platform == "darwin":
@@ -42,9 +44,20 @@ def run_phase(tree, current, phase, root, target):
         features.append("m17-owner-transport")
     if features:
         args.extend(["--features", ",".join(features)])
-    args.extend([TEST, "--", "--ignored", "--exact", "--test-threads=1"])
+    args.extend(["--no-run", "--message-format=json"])
+    output = subprocess.check_output(args, cwd=tree, text=True, timeout=900)
+    artifacts = [item["executable"] for item in map(json.loads, output.splitlines())
+                 if item.get("reason") == "compiler-artifact" and item["profile"]["test"]
+                 and item["target"]["name"] == "cryptexd" and item.get("executable")]
+    if len(artifacts) != 1:
+        raise RuntimeError("Expected a single native service test binary")
+    shutil.copy2(artifacts[0], destination)
+
+
+def run_phase(binary, phase, root):
     env = dict(os.environ, CRYPTEX_PAIRED_HANDOFF=str(root), CRYPTEX_PAIRED_PHASE=phase)
-    result = subprocess.run(args, cwd=tree, env=env, stdout=subprocess.PIPE, text=True, timeout=900)
+    result = subprocess.run([binary, TEST, "--ignored", "--exact", "--test-threads=1"],
+                            env=env, stdout=subprocess.PIPE, text=True, timeout=90)
     if result.returncode or f"test {TEST} ... ok" not in result.stdout:
         raise RuntimeError(f"Paired release check failed during {phase}: {result.stdout[-2048:]}")
     print(f"paired_exchange_{phase}=passed", flush=True)
@@ -69,7 +82,7 @@ def check_database(path, expected, *, update=False):
         db.close()
 
 
-def main():
+def prepare(output):
     if sys.platform not in ("darwin", "win32"):
         raise RuntimeError("Native Mac or Windows required")
     current = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
@@ -77,8 +90,6 @@ def main():
         work = Path(directory).resolve()
         previous = checkout(work, "a", REVISION)
         candidate = checkout(work, "b", current)
-        runtime = work / "profile"
-        runtime.mkdir(mode=0o700)
         target = work / "target"
         if sys.platform == "darwin":
             # Compile temporary libtests under a throwaway public certificate pin.
@@ -88,7 +99,16 @@ def main():
                             "-subj", "/CN=Cryptex temporary build pin", "-days", "1", "-outform",
                             "DER", "-out", env_pin, "-keyout", os.devnull], check=True, timeout=30)
             os.environ["CRYPTEX_M8_LOCAL_STARTUP_CERT_DER"] = str(env_pin)
-        run_phase(previous, False, "write_previous", runtime, target)
+        suffix = ".exe" if sys.platform == "win32" else ""
+        output.mkdir(mode=0o700)
+        build(previous, False, target, output / ("previous" + suffix))
+        build(candidate, True, target, output / ("candidate" + suffix))
+
+
+def exercise(previous, candidate):
+    with tempfile.TemporaryDirectory(prefix="cx17-profile-") as temporary:
+        runtime = Path(temporary).resolve()
+        run_phase(previous, "write_previous", runtime)
         home = runtime / "native"
         source = runtime / "source"
         receiver = runtime / "receiver"
@@ -104,23 +124,29 @@ def main():
             db.close()
         before = inventory(home)
         histories = [inventory(source), inventory(receiver)]
-        run_phase(candidate, True, "stage_candidate", runtime, target)
+        run_phase(candidate, "stage_candidate", runtime)
         if inventory(home) != before:
             raise RuntimeError("Staging changed the previous native home")
         retained = runtime / "retained"
         home.rename(retained)
         (runtime / "staged").rename(home)
-        run_phase(candidate, True, "verify_candidate", runtime, target)
+        run_phase(candidate, "verify_candidate", runtime)
         check_database(home / database, "previous", update=True)
         check_database(home / database, "candidate")
         home.rename(runtime / "rejected")
         retained.rename(home)
-        run_phase(previous, False, "verify_restored", runtime, target)
+        run_phase(previous, "verify_restored", runtime)
         check_database(home / database, "previous")
         if inventory(home) != before or [inventory(source), inventory(receiver)] != histories:
             raise RuntimeError("Rollback changed the previous native home or paired histories")
         print("paired_release_history_and_rollback_bytes_preserved=passed", flush=True)
+    run_trial(candidate)
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) == 3 and sys.argv[1] == "prepare":
+        prepare(Path(sys.argv[2]).resolve())
+    elif len(sys.argv) == 4 and sys.argv[1] == "exercise":
+        exercise(*(Path(arg).resolve(strict=True) for arg in sys.argv[2:]))
+    else:
+        raise SystemExit("Expected prepare OUTPUT or exercise PREVIOUS CANDIDATE")

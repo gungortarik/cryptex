@@ -5,6 +5,20 @@ use cryptex_core::DeviceId;
 use cryptex_events::{LocalTrustAnchor, SigningKeyId};
 use std::fs;
 
+#[cfg(feature = "m17-owner-transport")]
+#[test]
+#[ignore = "requires a stopped pair of official native engines"]
+fn stage_stopped_engine() {
+    let root = PathBuf::from(std::env::var_os("CRYPTEX_M17_ENGINE_SCENARIO").unwrap());
+    let source = root.join("second");
+    assert!(source.join("pilot-owned.json").is_file());
+    assert!(source.join("cert.pem").is_file());
+    assert!(source.join("key.pem").is_file());
+    let staged = root.join("staged-engine");
+    assert!(staged.read_dir().unwrap().next().is_none());
+    crate::import_staging::export_fs::cold_native::stage(&source, &staged).unwrap();
+}
+
 #[test]
 #[ignore = "requires two native release builds and an exclusive temporary directory"]
 fn paired_exchange_release_handoff() {
