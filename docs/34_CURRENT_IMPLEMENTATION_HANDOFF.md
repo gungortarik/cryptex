@@ -2,6 +2,8 @@
 
 ## M17 personal-device release preparation
 
+On November 25 the owner chose to keep M7 at the design stage while completing the other M17 work. The prior milestone prerequisite and final release decision stay open. [Release checklist](../checklists/BETA_RELEASE_GATE.md)
+
 The [November 25 two-device decision](proposals/m17-personal-device-signing.md#owner-acceptance-of-syncthing-217) selects official Syncthing 2.1.7 for low-sensitivity notes and accepts the four known findings. The previous managed baseline was 2.1.5. The [native 2.1.5 to 2.1.7 transition](https://github.com/gungortarik/cryptex/actions/runs/45555334919) passed on Windows x64 and Apple Silicon. Each OS ran ten fixture tests plus two local-peer trials with unchanged identities and synthetic payloads. Transfer succeeded after upgrade and restart, and again after a deliberate health rejection and restoration of the stopped 2.1.5 profile. Owner candidate 1.0.2 packages the selected executable and corresponding notices on both platforms. The service selects its 2.1.7 pins at build time.
 
 The owner authorized a design-only review of M7 alternatives. The [November 25 review](../evidence/m7/m7-alternative-containment-design-20261125.md) found that a dedicated volume must also accommodate M6 replacing the managed directory while an edit is pending. Editor-buffer capture, process isolation and a separate volume each leave an outstanding containment requirement for stock Obsidian. Managed-note I/O remains disabled.

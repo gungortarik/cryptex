@@ -187,3 +187,9 @@ The [first signed installer run](https://github.com/gungortarik/cryptex/actions/
 The [signed 1.0.2 installer run at `954d7f1`](https://github.com/gungortarik/cryptex/actions/runs/45557419491) passed on both platforms. Windows verified the installed executable and notices, enrolled the bundled transport under a standard account, started Desktop and removed the temporary account profile. Mac verified the installed files and completed signed startup.
 
 These jobs used disposable profiles and signing identities. An installed upgrade from 1.0.1 with an existing 2.1.5 enrollment still needs a separate trial that preserves the device identity and signed note. The prior two-peer transport trial exercised the upstream executables directly.
+
+## Renderer review for 1.0.2
+
+At `bceab35` the renderer source tree is byte-identical to the reviewed M16 revision `d06eaf5`. The only change to the base Tauri configuration is the application version. The CSP keeps scripts local and permits renderer connections only to Tauri IPC. The configuration supplies no shell or filesystem capability to the webview. The ordinary Desktop invoke list is unchanged. Opening a generated note still goes through the Rust handler that validates the relative note target under the selected vault and constructs the Obsidian URI.
+
+The additional Mac profile-trial command takes no arguments and prints a fixed observation marker. It is compiled only with `m17-sealed-profile-trial`. The independent updater remains a native executable outside the renderer invoke list. On Windows, all 34 tests in the capture, search, pairing, connection and native profile status suites passed with Node 24.19.0. The M7 managed-note write-back gate remains open.

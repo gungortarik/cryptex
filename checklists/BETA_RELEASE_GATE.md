@@ -12,6 +12,7 @@ No checkbox may be marked complete without actual evidence from the applicable m
 ## A. Milestone and architecture gates
 
 - [ ] All required prior milestone contracts are complete through M16.
+  - On November 25 the owner kept M7 at the design stage and authorized the remaining M17 work. Its implementation and acceptance remain prerequisites to full M17 closure.
   - Open prerequisite: [M7 controlled Obsidian write-back](../docs/milestones/M7_OBSIDIAN_CONTROLLED_WRITEBACK.md#completion-gate). The owner approved a change in sequence. M7 still requires evidence that the Vault API confines reads and writes to the managed directory on both platforms. On November 23, 2026 the [public API request](https://forum.obsidian.md/t/api-request-physically-contained-vault-operations-for-managed-paths/119512) contained the original post and zero public replies.
 - [ ] All required accepted ADRs/addenda are current.
   - Evidence:
@@ -41,9 +42,11 @@ No checkbox may be marked complete without actual evidence from the applicable m
   - Evidence: [Technical review, conditional owner approval and personal-use hold](../evidence/m16/hardening.md#final-candidate-review)
 - [ ] No custom cryptography has been introduced.
   - Evidence: Release receipt and executable verification use [Windows CryptoAPI and Authenticode](../apps/updater/native/windows.c) and [Apple Security](../apps/updater/native/macos.c) with the [existing CMS decoder](../services/cryptexd/src/m8_owner_channel/native/inventory.c). Include these adapters in final candidate review.
-- [ ] Renderer/webview remains least privilege.
+- [x] Renderer/webview remains least privilege.
+  - [1.0.2 renderer, command registration and policy review](../evidence/m17/personal-packaging.md#renderer-review-for-102)
   - Evidence: The [M16 webview and IPC review](../evidence/m16/hardening.md#security-and-recovery-review) covers the shipped CSP and explicit invoke list. The [review at `40dea0f`](../evidence/m17/personal-packaging.md#dependency-and-renderer-review-at-40dea0f) confirmed that the capability files and CSP remain unchanged from M16.
-- [ ] UI code has no arbitrary shell or unrestricted filesystem access.
+- [x] UI code has no arbitrary shell or unrestricted filesystem access.
+  - [1.0.2 release and trial command review](../evidence/m17/personal-packaging.md#renderer-review-for-102)
   - Evidence: The [Desktop invocation review](../evidence/m16/hardening.md#security-and-recovery-review) applies to the same renderer source at `03857d4`. The updater runs as a separate native executable.
 - [ ] Secrets/private keys use appropriate OS secure storage.
   - Evidence: The [owner release signer](../evidence/m17/personal-packaging.md#signing-an-owner-approved-update-receipt) used Windows certificate-store and macOS Keychain identities for installed update receipts. Real owner key provisioning and final candidate review remain open.
