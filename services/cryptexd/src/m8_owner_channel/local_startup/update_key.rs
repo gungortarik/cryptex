@@ -11,7 +11,12 @@ const REFUSED: u8 = 9;
 const TRANSPORT_STAGED: u8 = 10;
 
 fn budget(allow_prompt: bool) -> Duration {
-    Duration::from_secs(if allow_prompt { 120 } else { 12 })
+    // A silent check on the predecessor may need to copy a stopped database.
+    Duration::from_secs(if allow_prompt || cfg!(feature = "m17-owner-transport") {
+        120
+    } else {
+        12
+    })
 }
 
 impl LocalDaemon {

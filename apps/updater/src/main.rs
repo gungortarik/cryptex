@@ -119,7 +119,10 @@ fn probe(layout: &Layout, digest: &str, mode: &str) -> io::Result<Probe> {
     #[cfg(unix)]
     command.wrap(process_wrap::std::ProcessGroup::leader());
     let mut child = command.spawn()?;
-    let timeout = if mode == cryptex_updater::KEYCHAIN_PROBE {
+    let timeout = if matches!(
+        mode,
+        cryptex_updater::KEYCHAIN_PROBE | cryptex_updater::KEYCHAIN_REOPEN
+    ) {
         Duration::from_secs(150)
     } else {
         cryptex_updater::PROBE_TIMEOUT

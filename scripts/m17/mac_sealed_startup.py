@@ -146,6 +146,8 @@ def exercise(root, revision):
         from mac_update_credential import exercise as credential_update
         check(root, desktop, pin, daemon, lambda scope, profile:
               credential_update(root, desktop, updater, delivery, revision, pin, scope, profile))
+        from mac_installed_transport import exercise as paired_update
+        paired_update(root, desktop, updater, pin)
         return
     window = subprocess.run(["/usr/bin/swift", ROOT / "scripts/m8/mac_ui_quit_check.swift", desktop],
                             capture_output=True, text=True, timeout=120)
