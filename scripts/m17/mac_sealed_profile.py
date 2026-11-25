@@ -43,6 +43,12 @@ def check(work, desktop, pin):
             raise RuntimeError("Empty canonical baseline")
         descriptor = profile / "signed-probe.json"
         expected = hashlib.sha256(descriptor.read_bytes()).digest()
+        scope.run([daemon, "transport", "enroll-local-dev", "--runtime-root", profile,
+                   "--confirm-local-only"], "enroll_installed_transport", 160)
+        installed = desktop.parent.parent / "Resources/transport/syncthing"
+        managed = profile / "managed-transport/package/syncthing"
+        if hashlib.sha256(managed.read_bytes()).digest() != hashlib.sha256(installed.read_bytes()).digest():
+            raise RuntimeError("Enrolled transport differs from installed transport")
         for attempt in range(2):
             outcome = scope.fence.outcome([sys.executable, "-B", __file__, desktop], 100)
             if outcome.code or outcome.timed_out or outcome.limited or outcome.pipe_failed:

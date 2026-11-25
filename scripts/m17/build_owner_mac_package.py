@@ -10,6 +10,7 @@ import tempfile
 
 from prepare_mac_inventory import output_directory, prepare, publish
 from sign_owner_update import sign
+from owner_transport import verify as verify_transport
 
 
 def fingerprint(updater, bundle):
@@ -42,6 +43,7 @@ def package(bundle, approved, revision, public_der, pin, updater, cms_helper, ou
         if (record.get("target") != "aarch64-apple-darwin" or source.get("commit") != revision
                 or source.get("clean") is not True):
             raise ValueError("Mac build provenance differs from the clean reviewed revision or target")
+        verify_transport(app / "Contents/Resources/transport", "aarch64-apple-darwin")
         daemon = app / "Contents/MacOS/cryptexd"
         for image, role in ((daemon, "com.cryptex.daemon"), (app, "com.cryptex.desktop")):
             args = ["/usr/bin/codesign", "--force", "--timestamp=none", "--options", "runtime",

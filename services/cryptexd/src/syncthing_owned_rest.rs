@@ -134,7 +134,7 @@ impl<'a> OwnedSyncthingRest<'a> {
         listener: Option<std::net::SocketAddrV4>,
     ) -> Result<TransportObservation, OwnedRestError> {
         let version: Version = json(&self.request(Operation::Version, deadline)?)?;
-        if version.version != "v2.1.5" {
+        if version.version != crate::syncthing_package::REST_VERSION {
             return Err(OwnedRestError::VersionMismatch);
         }
         let status: Status = json(&self.request(Operation::Status, deadline)?)?;
@@ -145,7 +145,7 @@ impl<'a> OwnedSyncthingRest<'a> {
             status.require_listener(listener)?;
         }
         Ok(TransportObservation {
-            engine_version: "v2.1.5",
+            engine_version: crate::syncthing_package::REST_VERSION,
             expected_native_identity_matches: true,
         })
     }

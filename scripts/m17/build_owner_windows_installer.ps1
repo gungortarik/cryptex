@@ -30,6 +30,7 @@ $targetBefore = [Environment]::GetEnvironmentVariable('CARGO_TARGET_DIR')
 $sidecarStage = $null
 $copiedDaemon = $null
 $provenanceLock = $null
+$transportLocks = @()
 try {
     $provenanceFile = Join-Path $repo 'apps/desktop/src-tauri/binaries/build-provenance.json'
     # NSIS reads this resource later. Keep the verified file read-only until bundling finishes.
@@ -43,6 +44,9 @@ try {
     }
     $changes = git -C $repo status --porcelain=v1 --untracked-files=normal
     if ($LASTEXITCODE -ne 0 -or $changes) { throw 'Windows packaging requires a clean release checkout' }
+    $transportSource = Join-Path $repo 'apps/desktop/src-tauri/binaries/transport'
+    python -B "$PSScriptRoot/owner_transport.py" verify $transportSource x86_64-pc-windows-msvc
+    if ($LASTEXITCODE -ne 0) { throw 'Invalid transport packaging input' }
     $env:CARGO_TARGET_DIR = Join-Path $scratch 'target'
     $release = [IO.Directory]::CreateDirectory((Join-Path $env:CARGO_TARGET_DIR 'release')).FullName
     $copiedDesktop = Join-Path $release 'cryptex-desktop.exe'
@@ -61,8 +65,18 @@ try {
     if ($signed.Status -ne 'Valid' -or $signed.SignerCertificate.GetCertHashString('SHA256') -ine $CertificateSha256) {
         throw 'Staged daemon signature verification failed'
     }
+    # NSIS must read only the four reviewed files. Use explicit mappings and hold
+    # their handles without write/delete sharing through installer generation.
+    $transportMap = @{ 'binaries/transport' = $null }
+    foreach ($member in 'syncthing.exe','LICENSE.txt','AUTHORS.txt','NOTICES.txt') {
+        $transportLocks += [IO.File]::Open((Join-Path $transportSource $member), 'Open', 'Read', 'Read')
+        $transportMap["binaries/transport/$member"] = "transport/$member"
+    }
+    python -B "$PSScriptRoot/owner_transport.py" verify $transportSource x86_64-pc-windows-msvc
+    if ($LASTEXITCODE -ne 0) { throw 'Transport changed during package staging' }
     $config = Join-Path $scratch 'signing.json'
     @{ bundle = @{
+        resources = $transportMap
         externalBin = @("$relativeStage/cryptexd")
         windows = @{ certificateThumbprint = $cert.Thumbprint; digestAlgorithm = 'sha256' }
     }} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $config
@@ -94,6 +108,7 @@ try {
         CertificateSha256 = $CertificateSha256
     }
 } finally {
+    foreach ($handle in $transportLocks) { $handle.Dispose() }
     if ($provenanceLock) { $provenanceLock.Dispose() }
     [Environment]::SetEnvironmentVariable('CARGO_TARGET_DIR', $targetBefore)
     if ($copiedDaemon -and [IO.File]::Exists($copiedDaemon)) { [IO.File]::Delete($copiedDaemon) }

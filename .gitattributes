@@ -25,6 +25,7 @@ scripts/m8/mac_bootstrap_bundle.h text eol=lf
 
 # Hashed upstream notice text must have identical checkout bytes on both OSes.
 /third_party/syncthing/2.1.5/*.txt text eol=lf
+/third_party/syncthing/2.1.7/*.txt -text -diff
 /third_party/rust-notices/** -text
 /third_party/rust-notices/sources.json text eol=lf
 

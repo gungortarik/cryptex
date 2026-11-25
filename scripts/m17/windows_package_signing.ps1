@@ -92,10 +92,12 @@ try {
     if ($proc.ExitCode -ne 0) { throw "Installer exited with $($proc.ExitCode)" }
     python -B "$PSScriptRoot/check_installed_provenance.py" (Join-Path $destination 'build-provenance.json')
     if ($LASTEXITCODE -ne 0) { throw 'Installed package provenance verification failed' }
+    python -B "$PSScriptRoot/owner_transport.py" installed (Join-Path $destination transport) x86_64-pc-windows-msvc
+    if ($LASTEXITCODE -ne 0) { throw 'Installed official transport verification failed' }
     $info = [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $destination 'cryptex-desktop.exe'))
     $installedVersion = '{0}.{1}.{2}' -f $info.ProductMajorPart,$info.ProductMinorPart,$info.ProductBuildPart
     if ($report.Source -ne $env:GITHUB_SHA -or $report.Platform -ne 'windows' -or
-        $report.Version -cne '1.0.1' -or $installedVersion -cne $report.Version -or $info.ProductPrivatePart -ne 0) {
+        $report.Version -cne '1.0.2' -or $installedVersion -cne $report.Version -or $info.ProductPrivatePart -ne 0) {
         throw "Owner candidate version mismatch: installed $installedVersion, package $($report.Version)"
     }
     Write-Output "Verified Windows installed candidate $installedVersion and signed installer $release."

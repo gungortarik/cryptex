@@ -122,9 +122,15 @@ fn owned_http_ipv4_ipv6_and_owned_monitor_child() {
     for (ipv6, tree) in [(false, false), (true, false), (false, true)] {
         let fixture = Fixture::new();
         let responses = vec![
-            http_response(r#"{"version":"v2.1.5"}"#),
+            http_response(&format!(
+                r#"{{"version":"{}"}}"#,
+                crate::syncthing_package::REST_VERSION
+            )),
             http_response(&format!(r#"{{"myID":"{HTTP_ID}"}}"#)),
-            http_response(r#"{"version":"v2.1.5"}"#),
+            http_response(&format!(
+                r#"{{"version":"{}"}}"#,
+                crate::syncthing_package::REST_VERSION
+            )),
             http_response(&format!(r#"{{"myID":"{HTTP_ID}"}}"#)),
             http_response("{}"),
         ];
@@ -253,7 +259,10 @@ fn owned_http_identity_mismatch_and_total_deadline() {
     let (mut owner, address) = start_http(
         &fixture,
         vec![
-            http_response(r#"{"version":"v2.1.5"}"#),
+            http_response(&format!(
+                r#"{{"version":"{}"}}"#,
+                crate::syncthing_package::REST_VERSION
+            )),
             http_response(r#"{"myID":"wrong"}"#),
         ],
         false,
@@ -268,7 +277,10 @@ fn owned_http_identity_mismatch_and_total_deadline() {
     let fixture = Fixture::new();
     let (mut owner, address) = start_http(
         &fixture,
-        vec![http_response(r#"{"version":"v2.1.5"}"#)],
+        vec![http_response(&format!(
+            r#"{{"version":"{}"}}"#,
+            crate::syncthing_package::REST_VERSION
+        ))],
         false,
         false,
         300,
@@ -288,7 +300,10 @@ fn owned_http_shutdown_refuses_wrong_identity_before_post() {
     let (mut owner, address) = start_http(
         &fixture,
         vec![
-            http_response(r#"{"version":"v2.1.5"}"#),
+            http_response(&format!(
+                r#"{{"version":"{}"}}"#,
+                crate::syncthing_package::REST_VERSION
+            )),
             http_response(r#"{"myID":"wrong"}"#),
         ],
         false,

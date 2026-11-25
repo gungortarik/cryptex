@@ -54,12 +54,16 @@ export function prepareSidecar(targetTriple = process.env.TAURI_ENV_TARGET_TRIPL
   execFileSync(
     "cargo",
     ["build", "-p", "cryptexd", "--release", "--locked", "--target", triple,
-      ...(sealedStartupCheck ? ["--features", sealedStartupCheck === "profile-trial"
-        ? "m17-sealed-profile-trial" : "m17-sealed-startup-check"] : [])],
+      "--features", ["m17-owner-transport", ...(sealedStartupCheck ? [sealedStartupCheck === "profile-trial"
+        ? "m17-sealed-profile-trial" : "m17-sealed-startup-check"] : [])].join(",")],
     { cwd: repositoryDirectory, stdio: "inherit" },
   );
 
   mkdirSync(path.dirname(paths.stagedBinary), { recursive: true });
+  execFileSync(process.platform === "win32" ? "python" : "python3", [
+    "-B", path.join(repositoryDirectory, "scripts/m17/owner_transport.py"), "prepare",
+    path.join(path.dirname(paths.stagedBinary), "transport"), triple,
+  ], { stdio: "inherit" });
   writeRustNotices(repositoryDirectory, triple, host, path.join(path.dirname(paths.stagedBinary), "rust-notices.json"));
   writeBuildProvenance(repositoryDirectory, triple, path.join(path.dirname(paths.stagedBinary), "build-provenance.json"));
   copyFileSync(paths.builtBinary, paths.stagedBinary);

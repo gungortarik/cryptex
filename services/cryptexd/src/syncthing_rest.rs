@@ -19,7 +19,7 @@ use {
 use crate::secure_store::{SecureStore, SecureStoreEnvironment};
 
 #[cfg(test)]
-const PINNED_VERSION: &str = "v2.1.5";
+use crate::syncthing_package::REST_VERSION as PINNED_VERSION;
 #[cfg(test)]
 const MAX_RESPONSE_BYTES: u64 = 64 * 1024;
 #[cfg(test)]
@@ -430,13 +430,13 @@ mod tests {
     #[test]
     fn exact_pin_and_identity_pass_over_real_loopback_http() {
         let (result, requests) = observe(vec![
-            json(r#"{"version":"v2.1.5","extra":true}"#),
+            json(&format!(r#"{{"version":"{PINNED_VERSION}","extra":true}}"#)),
             json(&format!(r#"{{"myID":"{ID}"}}"#)),
         ]);
         assert_eq!(
             result.unwrap(),
             TransportObservation {
-                engine_version: "v2.1.5",
+                engine_version: PINNED_VERSION,
                 expected_native_identity_matches: true
             }
         );
@@ -464,7 +464,7 @@ mod tests {
     #[test]
     fn unexpected_native_identity_is_not_accepted() {
         let (result, _) = observe(vec![
-            json(r#"{"version":"v2.1.5"}"#),
+            json(&format!(r#"{{"version":"{PINNED_VERSION}"}}"#)),
             json(r#"{"myID":"WRONG_NATIVE_ID"}"#),
         ]);
         assert_eq!(result, Err(SyncthingRestError::IdentityMismatch));
@@ -557,7 +557,7 @@ mod tests {
     #[test]
     fn total_budget_covers_body_reads_and_both_requests() {
         let (endpoint, worker) = serve(vec![Reply {
-            bytes: json(r#"{"version":"v2.1.5"}"#),
+            bytes: json(&format!(r#"{{"version":"{PINNED_VERSION}"}}"#)),
             delay: Duration::ZERO,
             body_delay: Duration::ZERO,
         }]);
@@ -581,7 +581,7 @@ mod tests {
     #[test]
     fn body_after_immediate_headers_still_has_a_deadline() {
         let (endpoint, worker) = serve(vec![Reply {
-            bytes: json(r#"{"version":"v2.1.5"}"#),
+            bytes: json(&format!(r#"{{"version":"{PINNED_VERSION}"}}"#)),
             delay: Duration::ZERO,
             body_delay: Duration::from_millis(500),
         }]);
@@ -597,7 +597,7 @@ mod tests {
 
     #[test]
     fn exactly_the_response_limit_is_allowed_for_valid_json() {
-        let mut version = r#"{"version":"v2.1.5"}"#.to_owned();
+        let mut version = format!(r#"{{"version":"{PINNED_VERSION}"}}"#);
         version.push_str(&" ".repeat(MAX_RESPONSE_BYTES as usize - version.len()));
         assert_eq!(version.len(), MAX_RESPONSE_BYTES as usize);
         assert!(
@@ -728,7 +728,7 @@ mod tests {
     #[test]
     fn ambient_proxy_settings_cannot_redirect_the_api_key() {
         let (endpoint, worker) = serve(replies(vec![
-            json(r#"{"version":"v2.1.5"}"#),
+            json(&format!(r#"{{"version":"{PINNED_VERSION}"}}"#)),
             json(&format!(r#"{{"myID":"{ID}"}}"#)),
         ]));
         let proxy = TcpListener::bind("127.0.0.1:0").unwrap();

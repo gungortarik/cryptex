@@ -4,6 +4,7 @@
     "active": true,
     "windows": { "nsis": { "installMode": "currentUser" } },
     "resources": {
+      "binaries/transport": "transport",
       "binaries/build-provenance.json": "build-provenance.json",
       "binaries/rust-notices.json": "notices/rust.json",
       "../dist/notices/frontend.json": "notices/frontend.json",

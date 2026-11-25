@@ -9,6 +9,8 @@ on:
       - 'scripts/m14/release_smoke.py'
       - 'scripts/m8/*standard-user*.ps1'
       - 'scripts/m17/windows_package_signing.ps1'
+      - 'scripts/m17/owner_transport.py'
+      - 'third_party/syncthing/2.1.7/**'
       - 'scripts/m17/build_owner_windows_installer.ps1'
       - 'scripts/m17/verify_first_install_*'
       - 'scripts/m17/check_installed_provenance.py'

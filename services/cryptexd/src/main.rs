@@ -163,9 +163,18 @@ fn run_transport_enrollment(args: &[String]) -> Result<(), LifecycleError> {
             "transport enrollment arguments".into(),
         ));
     }
+    #[cfg(all(windows, feature = "m17-owner-transport"))]
+    let installed = env::current_exe()?.with_file_name("transport");
     let package = match rest {
+        #[cfg(all(windows, feature = "m17-owner-transport"))]
+        [] => Some(installed.as_path()),
+        #[cfg(not(all(windows, feature = "m17-owner-transport")))]
         [] => None,
-        [flag, path] if cfg!(windows) && flag == "--package" => Some(Path::new(path)),
+        [flag, path]
+            if cfg!(all(windows, not(feature = "m17-owner-transport"))) && flag == "--package" =>
+        {
+            Some(Path::new(path))
+        }
         _ => return Err(LifecycleError::Usage("transport package arguments".into())),
     };
     cryptexd::managed_profile::enrollment::enroll_local_dev(Path::new(root), package)

@@ -17,9 +17,9 @@ use super::{AUTHORS_SHA256, LICENSE_SHA256, PackageError, WINDOWS_AMD64_SHA256};
 pub(super) fn open_pinned(directory: &Path) -> Result<Vec<File>, PackageError> {
     let mut files = pin_directories(directory)?;
     for (name, length, digest) in [
-        ("syncthing.exe", 27_448_104, WINDOWS_AMD64_SHA256),
-        ("LICENSE.txt", 16_726, LICENSE_SHA256),
-        ("AUTHORS.txt", 16_811, AUTHORS_SHA256),
+        ("syncthing.exe", super::pins::SIZES[0], WINDOWS_AMD64_SHA256),
+        ("LICENSE.txt", super::pins::SIZES[1], LICENSE_SHA256),
+        ("AUTHORS.txt", super::pins::SIZES[2], AUTHORS_SHA256),
     ] {
         // Notices have small fixed upper bounds. Their exact bytes are still
         // required by the digest; no CRLF normalization or alternate digest.
