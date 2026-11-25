@@ -53,37 +53,45 @@ def previous_package(folder):
             file.chmod(0o500 if leaf == "syncthing" else 0o400)
 
 
-def enrollment_daemon(work, pin):
-    from mac_identity_preflight import checked, run_bounded
-    from mac_lan_setup import compile_products, inventory as app_inventory, tool
-    from platform import machine
+def install_previous_app(work, active, updater, pin):
+    from build_owner_mac_package import fingerprint
+    from prepare_mac_inventory import stage_delivery
 
     tree = Path(os.environ["RUNNER_TEMP"]) / "m17-previous/source"
     if subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=tree, text=True).strip() != REVISION:
         raise RuntimeError("Unexpected enrollment service source")
-    tool_path = os.pathsep.join(dict.fromkeys([*(str(tool(name).parent) for name in ("node", "cargo", "pnpm")),
-                                              "/usr/bin", "/bin", "/usr/sbin", "/sbin"]))
-
-    def run(args, label, timeout=60):
-        outcome = run_bounded(args, timeout, tool_path=tool_path)
-        return checked(lambda *_: outcome, args, label, timeout)
-
-    _, release = compile_products(tree, work, REVISION, Path(os.environ["CRYPTEX_M17_SIGNER_DER"]), run, {})
-    app = work / "Cryptex-LAN.app"
-    binaries, resources = app / "Contents/MacOS", app / "Contents/Resources"
-    binaries.mkdir(parents=True, mode=0o700)
-    resources.mkdir(mode=0o700)
-    shutil.copytree(tree / "apps/desktop/dist", resources / "frontend")
-    previous_package(resources / "transport")
-    for name, role in (("cryptex-desktop", "desktop"), ("cryptexd", "daemon")):
-        shutil.copy2(work / "target/debug" / name, binaries / name)
-        image(binaries / name, "com.cryptex.development." + role)
-    manifest = resources / "m8-startup.json"
-    manifest.write_text(json.dumps(app_inventory(app, machine(), release, run), separators=(",", ":")),
-                        encoding="utf-8")
-    run([os.environ["CX_UPDATE_CI_CMS_HELPER"], pin, manifest, resources / "m8-startup.cms"],
-        "sign_historical_enrollment_inventory")
-    return binaries / "cryptexd"
+    target_dir = tree.parent / "target"
+    env = dict(os.environ, CRYPTEX_M17_SOURCE_REVISION=REVISION, GITHUB_SHA=REVISION,
+               CARGO_TARGET_DIR=str(target_dir))
+    subprocess.run(["pnpm", "install", "--frozen-lockfile"], cwd=tree, env=env, check=True, timeout=900)
+    desktop_dir = tree / "apps/desktop"
+    subprocess.run(["node", "--input-type=module", "-e",
+                    "import {prepareSidecar} from './scripts/prepare-cryptexd-sidecar.mjs';"
+                    "prepareSidecar(undefined,'profile-trial')"], cwd=desktop_dir, env=env, check=True, timeout=1200)
+    config = json.loads((desktop_dir / "src-tauri/tauri.bundle.conf.json").read_bytes())
+    config["bundle"]["resources"]["../dist"] = "frontend"
+    overlay = work / "previous-bundle.json"
+    overlay.write_text(json.dumps(config), encoding="utf-8")
+    subprocess.run(["pnpm", "--filter", "@cryptex/desktop", "exec", "tauri", "build", "--bundles", "app",
+                    "--features", "m17-sealed-profile-trial", "--config", overlay],
+                   cwd=tree, env=env, check=True, timeout=1200)
+    unsigned = target_dir / "release/bundle/macos/Cryptex.app"
+    # The 1.0.1 test build takes its pinned transport as a separate input.
+    previous_package(unsigned / "Contents/Resources/transport")
+    delivery = work / "previous-delivery"
+    subprocess.run([sys.executable, "-B", tree / "scripts/m17/build_owner_mac_package.py", unsigned,
+                    fingerprint(updater, unsigned), REVISION, env["CRYPTEX_M17_SIGNER_DER"], pin, delivery,
+                    "--updater", updater, "--mac-helper", env["CX_UPDATE_CI_CMS_HELPER"],
+                    "--keychain", env["CX_NATIVE_TEST_KEYCHAIN"]], cwd=tree, env=env, check=True, timeout=240)
+    manifest = json.loads((delivery / "release.json").read_bytes())
+    if (manifest["version"], manifest["source"], manifest["certificate_sha256"]) != ("1.0.1", REVISION, pin):
+        raise RuntimeError("Historical app version, source or signer differs")
+    active.rename(work / "completed-credential-trial.app")
+    subprocess.run(["/usr/bin/ditto", delivery / "Cryptex.app", active], check=True, timeout=90)
+    slot = delivery / ("cryptex-release-" + manifest["desktop_sha256"])
+    stage_delivery(active, slot, pin, manifest["desktop_sha256"], active.parent)
+    subprocess.run([updater, "admit", active, delivery / "update.cms"], check=True, timeout=90)
+    return active / "Contents/MacOS/cryptexd"
 
 
 def seed_phase(scope, tool, profile, name):
@@ -115,12 +123,13 @@ def exercise(work, desktop, updater, pin):
     profile = Path(tempfile.gettempdir()).resolve() / ("cryptex-m17-profile-" + pin)
     with tempfile.TemporaryDirectory(dir=work, prefix="old-enrollment-") as tmp:
         tool = seed_tool(Path(tmp))
-        daemon = enrollment_daemon(Path(tmp), pin)
+        daemon = install_previous_app(Path(tmp), active, updater, pin)
         profile.mkdir(mode=0o700, exist_ok=False)
         helper = profile / "managed-transport"
         (profile / "pilot-runtime.marker").write_bytes(b"m0-native-desktop-runtime-v1\n")
         with CredentialKeychain(work, run_bounded) as scope:
-            seed_phase(scope, tool, profile, "installed_previous_note")
+            scope.run([daemon, "pilot-fixture", "signed-transfer-v1", "--runtime-root", profile,
+                       "--confirm-isolated-pilot"], "create_note_with_101_service", 45)
             probe = scope.root / "item"
             scope.run(["/usr/bin/xcrun", "clang", "-fobjc-arc", "-Wno-deprecated-declarations",
                        "-framework", "Foundation", "-framework", "Security",
@@ -128,14 +137,16 @@ def exercise(work, desktop, updater, pin):
             enrollment = helper / ("0" * 31 + "1")
             device = uuid.UUID(_metadata(profile / "identity/local_device.json")["device_id"])
             account = "device-event-signing-seed:" + str(device)
-            scope.authorize(probe, account, tool, daemon)
             outcome = scope.run([daemon, "transport", "enroll-local-dev", "--runtime-root", profile,
                                  "--confirm-local-only"], "enroll_historical_signed_service", 180)
             if "transport_enrollment=local_only" not in outcome.splitlines():
                 raise RuntimeError("Missing historical signed enrollment receipt")
+            scope.authorize(probe, account, daemon, tool)
             seed_phase(scope, tool, profile, "installed_previous_pair")
-            scope.authorize(probe, account, tool, target, previous_grantee=daemon)
+            scope.authorize(probe, account, daemon, target, previous_grantee=tool)
             scope.authorize(probe, "api:" + _metadata(enrollment / "profile.json")["credential_id"], daemon, target)
+            scope.fence.checked([sys.executable, "-B", Path(__file__).with_name("mac_sealed_profile.py"), desktop],
+                                "search_in_historical_101_before_update", 110)
             notes = profile_snapshot(profile)
             original = inventory(enrollment / "native")
             old_files = inventory(helper / "package")

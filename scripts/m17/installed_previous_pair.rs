@@ -7,30 +7,16 @@ use cryptex_core::DeviceId;
 use cryptex_events::BootstrapApprovalRole;
 use std::fs;
 
-const BRAIN: &str = "11111111-1111-4111-8111-111111111111";
-
+#[cfg(windows)]
 fn create_note(root: &std::path::Path, store: &impl crate::secure_store::SecureStore) {
     crate::install_runtime::prepare_m1_runtime_foundation(root).unwrap();
     crate::signed_transfer_probe::create(
         root,
         store,
-        BRAIN,
+        "11111111-1111-4111-8111-111111111111",
         "55555555-5555-4555-8555-555555555555",
     )
     .unwrap();
-}
-
-#[cfg(target_os = "macos")]
-#[test]
-#[ignore = "requires an isolated native credential Keychain"]
-fn installed_previous_note() {
-    assert_eq!(
-        std::env::var("RUNNER_ENVIRONMENT").unwrap(),
-        "github-hosted"
-    );
-    let root = PathBuf::from(std::env::var_os("CRYPTEX_TEST_ENROLLED_ROOT").unwrap());
-    let _instance = crate::instance::try_acquire_instance(&root).unwrap();
-    create_note(&root, &crate::MacosKeychainStore::new());
 }
 
 #[test]
@@ -43,7 +29,6 @@ fn installed_previous_pair() {
     assert_eq!(crate::syncthing_package::VERSION, "2.1.5");
     let root = PathBuf::from(std::env::var_os("CRYPTEX_TEST_ENROLLED_ROOT").unwrap());
     let instance = crate::instance::try_acquire_instance(&root).unwrap();
-    let brain = BRAIN;
     let environment = crate::SecureStoreEnvironment::Dev;
     #[cfg(target_os = "macos")]
     let store = crate::MacosKeychainStore::new();
@@ -51,6 +36,8 @@ fn installed_previous_pair() {
     let store = crate::WindowsCredentialStore::new();
     #[cfg(windows)]
     create_note(&root, &store);
+    let identity = crate::identity_runtime::load_brain_identity(&root).unwrap();
+    let brain = identity.brain_id.as_str();
     let device = DeviceId::new(
         crate::local_device_identity::load_local_device_identity(&root, brain)
             .unwrap()
