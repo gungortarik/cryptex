@@ -95,6 +95,7 @@ No checkbox may be marked complete without actual evidence from the applicable m
   - The owner accepted the [two-device delivery and version policy](../docs/proposals/m17-personal-device-signing.md#accepted-delivery-and-version-policy-for-the-two-personal-devices) and assigned first candidate version `1.0.1`.
   - Evidence: [Disposable local signing on both platforms](https://github.com/gungortarik/cryptex/actions/runs/45253534985). The [first-install verifiers](https://github.com/gungortarik/cryptex/actions/runs/45260525337) and [signed updater](https://github.com/gungortarik/cryptex/actions/runs/45257477174) passed with disposable identities. [Live Mac roles](../evidence/m17/personal-packaging.md#installed-macos-owner-session) were verified with a disposable signer. The [Mac packaging command](https://github.com/gungortarik/cryptex/actions/runs/45285474274) and the [Windows packaging command](https://github.com/gungortarik/cryptex/actions/runs/45286355369) passed with disposable signing identities. Owner-supplied first-install receipts cover the temporary accounts on the [Windows VM](../evidence/m17/personal-packaging.md#owner-vm-result) and [Mac](../evidence/m17/personal-packaging.md#owner-mac-result). Final candidate acceptance remains open.
 - [ ] Final third-party notices are included.
+  - Both [installed 1.0.2 inventories](../evidence/m17/personal-packaging.md#installed-release-notices-at-77ba595) matched the native dependency graphs at `77ba595`. The signed CI packages used disposable identities.
   - Evidence: [Frontend, native Rust dependencies and embedded component notices](../evidence/m17/personal-packaging.md). The 1.0.2 transport inventory passed in disposable installations. The final release inventory remains open.
 - [ ] Syncthing/other bundled dependency notice obligations are satisfied.
   - Evidence: [Official transport archive contents and linked dependency notices](https://github.com/gungortarik/cryptex/actions/runs/45262814860). [The 1.0.2 installed-file checks](../evidence/m17/personal-packaging.md#installed-syncthing-in-owner-candidate-102) compare the executable and notice digests on both platforms. Repeat for the final signed artifacts.
@@ -126,6 +127,7 @@ No checkbox may be marked complete without actual evidence from the applicable m
 - [ ] M17 milestone acceptance criteria are satisfied.
 - [ ] `docs/21_DEFINITION_OF_DONE.md` is satisfied for the release scope.
 - [ ] Required CI is green at the release-candidate commit.
+  - [General CI at `77ba595`](https://github.com/gungortarik/cryptex/actions/runs/45738550697) passed on both systems, including Windows cross-account access control. The paired Mac update and final candidate selection remain open.
   - [General CI at `e18540e`](https://github.com/gungortarik/cryptex/actions/runs/45729144487) passed Windows readiness, macOS readiness and Windows cross-account IPC access control, including the shared native runtime path fix and the approved transport. The installed paired-profile upgrade and final revision still need acceptance.
 - [ ] Human review is complete.
 - [ ] Cryptex may be reported ready for Private Beta / Release Candidate.
