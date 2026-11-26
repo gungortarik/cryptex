@@ -29,6 +29,30 @@ def verify_reopened(root, pid):
     raise RuntimeError("Updated signed Desktop did not reopen with a live daemon")
 
 
+def compare_inventory(role, before, after):
+    # A CI log may describe a documented file role, never an arbitrary filename.
+    public_names = {"inventory.lock", "session.lock", "writer.lock", "writer_tip.json",
+                    "exchange-install.json", "exchange-binding.json", "config.xml",
+                    "brain_identity.json", "local_device.json", "event_signing_key.json",
+                    "cert.pem", "key.pem", "syncthing.exe", "AUTHORS.txt", "LICENSE.txt"}
+    differences = {}
+    for path in before.keys() | after.keys():
+        if path not in before:
+            change = "added"
+        elif path not in after:
+            change = "missing"
+        elif before[path] != after[path]:
+            change = "changed"
+        else:
+            continue
+        kind = path.name if path.name in public_names else "other"
+        if path.suffix in (".seg", ".open"):
+            kind = "canonical_segment"
+        key = (change, kind)
+        differences[key] = differences.get(key, 0) + 1
+    return [f"{role}.{change}.{kind}={count}" for (change, kind), count in sorted(differences.items())]
+
+
 def exercise(active):
     local = Path(os.environ["LOCALAPPDATA"])
     if (sys.platform != "win32" or os.environ.get("RUNNER_ENVIRONMENT") != "github-hosted"
@@ -124,13 +148,22 @@ def exercise(active):
     verify_note_signature(active / "cryptexd.exe", note, descriptor)
     installed = inventory(helper / "package")
     verify_installed_journals(runtime / "managed-transport-previous-native", native)
-    if (subprocess.check_output([tool, "fingerprint", active], text=True, timeout=90).strip() != approved
-            or digest(descriptor) != descriptor_hash
-            or history != (inventory(events), inventory(identity))
-            or inventory(runtime / "managed-transport-previous-native") != baseline
-            or inventory(runtime / "managed-transport-previous-package") != old_package
-            or installed[Path("syncthing.exe")] != hashlib.sha256((active / "transport/syncthing.exe").read_bytes()).digest()):
-        raise RuntimeError("The installed update did not retain its prior database, package and signed history")
+    mismatches = []
+    if subprocess.check_output([tool, "fingerprint", active], text=True, timeout=90).strip() != approved:
+        mismatches.append("approved_application")
+    if digest(descriptor) != descriptor_hash:
+        mismatches.append("signed_note_descriptor")
+    for role, before, directory in (
+        ("events", history[0], events),
+        ("identity", history[1], identity),
+        ("retained_native", baseline, runtime / "managed-transport-previous-native"),
+        ("retained_package", old_package, runtime / "managed-transport-previous-package"),
+    ):
+        mismatches.extend(compare_inventory(role, before, inventory(directory)))
+    if installed.get(Path("syncthing.exe")) != hashlib.sha256((active / "transport/syncthing.exe").read_bytes()).digest():
+        mismatches.append("installed_engine")
+    if mismatches:
+        raise RuntimeError("Installed update verification failed: " + ", ".join(mismatches))
     park_test_profile(runtime, runtime.with_name("verified-paired-upgrade"))
     print("installed_101_to_102_paired_transport_reopened_same_history_and_retained_database=passed", flush=True)
 

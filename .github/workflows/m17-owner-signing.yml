@@ -16,6 +16,7 @@ on:
       - 'scripts/m17/previous_daemon.py'
       - 'scripts/m17/windows_previous_note.py'
       - 'scripts/m17/windows_installed_transport.py'
+      - 'scripts/m17/test_windows_installed_transport.py'
       - 'scripts/m17/paired_release_handoff.py'
       - 'scripts/m17/installed_previous_pair.rs'
       - 'services/cryptexd/src/paths.rs'
@@ -59,6 +60,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: node --test apps/desktop/scripts/rust-notices.test.mjs
       - run: node --test apps/desktop/scripts/build-provenance.test.mjs
+      - if: runner.os == 'Windows'
+        run: python -B scripts/m17/test_windows_installed_transport.py
       - if: runner.os == 'macOS'
         run: |
           python -B scripts/m8/test_mac_local_signing_runner.py
