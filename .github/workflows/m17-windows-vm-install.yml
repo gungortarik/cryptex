@@ -14,7 +14,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 12
     env:
-      BUILD_REVISION: f4d715978c1a074c99292773028df8b513fd1e2d
+      BUILD_REVISION: 194aeb80cf4ba0df243a9b5280ed76a126bbecdc
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,8 +25,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $zip = "$env:RUNNER_TEMP/owner-input.zip"
-          gh api "repos/$env:GITHUB_REPOSITORY/actions/artifacts/14894077654/zip" > $zip
-          if ($LASTEXITCODE -or (Get-FileHash $zip).Hash -ine '8982759304807153636652b6e9a036203961e041aa031569f80267e9e70fe4a0') { throw 'Wrong input archive' }
+          gh api "repos/$env:GITHUB_REPOSITORY/actions/artifacts/15094710747/zip" > $zip
+          if ($LASTEXITCODE -or (Get-FileHash $zip).Hash -ine 'c1c93434577344f6a5681bbe3edacee1c29216cdcc687b2508ccb4f8ab326911') { throw 'Wrong input archive' }
           Expand-Archive -LiteralPath $zip -DestinationPath "$env:RUNNER_TEMP/owner-input"
           $info = Get-Content "$env:RUNNER_TEMP/owner-input/build.json" -Raw | ConvertFrom-Json
           if ($info.revision -cne $env:BUILD_REVISION) { throw 'Wrong installer revision' }

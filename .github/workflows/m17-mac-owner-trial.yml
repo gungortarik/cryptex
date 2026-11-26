@@ -12,8 +12,8 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 45
     env:
-      BUILD_RUN: '45485652498'
-      BUILD_REVISION: e90c2abb597af8c78f7643d6641d82f6f86f26b5
+      BUILD_RUN: '45770615178'
+      BUILD_REVISION: 194aeb80cf4ba0df243a9b5280ed76a126bbecdc
     steps:
       - uses: actions/checkout@v4
         with:
