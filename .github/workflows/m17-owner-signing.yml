@@ -7,6 +7,7 @@ on:
       - '.github/workflows/m17-owner-signing.yml'
       - 'scripts/m17/mac_package_signing.py'
       - 'scripts/m14/release_smoke.py'
+      - 'scripts/m17/installed_doctor.*'
       - 'scripts/m8/*standard-user*.ps1'
       - 'scripts/m17/windows_package_signing.ps1'
       - 'scripts/m17/package_owner_updater.py'

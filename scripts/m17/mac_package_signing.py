@@ -11,8 +11,8 @@ sys.path.insert(0, str(ROOT / "scripts/m8"))
 from test_mac_local_signing_ci import disposable_signing_identity
 
 
-def command(*args, check=True):
-    outcome = subprocess.run(args, timeout=90, capture_output=True, text=True)
+def command(*args, check=True, timeout=90):
+    outcome = subprocess.run(args, timeout=timeout, capture_output=True, text=True)
     if check and outcome.returncode:
         raise RuntimeError(f"{Path(args[0]).name} failed: {outcome.stderr.strip()[:2048]}")
     return outcome
@@ -64,7 +64,7 @@ def main():
         print("Verified installed macOS owner candidate", info["CFBundleShortVersionString"])
         if info["CFBundleIdentifier"] != bundle_id:
             raise RuntimeError("Unexpected installed bundle identifier")
-        command(sys.executable, "-B", ROOT / "scripts/m14/release_smoke.py", "--installed", installed)
+        command(sys.executable, "-B", ROOT / "scripts/m14/release_smoke.py", "--installed", installed, timeout=200)
         leaf = (root / "cert.der").read_bytes()
         for image, identifier in [(installed, bundle_id), (installed / daemon_path, daemon_id)]:
             verify(image, identifier, signer, leaf, root)

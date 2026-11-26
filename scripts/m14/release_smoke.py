@@ -148,6 +148,18 @@ def expect_external_service_refusal(runtime, process):
     raise RuntimeError("Installed Desktop did not reject the external service selection")
 
 
+def observe_signed_doctor(process, connected):
+    active = "The local service answered the health check."
+    unavailable = "The local service did not complete the health check."
+    messages = [active, unavailable] if connected else [unavailable, active]
+    scripts = ROOT / "scripts/m17"
+    if WINDOWS:
+        reader = ["powershell.exe", "-NoProfile", "-NonInteractive", "-File", scripts / "installed_doctor.ps1"]
+    else:
+        reader = ["/usr/bin/swift", scripts / "installed_doctor.swift"]
+    subprocess.run([*reader, str(process.pid), *messages], check=True, timeout=55)
+
+
 def main():
     user = os.environ.get("USERNAME" if WINDOWS else "USER", "").lower()
     if (os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("RUNNER_ENVIRONMENT") != "github-hosted"
@@ -177,11 +189,15 @@ def main():
                          capture_output=True, text=True, timeout=10).stdout.splitlines()
             if (runtime / "ready").exists() or "pid=none" not in status or "instance=held" in status:
                 raise RuntimeError("Daemon started despite the rejected environment selection")
+            if installed is not None:
+                observe_signed_doctor(denied, connected=False)
         with running_desktop(desktop, runtime) as process:
             launch = wait_snapshot(runtime, process, "desktop_launched")
             pid = (runtime / "ready").read_text().strip()
             if not pid.isdecimal() or int(pid) < 1:
                 raise RuntimeError("Missing packaged daemon readiness")
+            if installed is not None:
+                observe_signed_doctor(process, connected=True)
             pending = runtime / "start.pending"
             pending.write_text(str(foreign), encoding="utf-8")
             pending.replace(runtime / "start.request")
@@ -202,6 +218,8 @@ def main():
                "desktop_pid": process.pid, "daemon_pid": int(pid), "installed_window_hidden_and_restored": True,
                "external_environment_refusal": env_refusal, "external_request_file_refusal": file_refusal,
                "daemon_lock_released": True}
+    if installed is not None:
+        receipt["doctor_observed_without_daemon_and_after_start"] = True
     print(json.dumps(receipt), flush=True)
     name = "m14-release-smoke.json" if installed is None else "m17-signed-startup.json"
     (Path(os.environ["RUNNER_TEMP"]) / name).write_text(json.dumps(receipt, indent=2), encoding="utf-8")
