@@ -9,6 +9,8 @@ on:
       - 'scripts/m17/mac_sealed_profile.py'
       - 'scripts/m17/mac_update_credential.py'
       - 'scripts/m17/mac_installed_transport.py'
+      - 'scripts/m17/mac_pairing_window.swift'
+      - 'scripts/m17/fixture_responder.rs'
       - 'scripts/m17/installed_previous_pair.rs'
       - 'scripts/m17/previous_daemon.py'
       - 'services/cryptexd/src/ipc/native_profile.rs'
@@ -59,6 +61,11 @@ jobs:
           python-version: '3.12'
       - run: pnpm install --frozen-lockfile
       - run: cargo fmt --all -- --check
+      - name: Check the installed pairing UI driver and report the runner's existing UI access
+        if: matrix.profile == 'persistent'
+        run: |
+          swiftc -typecheck scripts/m17/mac_pairing_window.swift
+          swift -e 'import ApplicationServices; print("hosted_accessibility_available=\(AXIsProcessTrusted())")'
       - name: Build the previous Mac daemon from the 1.0.1 source
         if: matrix.profile == 'persistent'
         run: python -B scripts/m17/previous_daemon.py

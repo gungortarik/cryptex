@@ -1,13 +1,12 @@
-//! Included only in the 1.0.1 service libtest on a disposable native runner.
+//! Included only in the 1.0.1 Windows service libtest in a disposable account.
+#![cfg(windows)]
 use super::*;
 use crate::bootstrap_journal::BootstrapJournalStore;
-#[cfg(windows)]
 use crate::{managed_profile::ManagedProfile, syncthing_package::PinnedSyncthingPackage};
 use cryptex_core::DeviceId;
 use cryptex_events::BootstrapApprovalRole;
 use std::fs;
 
-#[cfg(windows)]
 fn create_note(root: &std::path::Path, store: &impl crate::secure_store::SecureStore) {
     crate::install_runtime::prepare_m1_runtime_foundation(root).unwrap();
     crate::signed_transfer_probe::create(
@@ -27,20 +26,11 @@ fn installed_previous_pair() {
         "github-hosted"
     );
     assert_eq!(crate::syncthing_package::VERSION, "2.1.5");
-    // This test receives an exact grant in the disposable runner's Keychain.
-    // A missing grant must fail here, without waiting for someone at the UI.
-    #[cfg(target_os = "macos")]
-    let _noninteractive =
-        security_framework::os::macos::keychain::SecKeychain::disable_user_interaction().unwrap();
     let root = PathBuf::from(std::env::var_os("CRYPTEX_TEST_ENROLLED_ROOT").unwrap());
     eprintln!("pair_fixture_stage=profile");
     let instance = crate::instance::try_acquire_instance(&root).unwrap();
     let environment = crate::SecureStoreEnvironment::Dev;
-    #[cfg(target_os = "macos")]
-    let store = crate::MacosKeychainStore::new();
-    #[cfg(windows)]
     let store = crate::WindowsCredentialStore::new();
-    #[cfg(windows)]
     create_note(&root, &store);
     let identity = crate::identity_runtime::load_brain_identity(&root).unwrap();
     let brain = identity.brain_id.as_str();
@@ -51,7 +41,6 @@ fn installed_previous_pair() {
     )
     .unwrap();
     let helper = root.join("managed-transport");
-    #[cfg(windows)]
     {
         use crate::import_staging::export_fs::Directory;
         let source = PathBuf::from(std::env::var_os("CRYPTEX_TEST_PREVIOUS_PACKAGE").unwrap());
@@ -66,23 +55,12 @@ fn installed_previous_pair() {
             .unwrap();
     }
     let home = helper.join("00000000000000000000000000000001");
-    #[cfg(windows)]
     let (ports, transport) = {
         let ports = NativePorts::new(18384, 22001).unwrap();
         let package = PinnedSyncthingPackage::open(&helper.join("package")).unwrap();
         let mut profile = ManagedProfile::create(&home, environment).unwrap();
         let native = profile.prepare_native(&package, &store, ports).unwrap();
         (ports, native.configured_transport_device_id().to_owned())
-    };
-    #[cfg(target_os = "macos")]
-    let (ports, transport) = {
-        // The signed 1.0.1 daemon has already enrolled this profile using its own helper.
-        let ports: NativePorts =
-            serde_json::from_slice(&fs::read(helper.join("ports.json")).unwrap()).unwrap();
-        let ready: serde_json::Value =
-            serde_json::from_slice(&fs::read(home.join("native-ready.json")).unwrap()).unwrap();
-        assert_eq!(ready["ports"], serde_json::to_value(ports).unwrap());
-        (ports, ready["native_id"].as_str().unwrap().to_owned())
     };
     eprintln!("pair_fixture_stage=credential");
     let key = crate::event_signing_key::load_existing_event_signing_key(

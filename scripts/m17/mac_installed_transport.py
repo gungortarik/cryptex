@@ -13,29 +13,27 @@ import urllib.request
 import uuid
 import zipfile
 
-from paired_release_handoff import REVISION, ROOT, build, checkout, inventory, verify_installed_journals
+from paired_release_handoff import REVISION, ROOT, inventory, verify_installed_journals
 from test_owner_transport import ARCHIVES
-from update_fixture import image
 
 
-def seed_tool(work):
-    tree = checkout(work, "a", REVISION)
-    tests = tree / "services/cryptexd/src/managed_profile/exchange_install/tests"
-    shutil.copyfile(Path(__file__).with_name("installed_previous_pair.rs"), tests / "installed_previous_pair.rs")
-    with tests.with_suffix(".rs").open("ab") as source:
-        source.write(b"\nmod installed_previous_pair;\n")
-    previous = os.environ.get("CRYPTEX_M8_LOCAL_STARTUP_CERT_DER")
-    os.environ["CRYPTEX_M8_LOCAL_STARTUP_CERT_DER"] = os.environ["CRYPTEX_M17_SIGNER_DER"]
+def build_public_peer(work):
+    # The original 1.0.1 app has already been built and admitted. Compile just
+    # an event-crate example in its detached CI checkout, using the pinned lock.
+    tree = Path(os.environ["RUNNER_TEMP"]) / "m17-previous/source"
+    examples = tree / "crates/events/examples"
+    examples.mkdir(exist_ok=True)
+    example = examples / "fixture_responder.rs"
+    with example.open("xb") as dest:
+        dest.write(Path(__file__).with_name(example.name).read_bytes())
     try:
-        tool = work / "seed-pair"
-        build(tree, False, work / "target", tool)
+        args = ["--locked", "-p", "cryptex-events", "--example", "fixture_responder",
+                "--target-dir", work / "peer-target"]
+        subprocess.run(["cargo", "test", *args], cwd=tree, check=True, timeout=600)
+        subprocess.run(["cargo", "build", *args], cwd=tree, check=True, timeout=600)
     finally:
-        if previous is None:
-            del os.environ["CRYPTEX_M8_LOCAL_STARTUP_CERT_DER"]
-        else:
-            os.environ["CRYPTEX_M8_LOCAL_STARTUP_CERT_DER"] = previous
-    image(tool, "com.cryptex.test-seed")
-    return tool
+        example.unlink()
+    return work / "peer-target/debug/examples/fixture_responder"
 
 
 def previous_package(folder):
@@ -94,27 +92,6 @@ def install_previous_app(work, active, updater, pin):
     return active / "Contents/MacOS/cryptexd"
 
 
-def seed_phase(scope, tool, profile, name):
-    test = "managed_profile::exchange_install::tests::installed_previous_pair::" + name
-    seed = scope.fence.outcome(["/usr/bin/env", "CRYPTEX_TEST_ENROLLED_ROOT=" + str(profile), tool,
-                                test, "--ignored", "--exact", "--nocapture"], 150)
-    if seed.code or seed.timed_out:
-        stages = re.findall(r"\bpair_fixture_stage=(profile|credential|journal|anchor|history|native)$",
-                            seed.output, re.MULTILINE)
-        if stages:
-            print("historical_pair_last_stage=" + stages[-1], flush=True)
-        status = re.search(r"\bpair_fixture_credential_status=(-?\d{1,10})$", seed.output, re.MULTILINE)
-        if status:
-            print("historical_pair_credential_status=" + status[1], flush=True)
-        line = re.search(r"installed_previous_pair\.rs:(\d+):", seed.output)
-        if line:
-            print("historical_mac_enrollment_failed_at_fixture_line=" + line[1], flush=True)
-    from mac_identity_preflight import checked
-    result = checked(lambda *_: seed, [], name, 150)
-    if test not in result or not re.search(r"^test result: ok\. 1 passed; 0 failed; 0 ignored;", result, re.MULTILINE):
-        raise RuntimeError("Historical pairing fixture did not execute")
-
-
 def exercise(work, desktop, updater, pin):
     from mac_ci_credential_keychain import CredentialKeychain, require_hosted_mac
     from mac_identity_preflight import run_bounded
@@ -129,8 +106,8 @@ def exercise(work, desktop, updater, pin):
     approved = subprocess.check_output([updater, "fingerprint", pending], text=True, timeout=90).strip()
     profile = Path(tempfile.gettempdir()).resolve() / ("cryptex-m17-profile-" + pin)
     with tempfile.TemporaryDirectory(dir=work, prefix="old-enrollment-") as tmp:
-        tool = seed_tool(Path(tmp))
         daemon = install_previous_app(Path(tmp), active, updater, pin)
+        peer = build_public_peer(Path(tmp))
         profile.mkdir(mode=0o700, exist_ok=False)
         helper = profile / "managed-transport"
         (profile / "pilot-runtime.marker").write_bytes(b"m0-native-desktop-runtime-v1\n")
@@ -148,9 +125,18 @@ def exercise(work, desktop, updater, pin):
                                  "--confirm-local-only"], "enroll_historical_signed_service", 180)
             if "transport_enrollment=local_only" not in outcome.splitlines():
                 raise RuntimeError("Missing historical signed enrollment receipt")
-            scope.authorize(probe, account, daemon, tool)
-            seed_phase(scope, tool, profile, "installed_previous_pair")
-            scope.authorize(probe, account, daemon, target, previous_grantee=tool)
+            note = _metadata(profile / "signed-probe.json")
+            transport_id = _metadata(enrollment / "native-ready.json")["native_id"]
+            window = scope.fence.outcome(["/usr/bin/swift", Path(__file__).with_name("mac_pairing_window.swift"),
+                                          desktop, peer, note["brain_id"], str(device), note["public_key"],
+                                          transport_id, profile / "connection-settings/connections.json"], 300)
+            if window.code or window.timed_out or window.limited or window.pipe_failed:
+                stage = re.search(r"^installed_pair_window=([A-Za-z0-9_ ·’.-]{1,100})$", window.output, re.MULTILINE)
+                raise RuntimeError("Historical Desktop pairing failed at " + (stage[1] if stage else "driver"))
+            if not (enrollment / "native/exchange-install.json").is_file():
+                raise RuntimeError("Historical service did not commit the paired exchange journal")
+            print("historical_signed_desktop_recorded_disposable_peer=passed", flush=True)
+            scope.authorize(probe, account, daemon, target)
             scope.authorize(probe, "api:" + _metadata(enrollment / "profile.json")["credential_id"], daemon, target)
             scope.fence.checked([sys.executable, "-B", Path(__file__).with_name("mac_sealed_profile.py"), desktop],
                                 "search_in_historical_101_before_update", 110)
