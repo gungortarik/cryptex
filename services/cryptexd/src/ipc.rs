@@ -1139,6 +1139,9 @@ fn validate_health_response(
     request_id: &str,
     response: HealthResponse,
 ) -> io::Result<HealthResponse> {
+    if response.daemon_pid == 0 || (response.accepted && response.error.is_some()) {
+        return Err(invalid_data("invalid daemon health response"));
+    }
     if response.request_id.as_deref() == Some(request_id)
         && response.protocol_version != PROTOCOL_VERSION
         && !response.accepted
@@ -9013,6 +9016,9 @@ pub(crate) mod tests {
             mismatch(reply.clone()),
             Some((process::id(), PROTOCOL_VERSION + 1))
         );
+        let mut missing_daemon = reply.clone();
+        missing_daemon.daemon_pid = 0;
+        assert_eq!(mismatch(missing_daemon), None);
         let mut unrelated = reply.clone();
         unrelated.request_id = Some("earlier-request".into());
         assert_eq!(mismatch(unrelated), None);
@@ -9038,6 +9044,36 @@ pub(crate) mod tests {
         });
         assert!(response.accepted);
         assert_eq!(response.operation.as_deref(), Some("health.pong"));
+        assert!(validate_health_response("health-from-cli", response).is_ok());
+    }
+
+    #[test]
+    fn health_check_rejects_a_pong_with_an_error_or_without_a_daemon_pid() {
+        let pong = HealthResponse {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: Some("doctor".into()),
+            accepted: true,
+            error: None,
+            operation: Some("health.pong".into()),
+            daemon_pid: process::id(),
+        };
+        for reply in [
+            HealthResponse {
+                error: Some("service_unavailable".into()),
+                ..pong.clone()
+            },
+            HealthResponse {
+                daemon_pid: 0,
+                ..pong
+            },
+        ] {
+            assert_eq!(
+                validate_health_response("doctor", reply)
+                    .unwrap_err()
+                    .kind(),
+                io::ErrorKind::InvalidData
+            );
+        }
     }
 
     #[test]
