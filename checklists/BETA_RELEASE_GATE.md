@@ -15,7 +15,7 @@ No checkbox may be marked complete without actual evidence from the applicable m
   - On November 25 the owner kept M7 at the design stage and authorized the remaining M17 work. Its implementation and acceptance remain prerequisites to full M17 closure.
   - Open prerequisite: [M7 controlled Obsidian write-back](../docs/milestones/M7_OBSIDIAN_CONTROLLED_WRITEBACK.md#completion-gate). The owner approved a change in sequence. M7 still requires evidence that the Vault API confines reads and writes to the managed directory on both platforms. On November 23, 2026 the [public API request](https://forum.obsidian.md/t/api-request-physically-contained-vault-operations-for-managed-paths/119512) contained the original post and zero public replies.
 - [ ] All required accepted ADRs/addenda are current.
-  - [ADR-0004’s two-device addendum](../docs/adr/ADR-0004-managed-syncthing-implementation-addendum.md#m17-owner-package-selection--november-25-2026) records the 2.1.7 pin and the required cold migration from 2.1.5. [ADR-0012](../docs/adr/ADR-0012-background-runtime-implementation-proposal.md#mandatory-production-gates-retained) keeps canonical storage outside package rollback. The installed paired-profile migration remains under test.
+  - [ADR-0004â€™s two-device addendum](../docs/adr/ADR-0004-managed-syncthing-implementation-addendum.md#m17-owner-package-selection--november-25-2026) records the 2.1.7 pin and the required cold migration from 2.1.5. [ADR-0012](../docs/adr/ADR-0012-background-runtime-implementation-proposal.md#mandatory-production-gates-retained) keeps canonical storage outside package rollback. The installed paired-profile migration remains under test.
 - [ ] No unresolved architecture conflict is being hidden by implementation convenience.
   - Evidence:
 - [ ] Master Spec reflects any accepted architecture changes discovered during implementation.
@@ -108,7 +108,8 @@ No checkbox may be marked complete without actual evidence from the applicable m
 
 - [x] Health/Doctor surfaces reflect actual observed runtime state.
   - Both [signed 1.0.2 installations](../evidence/m17/personal-packaging.md#doctor-in-the-installed-window) displayed the failure message with the service absent and the successful check after startup. The [native shell rehearsal](https://github.com/gungortarik/cryptex/actions/runs/45263640097) covers maintenance and owner controls in temporary profiles.
-- [ ] Configured/Ready/Active/Verified/Attention distinctions are preserved where applicable.
+- [x] Configured/Ready/Active/Verified/Attention distinctions are preserved where applicable.
+  - Both [readiness jobs at 4a2b367](https://github.com/gungortarik/cryptex/actions/runs/45746000787) exercised the status policy and rendered settings with failed, stale and recovered responses. The signed applications separately displayed the observed [local service state](../evidence/m17/personal-packaging.md#doctor-in-the-installed-window).
   - The [M17 Windows and macOS readiness run](https://github.com/gungortarik/cryptex/actions/runs/45504560649) at `d08adb5` passed the native profile status and rendered connection checks. The status tests reject a remote durability claim based on local publication or a live transport. The [M16 review](../evidence/m16/hardening.md#final-candidate-review) records the earlier guarded Desktop checks.
 - [ ] No major subsystem is represented as working solely because it is configured.
   - Evidence:
