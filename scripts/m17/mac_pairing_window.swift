@@ -58,70 +58,90 @@ struct Window {
         return value
     }
 
-    func focusTextArea(_ box: AXUIElement, _ id: String, keyboardOnly: Bool) throws {
-        guard let application = NSRunningApplication(processIdentifier: pid) else { throw TrialError("app_" + id) }
-        if let main = attribute(app, "AXMainWindow"), CFGetTypeID(main) == AXUIElementGetTypeID() {
-            _ = AXUIElementPerformAction(main as! AXUIElement, kAXRaiseAction as CFString)
-        }
-        _ = application.activate(options: [.activateAllWindows])
-        _ = AXUIElementPerformAction(box, "AXScrollToVisible" as CFString)
-        // WebKit may report its web area as the app's focused element. Resolve
-        // the actual field on screen before posting a click to this process.
-        let deadline = ProcessInfo.processInfo.systemUptime + 5
-        while !keyboardOnly && ProcessInfo.processInfo.systemUptime < deadline {
-            if let origin = attribute(box, "AXPosition"), CFGetTypeID(origin) == AXValueGetTypeID(),
-               let size = attribute(box, "AXSize"), CFGetTypeID(size) == AXValueGetTypeID() {
-                var point = CGPoint.zero, extent = CGSize.zero
-                if AXValueGetValue(origin as! AXValue, .cgPoint, &point),
-                   AXValueGetValue(size as! AXValue, .cgSize, &extent), extent.width > 0, extent.height > 0 {
-                    point.x += extent.width / 2
-                    point.y += extent.height / 2
-                    var hit: AXUIElement?
-                    _ = AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(point.x), Float(point.y), &hit)
-                    var element = hit
-                    for _ in 0..<8 {
-                        guard let current = element else { break }
-                        if CFEqual(current, box), application.isActive {
-                            for type in [CGEventType.leftMouseDown, .leftMouseUp] {
-                                guard let event = CGEvent(mouseEventSource: nil, mouseType: type,
-                                                          mouseCursorPosition: point, mouseButton: .left)
-                                else { throw TrialError("mouse_" + id) }
-                                event.setIntegerValueField(.mouseEventClickState, value: 1)
-                                event.post(tap: .cghidEventTap)
-                            }
-                            return
-                        }
-                        guard let parent = attribute(current, "AXParent"),
-                              CFGetTypeID(parent) == AXUIElementGetTypeID() else { break }
-                        element = (parent as! AXUIElement)
-                    }
-                }
-            }
-            Thread.sleep(forTimeInterval: 0.1)
-        }
-        // Keyboard navigation also scrolls fields inside a clipped web view.
-        // Before sending any text, verify the actual target has keyboard focus.
-        for _ in 0..<160 {
-            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
-            else { throw TrialError("foreground_" + id) }
-            if attribute(box, "AXFocused") as? Bool == true { return }
-            if let focused = attribute(app, "AXFocusedUIElement"), CFEqual(focused, box) { return }
-            for down in [true, false] {
-                guard let tab = CGEvent(keyboardEventSource: nil, virtualKey: 48, keyDown: down)
-                else { throw TrialError("tab_" + id) }
-                tab.post(tap: .cghidEventTap)
-            }
-            Thread.sleep(forTimeInterval: 0.09)
-        }
-        throw TrialError("tab_focus_" + id)
+    func frame(_ element: AXUIElement) -> CGRect? {
+        guard let origin = attribute(element, "AXPosition"), CFGetTypeID(origin) == AXValueGetTypeID(),
+              let size = attribute(element, "AXSize"), CFGetTypeID(size) == AXValueGetTypeID()
+        else { return nil }
+        var point = CGPoint.zero, extent = CGSize.zero
+        guard AXValueGetValue(origin as! AXValue, .cgPoint, &point),
+              AXValueGetValue(size as! AXValue, .cgSize, &extent), extent.width > 0, extent.height > 0
+        else { return nil }
+        return CGRect(origin: point, size: extent)
     }
 
-    func fill(_ id: String, _ label: String, _ value: String, keyboardOnly: Bool = false) throws {
+    func focusTextArea(_ box: AXUIElement, _ id: String, scrollDirectly: Bool) throws {
+        guard let application = NSRunningApplication(processIdentifier: pid),
+              let windows = attribute(app, "AXWindows") as? [AXUIElement], let window = windows.first
+        else { throw TrialError("window_" + id) }
+        _ = AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+        _ = application.activate(options: [.activateAllWindows])
+        if !scrollDirectly { _ = AXUIElementPerformAction(box, "AXScrollToVisible" as CFString) }
+        let system = AXUIElementCreateSystemWide()
+        let deadline = ProcessInfo.processInfo.systemUptime + 12
+        var stage = "foreground"
+        repeat {
+            defer { Thread.sleep(forTimeInterval: 0.15) }
+            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { continue }
+            stage = "geometry"
+            guard let field = frame(box), let windowBounds = frame(window) else { continue }
+            // Restrict the click to the visible portion of the field, even on a
+            // hosted display smaller than the app window. AX frames are global.
+            let viewport = windowBounds.intersection(CGDisplayBounds(CGMainDisplayID())).insetBy(dx: 4, dy: 28)
+            guard !viewport.isEmpty else { continue }
+            let visible = field.intersection(viewport)
+            if !visible.isEmpty {
+                let point = CGPoint(x: visible.midX, y: visible.midY)
+                var hit: AXUIElement?
+                _ = AXUIElementCopyElementAtPosition(system, Float(point.x), Float(point.y), &hit)
+                var current = hit
+                for _ in 0..<10 {
+                    guard let element = current else { break }
+                    if CFEqual(element, box) {
+                        for type in [CGEventType.leftMouseDown, .leftMouseUp] {
+                            guard let event = CGEvent(mouseEventSource: nil, mouseType: type,
+                                                      mouseCursorPosition: point, mouseButton: .left)
+                            else { throw TrialError("mouse_" + id) }
+                            event.setIntegerValueField(.mouseEventClickState, value: 1)
+                            event.post(tap: .cghidEventTap)
+                        }
+                        return
+                    }
+                    guard let parent = attribute(element, "AXParent"),
+                          CFGetTypeID(parent) == AXUIElementGetTypeID() else { break }
+                    current = (parent as! AXUIElement)
+                }
+                stage = "hit"
+            } else { stage = "offscreen" }
+            let distance = field.midY - viewport.midY
+            guard abs(distance) > 12 else { continue }
+            let anchor = CGPoint(x: min(max(field.midX, viewport.minX), viewport.maxX), y: viewport.midY)
+            let layers = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
+                                                     kCGNullWindowID) as? [[String: Any]]
+            let owner = layers?.first(where: { layer in
+                guard layer[kCGWindowLayer as String] as? Int == 0,
+                      let bounds = layer[kCGWindowBounds as String] as? NSDictionary,
+                      let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary)
+                else { return false }
+                return rect.contains(anchor)
+            })?[kCGWindowOwnerPID as String] as? NSNumber
+            guard owner?.int32Value == pid
+            else { stage = "scroll_owner"; continue }
+            let pixels = Int32(max(-360, min(360, -distance)))
+            guard let event = CGEvent(scrollWheelEvent2Source: nil, units: .pixel,
+                                      wheelCount: 1, wheel1: pixels, wheel2: 0, wheel3: 0)
+            else { throw TrialError("wheel_" + id) }
+            event.location = anchor
+            event.post(tap: .cghidEventTap)
+        } while ProcessInfo.processInfo.systemUptime < deadline
+        throw TrialError(stage + "_" + id)
+    }
+
+    func fill(_ id: String, _ label: String, _ value: String, scrollDirectly: Bool = false) throws {
         let box = try control("AXTextArea", [id, label])
         // Use the same paste operation as the owner. A WebKit AXValue write
         // does not reliably deliver an edit to a React-controlled textarea.
         guard !value.isEmpty, value.utf8.count <= 262147 else { throw TrialError("input_size_" + id) }
-        try focusTextArea(box, id, keyboardOnly: keyboardOnly)
+        try focusTextArea(box, id, scrollDirectly: scrollDirectly)
         func shortcut(_ key: CGKeyCode) throws {
             guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid,
                   let down = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: true),
@@ -157,7 +177,7 @@ func checkTextInput() throws {
     defer { if process.isRunning { process.terminate(); process.waitUntilExit() } }
     let window = Window(app: AXUIElementCreateApplication(process.processIdentifier), pid: process.processIdentifier)
     try window.fill("proof", "Public proof", "synthetic proof")
-    try window.fill("transcript", "Public transcript", "line one\nline two", keyboardOnly: true)
+    try window.fill("transcript", "Public transcript", "line one\nline two", scrollDirectly: true)
     _ = try window.control("AXButton", ["Fields received both edits"])
     print("hosted_webkit_pairing_inputs=passed")
 }
