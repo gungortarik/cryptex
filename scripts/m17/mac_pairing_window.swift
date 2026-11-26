@@ -73,14 +73,18 @@ struct Window {
         guard let application = NSRunningApplication(processIdentifier: pid),
               let windows = attribute(app, "AXWindows") as? [AXUIElement], let window = windows.first
         else { throw TrialError("window_" + id) }
+        _ = application.unhide()
         _ = AXUIElementPerformAction(window, kAXRaiseAction as CFString)
         _ = application.activate(options: [.activateAllWindows])
+        // AppKit activation is cooperative. Request foreground on the actual
+        // accessibility application and let NSWorkspace process the change.
+        _ = AXUIElementSetAttributeValue(app, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
         if !scrollDirectly { _ = AXUIElementPerformAction(box, "AXScrollToVisible" as CFString) }
         let system = AXUIElementCreateSystemWide()
         let deadline = ProcessInfo.processInfo.systemUptime + 12
         var stage = "foreground"
         repeat {
-            defer { Thread.sleep(forTimeInterval: 0.15) }
+            defer { RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.15)) }
             guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { continue }
             stage = "geometry"
             guard let field = frame(box), let windowBounds = frame(window) else { continue }
@@ -177,6 +181,16 @@ func checkTextInput() throws {
     defer { if process.isRunning { process.terminate(); process.waitUntilExit() } }
     let window = Window(app: AXUIElementCreateApplication(process.processIdentifier), pid: process.processIdentifier)
     try window.fill("proof", "Public proof", "synthetic proof")
+    // Reproduce an existing (now background) window before editing its field.
+    let other = Process()
+    other.executableURL = process.executableURL
+    try other.run()
+    defer { if other.isRunning { other.terminate(); other.waitUntilExit() } }
+    let deadline = ProcessInfo.processInfo.systemUptime + 8
+    while NSWorkspace.shared.frontmostApplication?.processIdentifier != other.processIdentifier {
+        guard ProcessInfo.processInfo.systemUptime < deadline else { throw TrialError("fixture_background_setup") }
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+    }
     try window.fill("transcript", "Public transcript", "line one\nline two", scrollDirectly: true)
     _ = try window.control("AXButton", ["Fields received both edits"])
     print("hosted_webkit_pairing_inputs=passed")
