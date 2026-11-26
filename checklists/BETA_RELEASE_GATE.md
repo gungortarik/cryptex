@@ -61,10 +61,10 @@ No checkbox may be marked complete without actual evidence from the applicable m
 
 ## D. Cross-platform product verification
 
-- [ ] macOS release candidate builds and launches.
-  - Evidence: [Sealed macOS install and live peer startup](../evidence/m17/personal-packaging.md#installed-macos-owner-session) in a disposable account. The installed signed 1.0.1 candidate launched and quit in a [disposable account](https://github.com/gungortarik/cryptex/actions/runs/45497413994). Verification of the final release configuration remains open.
-- [ ] Windows release candidate builds and launches.
-  - Evidence: The [owner VM receipt](../evidence/m17/personal-packaging.md#owner-vm-result) covers first installation and native signature checks in the temporary Windows account. The [signed 1.0.1 candidate](https://github.com/gungortarik/cryptex/actions/runs/45497413994) launched and quit in a temporary standard account. Verification of the final release configuration remains open.
+- [x] macOS release candidate builds and launches.
+  - The [signed 1.0.2 application at `8beaead`](https://github.com/gungortarik/cryptex/actions/runs/45733242818/job/139620179406) launched on Apple Silicon in a disposable account. Its archived receipt confirms the restored window, refusal of both external service requests, and release of the daemon lock on quit. The installed paired-profile migration and owner Keychain dialog have separate checks.
+- [x] Windows release candidate builds and launches.
+  - The [signed 1.0.2 NSIS and installed application at `8beaead`](https://github.com/gungortarik/cryptex/actions/runs/45733242818/job/139620178889) passed first-install verification and reopened the updated paired 1.0.1 profile under a standard account. The [owner VM receipt](../evidence/m17/personal-packaging.md#owner-vm-result) records an earlier first installation on the owner's VM.
 - [ ] Required platform-native behavior/polish is verified on macOS.
   - The [native shell and display run at `a3711ec`](https://github.com/gungortarik/cryptex/actions/runs/45502020093) exercised the embedded WebView and keyboard navigation. The [sealed Mac runs](https://github.com/gungortarik/cryptex/actions/runs/45501812934) exercised both temporary profile configurations. Final installed configuration review remains open.
 - [ ] Required platform-native behavior/polish is verified on Windows.
