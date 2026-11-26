@@ -306,3 +306,18 @@ At `1820dce` a read-only native accessibility observer inspected the installed, 
 The [historical Mac app](https://github.com/gungortarik/cryptex/actions/runs/45745546267/job/139660571155) created an offer, then the driver could not bring the proof field to the foreground. A [bundled WebKit reproduction](https://github.com/gungortarik/cryptex/actions/runs/45749559166/job/139673789665) isolated the same foreground problem. At `b7db78b` the [native preflight](https://github.com/gungortarik/cryptex/actions/runs/45750194537/job/139675833603) passed: the WebKit form received input events for both synthetic values, including replacement of a multiline field while another app covered it. Installed migration and the owner's physical Keychain prompt have separate acceptance checks.
 
 The [Windows installed recovery suite](https://github.com/gungortarik/cryptex/actions/runs/45749400264/job/139673270787) at `1ac503a` verified the interrupted update, reopened Desktop and original note. It then failed with OS error 5 during the transaction that deliberately holds the candidate's health probe open. The first failure during quit did not recur in this run. The [Mac job](https://github.com/gungortarik/cryptex/actions/runs/45749400264/job/139673271190) passed. At `1634d5d` Windows directory moves wait up to two seconds for a transient sharing or access error; a persistent lock must leave the original image in place. The previous OS error alone does not identify the failing system call.
+
+### Installed verification and CI at 1634d5d and ace43dc
+
+At `1634d5d` all three platform verification workflows passed on Windows and macOS:
+
+- [M17 installed Mac peer verification](https://github.com/gungortarik/cryptex/actions/runs/45750546354): `pairing-preflight`, `sealed-startup (ephemeral)`, and `sealed-startup (persistent)` all passed.
+- [M14 installed update and rollback](https://github.com/gungortarik/cryptex/actions/runs/45750546323): `update (windows-latest)` and `update (macos-26)` both passed, confirming the Windows transient handle-drain fix across all six update and recovery transactions.
+- [M17 owner transport compatibility](https://github.com/gungortarik/cryptex/actions/runs/45750546316): all six Windows and macOS jobs (`verify`, `previous-release-journal`, `mac-product-exchange`, `windows-product-exchange`) passed.
+
+At `ace43dc` both dispatched baseline workflows also passed:
+
+- [CI](https://github.com/gungortarik/cryptex/actions/runs/45750703827): `Readiness (macos-latest)`, `Readiness (windows-latest)`, and `IPC cross-account ACL (Windows)` all passed.
+- [M17 disposable personal-device signing](https://github.com/gungortarik/cryptex/actions/runs/45750706392): `signed-package (windows-latest)` and `signed-package (macos-26)` both passed, including installed Rust notice checks (305 Windows / 300 macOS packages).
+
+These runs used disposable signing identities and disposable profiles. Owner-signed final artifacts and personal-profile activation remain the next M17 gate.
