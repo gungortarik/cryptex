@@ -58,14 +58,17 @@ struct Window {
         return value
     }
 
-    func clickTextArea(_ box: AXUIElement, _ id: String) throws {
+    func focusTextArea(_ box: AXUIElement, _ id: String, keyboardOnly: Bool) throws {
         guard let application = NSRunningApplication(processIdentifier: pid) else { throw TrialError("app_" + id) }
-        _ = application.activate(options: [])
+        if let main = attribute(app, "AXMainWindow"), CFGetTypeID(main) == AXUIElementGetTypeID() {
+            _ = AXUIElementPerformAction(main as! AXUIElement, kAXRaiseAction as CFString)
+        }
+        _ = application.activate(options: [.activateAllWindows])
         _ = AXUIElementPerformAction(box, "AXScrollToVisible" as CFString)
         // WebKit may report its web area as the app's focused element. Resolve
         // the actual field on screen before posting a click to this process.
         let deadline = ProcessInfo.processInfo.systemUptime + 5
-        repeat {
+        while !keyboardOnly && ProcessInfo.processInfo.systemUptime < deadline {
             if let origin = attribute(box, "AXPosition"), CFGetTypeID(origin) == AXValueGetTypeID(),
                let size = attribute(box, "AXSize"), CFGetTypeID(size) == AXValueGetTypeID() {
                 var point = CGPoint.zero, extent = CGSize.zero
@@ -95,16 +98,30 @@ struct Window {
                 }
             }
             Thread.sleep(forTimeInterval: 0.1)
-        } while ProcessInfo.processInfo.systemUptime < deadline
-        throw TrialError("hit_test_" + id)
+        }
+        // Keyboard navigation also scrolls fields inside a clipped web view.
+        // Before sending any text, verify the actual target has keyboard focus.
+        for _ in 0..<160 {
+            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
+            else { throw TrialError("foreground_" + id) }
+            if attribute(box, "AXFocused") as? Bool == true { return }
+            if let focused = attribute(app, "AXFocusedUIElement"), CFEqual(focused, box) { return }
+            for down in [true, false] {
+                guard let tab = CGEvent(keyboardEventSource: nil, virtualKey: 48, keyDown: down)
+                else { throw TrialError("tab_" + id) }
+                tab.post(tap: .cghidEventTap)
+            }
+            Thread.sleep(forTimeInterval: 0.09)
+        }
+        throw TrialError("tab_focus_" + id)
     }
 
-    func fill(_ id: String, _ label: String, _ value: String) throws {
+    func fill(_ id: String, _ label: String, _ value: String, keyboardOnly: Bool = false) throws {
         let box = try control("AXTextArea", [id, label])
         // Use the same paste operation as the owner. A WebKit AXValue write
         // does not reliably deliver an edit to a React-controlled textarea.
         guard !value.isEmpty, value.utf8.count <= 262147 else { throw TrialError("input_size_" + id) }
-        try clickTextArea(box, id)
+        try focusTextArea(box, id, keyboardOnly: keyboardOnly)
         func shortcut(_ key: CGKeyCode) throws {
             guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid,
                   let down = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: true),
@@ -140,7 +157,7 @@ func checkTextInput() throws {
     defer { if process.isRunning { process.terminate(); process.waitUntilExit() } }
     let window = Window(app: AXUIElementCreateApplication(process.processIdentifier), pid: process.processIdentifier)
     try window.fill("proof", "Public proof", "synthetic proof")
-    try window.fill("transcript", "Public transcript", "line one\nline two")
+    try window.fill("transcript", "Public transcript", "line one\nline two", keyboardOnly: true)
     _ = try window.control("AXButton", ["Fields received both edits"])
     print("hosted_webkit_pairing_inputs=passed")
 }
