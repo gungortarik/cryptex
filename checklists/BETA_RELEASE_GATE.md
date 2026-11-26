@@ -106,8 +106,8 @@ No checkbox may be marked complete without actual evidence from the applicable m
 
 ## G. Runtime truthfulness
 
-- [ ] Health/Doctor surfaces reflect actual observed runtime state.
-  - Evidence: [Disposable desktop health, maintenance and native owner controls at `3b0fd56`](https://github.com/gungortarik/cryptex/actions/runs/45263640097). Repeat with the signed final configuration.
+- [x] Health/Doctor surfaces reflect actual observed runtime state.
+  - Both [signed 1.0.2 installations](../evidence/m17/personal-packaging.md#doctor-in-the-installed-window) displayed the failure message with the service absent and the successful check after startup. The [native shell rehearsal](https://github.com/gungortarik/cryptex/actions/runs/45263640097) covers maintenance and owner controls in temporary profiles.
 - [ ] Configured/Ready/Active/Verified/Attention distinctions are preserved where applicable.
   - The [M17 Windows and macOS readiness run](https://github.com/gungortarik/cryptex/actions/runs/45504560649) at `d08adb5` passed the native profile status and rendered connection checks. The status tests reject a remote durability claim based on local publication or a live transport. The [M16 review](../evidence/m16/hardening.md#final-candidate-review) records the earlier guarded Desktop checks.
 - [ ] No major subsystem is represented as working solely because it is configured.
