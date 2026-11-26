@@ -68,8 +68,24 @@ jobs:
         run: |
           swiftc -typecheck scripts/m17/mac_pairing_window.swift
           swift -e 'import ApplicationServices; print("hosted_accessibility_available=\(AXIsProcessTrusted())")'
-          swiftc scripts/m17/mac_pairing_field_fixture.swift -o "$RUNNER_TEMP/m17-field-fixture"
-          swift scripts/m17/mac_pairing_window.swift --check-text-input
+          contents="$RUNNER_TEMP/PairingField.app/Contents"
+          mkdir -p "$contents/MacOS"
+          plutil -create xml1 "$contents/Info.plist"
+          plutil -insert CFBundleIdentifier -string com.cryptex.test.pairing-field "$contents/Info.plist"
+          plutil -insert CFBundleExecutable -string m17-field-fixture "$contents/Info.plist"
+          plutil -insert CFBundlePackageType -string APPL "$contents/Info.plist"
+          swiftc scripts/m17/mac_pairing_field_fixture.swift -o "$contents/MacOS/m17-field-fixture"
+          cp "$contents/MacOS/m17-field-fixture" "$RUNNER_TEMP/m17-cover-window"
+          codesign --force --sign - "$RUNNER_TEMP/PairingField.app"
+          python -B - <<'PY'
+          import sys
+          sys.path.insert(0, "scripts/m8")
+          from mac_identity_preflight import run_bounded
+          result = run_bounded(["/usr/bin/swift", "scripts/m17/mac_pairing_window.swift", "--check-text-input"], 100)
+          if result.code or result.timed_out or result.limited or result.pipe_failed:
+              raise RuntimeError("Hosted WebKit preflight failed: " + result.output[-512:])
+          print(result.output)
+          PY
       - name: Build the previous Mac daemon from the 1.0.1 source
         if: matrix.profile == 'persistent'
         run: python -B scripts/m17/previous_daemon.py

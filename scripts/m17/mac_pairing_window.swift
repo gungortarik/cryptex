@@ -79,13 +79,50 @@ struct Window {
         // AppKit activation is cooperative. Request foreground on the actual
         // accessibility application and let NSWorkspace process the change.
         _ = AXUIElementSetAttributeValue(app, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+        if NSWorkspace.shared.frontmostApplication?.processIdentifier != pid,
+           let bundle = application.bundleURL, bundle.pathExtension == "app" {
+            guard let executable = application.executableURL,
+                  executable.deletingLastPathComponent().deletingLastPathComponent()
+                    .deletingLastPathComponent().resolvingSymlinksInPath() == bundle.resolvingSymlinksInPath(),
+                  let identifier = application.bundleIdentifier else { throw TrialError("bundle_" + id) }
+            let existing = NSRunningApplication.runningApplications(withBundleIdentifier: identifier)
+                .filter { $0.bundleURL?.resolvingSymlinksInPath() == bundle.resolvingSymlinksInPath() }
+            guard existing.count == 1, existing[0].processIdentifier == pid
+            else { throw TrialError("bundle_instances_" + id) }
+            // Opening an already running bundle asks Launch Services to bring
+            // its window forward, as when the owner opens it from Finder.
+            let open = Process()
+            open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            open.arguments = ["-a", bundle.path]
+            try open.run()
+            open.waitUntilExit()
+            guard open.terminationStatus == 0 else { throw TrialError("launch_services_" + id) }
+            let additional = NSRunningApplication.runningApplications(withBundleIdentifier: identifier)
+                .filter { $0.processIdentifier != pid && $0.executableURL == executable }
+            if !additional.isEmpty {
+                for duplicate in additional { _ = duplicate.terminate() }
+                throw TrialError("different_instance_" + id)
+            }
+        }
         if !scrollDirectly { _ = AXUIElementPerformAction(box, "AXScrollToVisible" as CFString) }
         let system = AXUIElementCreateSystemWide()
         let deadline = ProcessInfo.processInfo.systemUptime + 12
         var stage = "foreground"
         repeat {
             defer { RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.15)) }
-            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { continue }
+            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else {
+                let front = NSWorkspace.shared.frontmostApplication
+                if let front, front.bundleURL == application.bundleURL && front.processIdentifier != pid {
+                    stage = "different_instance"
+                } else if front?.bundleIdentifier == "com.apple.SecurityAgent" {
+                    stage = "security_agent"
+                } else if front == nil {
+                    stage = "no_active_application"
+                } else {
+                    stage = "other_application"
+                }
+                continue
+            }
             stage = "geometry"
             guard let field = frame(box), let windowBounds = frame(window) else { continue }
             // Restrict the click to the visible portion of the field, even on a
@@ -176,14 +213,15 @@ struct Window {
 func checkTextInput() throws {
     guard let temp = ProcessInfo.processInfo.environment["RUNNER_TEMP"] else { throw TrialError("fixture_path") }
     let process = Process()
-    process.executableURL = URL(fileURLWithPath: temp).appendingPathComponent("m17-field-fixture")
+    process.executableURL = URL(fileURLWithPath: temp)
+        .appendingPathComponent("PairingField.app/Contents/MacOS/m17-field-fixture")
     try process.run()
     defer { if process.isRunning { process.terminate(); process.waitUntilExit() } }
     let window = Window(app: AXUIElementCreateApplication(process.processIdentifier), pid: process.processIdentifier)
     try window.fill("proof", "Public proof", "synthetic proof")
     // Reproduce an existing (now background) window before editing its field.
     let other = Process()
-    other.executableURL = process.executableURL
+    other.executableURL = URL(fileURLWithPath: temp).appendingPathComponent("m17-cover-window")
     try other.run()
     defer { if other.isRunning { other.terminate(); other.waitUntilExit() } }
     let deadline = ProcessInfo.processInfo.systemUptime + 8
