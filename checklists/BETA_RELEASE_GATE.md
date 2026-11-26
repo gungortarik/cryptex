@@ -126,7 +126,7 @@ No checkbox may be marked complete without actual evidence from the applicable m
 - [ ] M17 milestone acceptance criteria are satisfied.
 - [ ] `docs/21_DEFINITION_OF_DONE.md` is satisfied for the release scope.
 - [ ] Required CI is green at the release-candidate commit.
-  - The [general CI run for the preparatory candidate](https://github.com/gungortarik/cryptex/actions/runs/45504560649) passed Windows readiness, macOS readiness and Windows cross-account IPC access control at `d08adb5fff6d061adb6e5c46b06305a23eee24fd`. Run the required checks again on the final revision containing the approved transport.
+  - [General CI at `e18540e`](https://github.com/gungortarik/cryptex/actions/runs/45729144487) passed Windows readiness, macOS readiness and Windows cross-account IPC access control, including the shared native runtime path fix and the approved transport. The installed paired-profile upgrade and final revision still need acceptance.
 - [ ] Human review is complete.
 - [ ] Cryptex may be reported ready for Private Beta / Release Candidate.
 

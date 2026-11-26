@@ -106,6 +106,13 @@ The Mac assertions cover the persistent login file and binaries. They do not mea
 
 ## Standalone updater delivery from the owner's signing machine
 
+The [six installed update and rollback scenarios at `9b63424`](https://github.com/gungortarik/cryptex/actions/runs/45727292503) passed on Windows x64 and Apple Silicon. The two downloaded default updater archives matched the signing jobs' digests. Each referenced notice was rehashed after extraction. Windows included 44 package entries and 30 distinct documents, and Mac included 37 entries and 35 documents.
+
+| Disposable test archive | SHA-256 |
+| --- | --- |
+| Windows x64 | `055054824479bbc9a10414047de8b19760d109bf64c4c2e8df78803b6b6d48cb` |
+| Apple Silicon | `7268f3c66a7fd4eb8f93f9db82233126133cb2e1fc70d3fd3d877b0399897daa` |
+
 For the [installed update run at `3d77e32`](https://github.com/gungortarik/cryptex/actions/runs/45715891800), both downloaded default archives matched the SHA-256 printed by their native signing job. Each package referenced at least one embedded notice. Every reference resolved, every embedded document had a reference, and every document matched its SHA-256 after decoding.
 
 | Test archive | SHA-256 | Packages | Distinct documents |

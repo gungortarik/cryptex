@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -14,6 +15,29 @@ from windows_previous_note import park_test_profile
 
 sys.path.insert(0, str(ROOT / "scripts/m14"))
 from installed_update import digest, verify_note_signature, wait_for_desktop_exit
+
+
+# The synthetic peer approved by the 1.0.1 fixture in installed_previous_pair.rs.
+PEER_STREAM = Path(b"44444444-4444-4444-8444-444444444444".hex())
+
+
+def expected_event_inventory(before, events):
+    # Windows recovery initializes one empty stream for each approved peer.
+    # The historical fixture stopped after approval, before its first restart.
+    lock = PEER_STREAM / "writer.lock"
+    empty = hashlib.sha256(b"").digest()
+    if before.get(lock, empty) != empty:
+        raise RuntimeError("Historical peer writer lock contained data")
+    try:
+        parent = (events / PEER_STREAM).lstat()
+        item = (events / lock).lstat()
+    except FileNotFoundError as error:
+        raise RuntimeError("Approved peer stream lock was not initialized") from error
+    if (not stat.S_ISDIR(parent.st_mode) or not stat.S_ISREG(item.st_mode) or item.st_nlink != 1
+            or item.st_size != 0 or any(getattr(s, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
+                                       for s in (parent, item))):
+        raise RuntimeError("Approved peer stream lock is not an empty standalone file")
+    return before | {lock: empty}
 
 
 def verify_reopened(root, pid):
@@ -154,7 +178,7 @@ def exercise(active):
     if digest(descriptor) != descriptor_hash:
         mismatches.append("signed_note_descriptor")
     for role, before, directory in (
-        ("events", history[0], events),
+        ("events", expected_event_inventory(history[0], events), events),
         ("identity", history[1], identity),
         ("retained_native", baseline, runtime / "managed-transport-previous-native"),
         ("retained_package", old_package, runtime / "managed-transport-previous-package"),
