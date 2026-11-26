@@ -4,6 +4,14 @@ import WebKit
 
 let application = NSApplication.shared
 application.setActivationPolicy(.regular)
+let menu = NSMenu()
+let edit = NSMenu(title: "Edit")
+edit.addItem(withTitle: "Select All", action: Selector(("selectAll:")), keyEquivalent: "a")
+edit.addItem(withTitle: "Paste", action: Selector(("paste:")), keyEquivalent: "v")
+let editItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
+menu.addItem(editItem)
+editItem.submenu = edit
+application.mainMenu = menu
 let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 420),
                       styleMask: [.titled, .closable], backing: .buffered, defer: false)
 let web = WKWebView(frame: window.contentView!.bounds)

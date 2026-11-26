@@ -74,16 +74,17 @@ struct Window {
                     point.x += extent.width / 2
                     point.y += extent.height / 2
                     var hit: AXUIElement?
-                    _ = AXUIElementCopyElementAtPosition(app, Float(point.x), Float(point.y), &hit)
+                    _ = AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(point.x), Float(point.y), &hit)
                     var element = hit
                     for _ in 0..<8 {
                         guard let current = element else { break }
-                        if CFEqual(current, box) {
+                        if CFEqual(current, box), application.isActive {
                             for type in [CGEventType.leftMouseDown, .leftMouseUp] {
                                 guard let event = CGEvent(mouseEventSource: nil, mouseType: type,
                                                           mouseCursorPosition: point, mouseButton: .left)
                                 else { throw TrialError("mouse_" + id) }
-                                event.postToPid(pid)
+                                event.setIntegerValueField(.mouseEventClickState, value: 1)
+                                event.post(tap: .cghidEventTap)
                             }
                             return
                         }
@@ -105,12 +106,13 @@ struct Window {
         guard !value.isEmpty, value.utf8.count <= 262147 else { throw TrialError("input_size_" + id) }
         try clickTextArea(box, id)
         func shortcut(_ key: CGKeyCode) throws {
-            guard let down = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: true),
+            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid,
+                  let down = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: true),
                   let up = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: false)
             else { throw TrialError("key_" + id) }
             for event in [down, up] {
                 event.flags = .maskCommand
-                event.postToPid(pid)
+                event.post(tap: .cghidEventTap)
             }
         }
         let clipboard = NSPasteboard.general
@@ -125,7 +127,8 @@ struct Window {
             if attribute(box, "AXValue") as? String == value { return }
             Thread.sleep(forTimeInterval: 0.1)
         } while ProcessInfo.processInfo.systemUptime < deadline
-        throw TrialError("paste_" + id)
+        let hasFocus = attribute(box, "AXFocused") as? Bool == true
+        throw TrialError((hasFocus ? "paste_focused_" : "paste_unfocused_") + id)
     }
 }
 
