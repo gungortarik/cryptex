@@ -210,7 +210,11 @@ def apply_with_live_timeout(tool, approved, runtime, env):
         with subprocess.Popen([sys.executable, "-c", "import time; time.sleep(180)"]) as unrelated:
             try:
                 started = time.monotonic()
-                result = run(tool, "apply", approved, env=env, text=True, stdout=subprocess.PIPE, timeout=110)
+                try:
+                    result = run(tool, "apply", approved, env=env, text=True, stdout=subprocess.PIPE, timeout=110)
+                except subprocess.CalledProcessError as error:
+                    held = len(list(runtime.glob("m14-held-live-*")))
+                    raise RuntimeError(f"Timeout rollback failed; candidate timeout markers: {held}") from error
                 elapsed = time.monotonic() - started
                 marker, = runtime.glob("m14-held-live-*")
                 probe_pid, daemon_pid = map(int, marker.name.removeprefix("m14-held-live-").split("-"))

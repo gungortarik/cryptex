@@ -1,6 +1,7 @@
 //! Apply an explicitly staged local package while the user has quit Desktop.
 #[cfg(target_os = "macos")]
 mod mac_removal;
+mod package_move;
 mod release;
 use cryptex_updater::{Health, Layout, PROBE, desktop};
 use process_wrap::std::{ChildWrapper, CommandWrap};
@@ -399,13 +400,13 @@ impl Intent {
                 .map_err(|_| error("could not restore retained native transport"))?;
         }
         if old == &layout.pending && new == &layout.active {
-            fs::rename(old, &layout.previous)?;
+            package_move::rename(old, &layout.previous)?;
         }
         if new == &layout.active {
-            fs::rename(new, &layout.pending)?;
+            package_move::rename(new, &layout.pending)?;
         }
         if old != &layout.active {
-            fs::rename(&layout.previous, &layout.active)?;
+            package_move::rename(&layout.previous, &layout.active)?;
         }
         drop(stopped);
         let verified = require_connection_check(layout, &self.working)?;
@@ -485,9 +486,9 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
         transport: None,
     };
     intent.write_intent(&journal)?.persist_noclobber(&journal)?;
-    fs::rename(&layout.active, &layout.previous)?;
-    if let Err(cause) = fs::rename(&layout.pending, &layout.active) {
-        fs::rename(&layout.previous, &layout.active)?;
+    package_move::rename(&layout.active, &layout.previous)?;
+    if let Err(cause) = package_move::rename(&layout.pending, &layout.active) {
+        package_move::rename(&layout.previous, &layout.active)?;
         return Err(cause);
     }
     if package_digest(&layout.active)? != approved {
@@ -524,8 +525,8 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
             checks.extend(intent.restore(layout)?);
             return reopen(layout, transaction, &original, "rolled_back", checks);
         }
-        fs::rename(&layout.active, &layout.pending)?;
-        fs::rename(&layout.previous, &layout.active)?;
+        package_move::rename(&layout.active, &layout.pending)?;
+        package_move::rename(&layout.previous, &layout.active)?;
         if package_digest(&layout.active)? != original {
             return Err(error("previous package changed"));
         }
@@ -537,7 +538,7 @@ fn apply(layout: &Layout, approved: &str) -> io::Result<()> {
         checks.push(restored);
         "rolled_back"
     } else {
-        fs::rename(&layout.previous, &layout.pending)?;
+        package_move::rename(&layout.previous, &layout.pending)?;
         "updated"
     };
     reopen(
