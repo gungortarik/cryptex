@@ -182,6 +182,21 @@ struct Window {
         // Use the same paste operation as the owner. A WebKit AXValue write
         // does not reliably deliver an edit to a React-controlled textarea.
         guard !value.isEmpty, value.utf8.count <= 262147 else { throw TrialError("input_size_" + id) }
+        // Replace the selection on this specific WebKit control, including
+        // when another application is active. Verify the editing result
+        // before falling back to a foreground paste.
+        if let previous = attribute(box, "AXValue") as? String {
+            var range = CFRange(location: 0, length: previous.utf16.count)
+            if let selection = AXValueCreate(.cfRange, &range),
+               AXUIElementSetAttributeValue(box, kAXSelectedTextRangeAttribute as CFString, selection) == .success,
+               AXUIElementSetAttributeValue(box, kAXSelectedTextAttribute as CFString, value as CFString) == .success {
+                let until = ProcessInfo.processInfo.systemUptime + 2
+                repeat {
+                    if attribute(box, "AXValue") as? String == value { return }
+                    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+                } while ProcessInfo.processInfo.systemUptime < until
+            }
+        }
         try focusTextArea(box, id, scrollDirectly: scrollDirectly)
         func shortcut(_ key: CGKeyCode) throws {
             guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid,
@@ -270,15 +285,15 @@ func run() throws {
     }
 
     try window.press("AXButton", "Create signed offer")
-    let offer = try window.publicText("bootstrap-offer-output", "1. Signed offer · send to the responder")
+    let offer = try window.publicText("bootstrap-offer-output", "1. Signed offer Â· send to the responder")
     let proof = try response([offer])
-    try window.fill("bootstrap-proof-input", "2. Signed proof · paste from the responder", proof)
+    try window.fill("bootstrap-proof-input", "2. Signed proof Â· paste from the responder", proof)
     try window.press("AXButton", "Verify messages and review pairing")
     _ = try window.control("AXStaticText", ["44444444-4444-4444-8444-444444444444"])
     try window.press("AXButton", "Approve and sign")
-    let approval = try window.publicText("bootstrap-signed-message", "3. Signed approval · send to the responder")
+    let approval = try window.publicText("bootstrap-signed-message", "3. Signed approval Â· send to the responder")
     let last = try response([offer, proof, approval])
-    try window.fill("bootstrap-complete-transcript", "Append the responder’s signed approval on line 4",
+    try window.fill("bootstrap-complete-transcript", "Append the responderâ€™s signed approval on line 4",
                     [offer, proof, approval, last].joined(separator: "\n"))
     try window.press("AXButton", "Add approved device to local trust")
     _ = try window.control("AXStaticText", ["Pairing recorded in canonical local history. Device sync is not started by this action."])
