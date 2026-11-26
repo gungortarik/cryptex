@@ -77,16 +77,20 @@ def verify_installed_journals(retained, active):
     """The stopped exchange receipt changes only its engine pin on this upgrade."""
     receipts = []
     for native, version in ((retained, "2.1.5"), (active, "2.1.7")):
-        journal = json.loads((native / "exchange-install.json").read_bytes())
+        journal_bytes = (native / "exchange-install.json").read_bytes()
+        journal = json.loads(journal_bytes)
         binding_bytes = (native / "exchange-binding.json").read_bytes()
-        if journal.get("phase") != "committed" or journal.pop("binding").encode() != binding_bytes:
+        if journal.get("phase") != "committed" or journal["binding"].encode() != binding_bytes:
             raise RuntimeError("Installed exchange journal does not match its committed binding")
         binding = json.loads(binding_bytes)
-        if binding.pop("engine_version") != version:
+        if binding["engine_version"] != version:
             raise RuntimeError("Installed exchange binding has an unexpected engine version")
-        receipts.append((journal, binding))
-    if receipts[0] != receipts[1]:
-        raise RuntimeError("The installed upgrade changed the stopped exchange configuration")
+        receipts.append((journal_bytes, binding_bytes))
+    # The two verified pins differ by one ASCII digit, both in the binding
+    # and in the journal that embeds it. Every other byte must survive.
+    for old, new in zip(*receipts):
+        if len(old) != len(new) or sum(a != b for a, b in zip(old, new)) != 1:
+            raise RuntimeError("The installed upgrade changed the stopped exchange configuration")
 
 
 def check_database(path, expected, *, update=False):
