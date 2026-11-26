@@ -87,7 +87,7 @@ pub(super) fn observe(app: AppHandle) {
     std::thread::spawn(move || {
         let health = check(&app).map_err(|_| "reopened_health");
         let stopped = stop_daemon_for_user_quit(&app.state::<ProbeState>(), "m14_update_stop")
-            .map_err(|_| "daemon_stop");
+            .map_err(|error| stop_failure_stage(&error));
         let observation = stopped.and(health).and_then(|receipt| {
             let root = default_runtime_root_path().map_err(|_| "runtime_root")?;
             if cryptexd::instance::observe_instance(&root)
@@ -113,4 +113,34 @@ pub(super) fn observe(app: AppHandle) {
         };
         app.exit(if publish().is_ok() && passed { 0 } else { 2 });
     });
+}
+
+// The receipt survives a failed quit. Copy only known categories, since
+// filesystem and service errors can contain a profile path or other data.
+fn stop_failure_stage(error: &str) -> &'static str {
+    match error {
+        "daemon ignored clean stop and had to be force-stopped" => "daemon_stop_forced",
+        "daemon did not release its lock after clean stop request" => "daemon_stop_lock_timeout",
+        "PILOT_DAEMON_UNCLEAN_EXIT" => "daemon_stop_unclean",
+        _ if error.starts_with("daemon stop request:") => "daemon_stop_signal_write",
+        _ if error.ends_with("(os error 32)") && cfg!(windows) => "daemon_stop_sharing_violation",
+        _ => "daemon_stop",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn stop_receipt_only_reports_known_categories() {
+        use super::stop_failure_stage;
+        assert_eq!(
+            stop_failure_stage("daemon ignored clean stop and had to be force-stopped"),
+            "daemon_stop_forced"
+        );
+        assert_eq!(
+            stop_failure_stage("daemon stop request: private fixture path"),
+            "daemon_stop_signal_write"
+        );
+        assert_eq!(stop_failure_stage("private fixture path"), "daemon_stop");
+    }
 }

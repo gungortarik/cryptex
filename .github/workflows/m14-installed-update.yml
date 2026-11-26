@@ -57,6 +57,8 @@ jobs:
         run: cargo test --locked -p cryptexd --lib health_protocol_mismatch_requires_an_explicit_correlated_rejection
       - name: Verify a slow, clean daemon stop during an update probe
         run: cargo test --locked -p cryptex-desktop --features m14-installed-update-check update_probe_waits_for_clean_daemon_drain
+      - name: Verify that quit failures retain a bounded diagnostic
+        run: cargo test --locked -p cryptex-desktop --features m14-installed-update-check stop_receipt_only_reports_known_categories
       - name: Lint the installed update observer and desktop client
         run: cargo clippy --locked -p cryptex-updater -p cryptex-desktop --features m14-installed-update-check -- -D warnings
       - uses: actions/upload-artifact@v4
