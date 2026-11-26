@@ -16,6 +16,7 @@ func attribute(_ element: AXUIElement, _ key: String) -> CFTypeRef? {
 
 struct Window {
     let app: AXUIElement
+    let pid: pid_t
 
     func find(_ role: String, _ label: String) -> AXUIElement? {
         var pending = attribute(app, "AXWindows") as? [AXUIElement] ?? []
@@ -59,8 +60,44 @@ struct Window {
 
     func fill(_ id: String, _ label: String, _ value: String) throws {
         let box = try control("AXTextArea", [id, label])
-        guard AXUIElementSetAttributeValue(box, kAXValueAttribute as CFString, value as CFString) == .success,
-              attribute(box, "AXValue") as? String == value else { throw TrialError("fill_" + id) }
+        // Use the same paste operation as the owner. A WebKit AXValue write
+        // does not reliably deliver an edit to a React-controlled textarea.
+        guard !value.isEmpty, value.utf8.count <= 262147 else { throw TrialError("input_size_" + id) }
+        func focused() -> Bool {
+            guard let element = attribute(app, "AXFocusedUIElement") else { return false }
+            return CFEqual(element, box)
+        }
+        if !focused() {
+            _ = AXUIElementSetAttributeValue(box, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+            let deadline = ProcessInfo.processInfo.systemUptime + 5
+            while !focused() && ProcessInfo.processInfo.systemUptime < deadline {
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+        }
+        guard focused() else { throw TrialError("focus_" + id) }
+        func shortcut(_ key: CGKeyCode) throws {
+            guard focused(),
+                  let down = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: true),
+                  let up = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: false)
+            else { throw TrialError("key_" + id) }
+            for event in [down, up] {
+                event.flags = .maskCommand
+                event.postToPid(pid)
+            }
+        }
+        let clipboard = NSPasteboard.general
+        clipboard.clearContents()
+        guard clipboard.setString(value, forType: .string) else { throw TrialError("clipboard_" + id) }
+        let change = clipboard.changeCount
+        defer { if clipboard.changeCount == change { clipboard.clearContents() } }
+        try shortcut(0) // Command-A replaces the prefilled transcript as well.
+        try shortcut(9) // Command-V triggers the normal input event.
+        let deadline = ProcessInfo.processInfo.systemUptime + 8
+        repeat {
+            if attribute(box, "AXValue") as? String == value { return }
+            Thread.sleep(forTimeInterval: 0.1)
+        } while ProcessInfo.processInfo.systemUptime < deadline
+        throw TrialError("paste_" + id)
     }
 }
 
@@ -79,7 +116,7 @@ func run() throws {
     try process.run()
     defer { if process.isRunning { NSRunningApplication(processIdentifier: process.processIdentifier)?.terminate() } }
     let app = AXUIElementCreateApplication(process.processIdentifier)
-    let window = Window(app: app)
+    let window = Window(app: app, pid: process.processIdentifier)
     func response(_ messages: [String]) throws -> String {
         let child = Process()
         child.executableURL = URL(fileURLWithPath: args[2])
