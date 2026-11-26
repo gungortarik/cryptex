@@ -103,6 +103,16 @@ def exercise(active):
     stage.write_text("reopen", encoding="ascii")
     pid = report["reopened_pid"]
     try:
+        if report["outcome"] == "rolled_back_transport_preparation":
+            with (scratch / "paired-apply.stderr").open("rb") as stream:
+                diagnostic = stream.read(16384)
+            codes = ("installed_update_transaction_required", "installed_update_package_refused",
+                     "installed_update_enrollment_refused")
+            reason = next((code for code in codes if code.encode("ascii") in diagnostic), "unclassified")
+            native_staged = (runtime / "managed-transport-update-native").is_dir()
+            package_staged = (runtime / "managed-transport-update-package").is_dir()
+            raise RuntimeError(f"Paired transport preparation rolled back: {reason}, "
+                               f"native_staged={native_staged}, package_staged={package_staged}")
         if report["outcome"] != "updated" or [c["status"] for c in report["checks"]] != ["connected", "connected"]:
             raise RuntimeError("Installed paired upgrade returned " + report["outcome"])
         verify_reopened(runtime, pid)

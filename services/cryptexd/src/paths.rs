@@ -9,13 +9,21 @@ use crate::error::{LifecycleError, LifecycleResult};
 /// Intentionally isolated from P0-1 Syncthing paths (`syncthing-p0-1*`).
 pub const P0_2_NAMESPACE: &str = "p0-2";
 
+#[cfg(windows)]
+pub fn windows_installed_runtime_path(local: &Path) -> PathBuf {
+    local
+        .join("Cryptex-Dev")
+        .join("runtime")
+        .join(P0_2_NAMESPACE)
+}
+
 #[cfg(all(windows, target_arch = "x86_64", feature = "m17-owner-transport"))]
 pub fn installed_windows_update_root() -> LifecycleResult<PathBuf> {
     let local = env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
         .ok_or_else(|| LifecycleError::Io("missing absolute local application directory".into()))?;
-    let root = local.join("Cryptex-Dev/runtime/p0-2");
+    let root = windows_installed_runtime_path(&local);
     assert_outside_repository(&root)?;
     Ok(root)
 }
@@ -112,6 +120,19 @@ fn resolve_for_comparison(path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(all(windows, target_arch = "x86_64", feature = "m17-owner-transport"))]
+    #[test]
+    fn installed_update_uses_the_historical_windows_path_spelling() {
+        let local = PathBuf::from(env::var_os("LOCALAPPDATA").unwrap());
+        let expected = local
+            .join("Cryptex-Dev")
+            .join("runtime")
+            .join(P0_2_NAMESPACE);
+        let actual = installed_windows_update_root().unwrap();
+        // The 1.0.1 exchange journal binds the exact native-home text.
+        assert_eq!(actual.as_os_str(), expected.as_os_str());
+    }
 
     #[test]
     fn default_root_uses_p0_2_namespace() {

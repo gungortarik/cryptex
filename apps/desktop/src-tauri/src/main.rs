@@ -152,10 +152,9 @@ fn windows_runtime_root(local_app_data: Option<&OsStr>) -> Result<PathBuf, Strin
     any(not(debug_assertions), test, feature = "m8-device-recovery-check")
 ))]
 fn windows_release_probe_runtime_root(local_app_data: Option<&OsStr>) -> Result<PathBuf, String> {
-    Ok(PathBuf::from(local_app_data.ok_or("LOCALAPPDATA unset")?)
-        .join("Cryptex-Dev")
-        .join("runtime")
-        .join("p0-2"))
+    Ok(cryptexd::paths::windows_installed_runtime_path(Path::new(
+        local_app_data.ok_or("LOCALAPPDATA unset")?,
+    )))
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
