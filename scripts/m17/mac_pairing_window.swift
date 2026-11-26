@@ -58,26 +58,54 @@ struct Window {
         return value
     }
 
+    func clickTextArea(_ box: AXUIElement, _ id: String) throws {
+        guard let application = NSRunningApplication(processIdentifier: pid) else { throw TrialError("app_" + id) }
+        _ = application.activate(options: [])
+        _ = AXUIElementPerformAction(box, "AXScrollToVisible" as CFString)
+        // WebKit may report its web area as the app's focused element. Resolve
+        // the actual field on screen before posting a click to this process.
+        let deadline = ProcessInfo.processInfo.systemUptime + 5
+        repeat {
+            if let origin = attribute(box, "AXPosition"), CFGetTypeID(origin) == AXValueGetTypeID(),
+               let size = attribute(box, "AXSize"), CFGetTypeID(size) == AXValueGetTypeID() {
+                var point = CGPoint.zero, extent = CGSize.zero
+                if AXValueGetValue(origin as! AXValue, .cgPoint, &point),
+                   AXValueGetValue(size as! AXValue, .cgSize, &extent), extent.width > 0, extent.height > 0 {
+                    point.x += extent.width / 2
+                    point.y += extent.height / 2
+                    var hit: AXUIElement?
+                    _ = AXUIElementCopyElementAtPosition(app, Float(point.x), Float(point.y), &hit)
+                    var element = hit
+                    for _ in 0..<8 {
+                        guard let current = element else { break }
+                        if CFEqual(current, box) {
+                            for type in [CGEventType.leftMouseDown, .leftMouseUp] {
+                                guard let event = CGEvent(mouseEventSource: nil, mouseType: type,
+                                                          mouseCursorPosition: point, mouseButton: .left)
+                                else { throw TrialError("mouse_" + id) }
+                                event.postToPid(pid)
+                            }
+                            return
+                        }
+                        guard let parent = attribute(current, "AXParent"),
+                              CFGetTypeID(parent) == AXUIElementGetTypeID() else { break }
+                        element = (parent as! AXUIElement)
+                    }
+                }
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        } while ProcessInfo.processInfo.systemUptime < deadline
+        throw TrialError("hit_test_" + id)
+    }
+
     func fill(_ id: String, _ label: String, _ value: String) throws {
         let box = try control("AXTextArea", [id, label])
         // Use the same paste operation as the owner. A WebKit AXValue write
         // does not reliably deliver an edit to a React-controlled textarea.
         guard !value.isEmpty, value.utf8.count <= 262147 else { throw TrialError("input_size_" + id) }
-        func focused() -> Bool {
-            guard let element = attribute(app, "AXFocusedUIElement") else { return false }
-            return CFEqual(element, box)
-        }
-        if !focused() {
-            _ = AXUIElementSetAttributeValue(box, kAXFocusedAttribute as CFString, kCFBooleanTrue)
-            let deadline = ProcessInfo.processInfo.systemUptime + 5
-            while !focused() && ProcessInfo.processInfo.systemUptime < deadline {
-                Thread.sleep(forTimeInterval: 0.05)
-            }
-        }
-        guard focused() else { throw TrialError("focus_" + id) }
+        try clickTextArea(box, id)
         func shortcut(_ key: CGKeyCode) throws {
-            guard focused(),
-                  let down = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: true),
+            guard let down = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: true),
                   let up = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: false)
             else { throw TrialError("key_" + id) }
             for event in [down, up] {
@@ -101,10 +129,25 @@ struct Window {
     }
 }
 
+func checkTextInput() throws {
+    guard let temp = ProcessInfo.processInfo.environment["RUNNER_TEMP"] else { throw TrialError("fixture_path") }
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: temp).appendingPathComponent("m17-field-fixture")
+    try process.run()
+    defer { if process.isRunning { process.terminate(); process.waitUntilExit() } }
+    let window = Window(app: AXUIElementCreateApplication(process.processIdentifier), pid: process.processIdentifier)
+    try window.fill("proof", "Public proof", "synthetic proof")
+    try window.fill("transcript", "Public transcript", "line one\nline two")
+    _ = try window.control("AXButton", ["Fields received both edits"])
+    print("hosted_webkit_pairing_inputs=passed")
+}
+
 func run() throws {
     let args = CommandLine.arguments
-    guard args.count == 8, ProcessInfo.processInfo.environment["RUNNER_ENVIRONMENT"] == "github-hosted",
+    guard ProcessInfo.processInfo.environment["RUNNER_ENVIRONMENT"] == "github-hosted",
           AXIsProcessTrusted() else { throw TrialError("hosted_accessibility_unavailable") }
+    if args.count == 2 && args[1] == "--check-text-input" { return try checkTextInput() }
+    guard args.count == 8 else { throw TrialError("arguments") }
     let desktop = URL(fileURLWithPath: args[1]).standardizedFileURL
     let expected = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Applications/Cryptex.app/Contents/MacOS/cryptex-desktop")

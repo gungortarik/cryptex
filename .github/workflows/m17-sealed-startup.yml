@@ -10,6 +10,7 @@ on:
       - 'scripts/m17/mac_update_credential.py'
       - 'scripts/m17/mac_installed_transport.py'
       - 'scripts/m17/mac_pairing_window.swift'
+      - 'scripts/m17/mac_pairing_field_fixture.swift'
       - 'scripts/m17/fixture_responder.rs'
       - 'scripts/m17/paired_release_handoff.py'
       - 'scripts/m17/previous_daemon.py'
@@ -66,6 +67,8 @@ jobs:
         run: |
           swiftc -typecheck scripts/m17/mac_pairing_window.swift
           swift -e 'import ApplicationServices; print("hosted_accessibility_available=\(AXIsProcessTrusted())")'
+          swiftc scripts/m17/mac_pairing_field_fixture.swift -o "$RUNNER_TEMP/m17-field-fixture"
+          swift scripts/m17/mac_pairing_window.swift --check-text-input
       - name: Build the previous Mac daemon from the 1.0.1 source
         if: matrix.profile == 'persistent'
         run: python -B scripts/m17/previous_daemon.py
