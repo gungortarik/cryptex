@@ -22,6 +22,7 @@ on:
       - 'scripts/m17/verify_first_install_mac.py'
       - 'apps/updater/**'
       - 'scripts/m17/update_fixture.py'
+      - 'scripts/m17/verify_rust_notices.py'
       - 'scripts/m17/package_owner_updater.py'
       - 'scripts/m17/updater_notices.mjs'
       - 'scripts/m8/mac_lan_setup.py'

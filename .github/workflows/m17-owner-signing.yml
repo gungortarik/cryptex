@@ -24,6 +24,8 @@ on:
       - 'scripts/m17/build_owner_windows_installer.ps1'
       - 'scripts/m17/verify_first_install_*'
       - 'scripts/m17/check_installed_provenance.py'
+      - 'scripts/m17/verify_rust_notices.py'
+      - 'scripts/m17/test_installed_notices.py'
       - 'apps/desktop/scripts/build-provenance*'
       - 'apps/desktop/scripts/prepare-cryptexd-sidecar.mjs'
       - 'third_party/rust-notices/**'
@@ -60,6 +62,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: node --test apps/desktop/scripts/rust-notices.test.mjs
       - run: node --test apps/desktop/scripts/build-provenance.test.mjs
+      - run: python -B scripts/m17/test_installed_notices.py
       - if: runner.os == 'Windows'
         run: python -B scripts/m17/test_windows_installed_transport.py
       - if: runner.os == 'macOS'

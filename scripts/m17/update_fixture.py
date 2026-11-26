@@ -1,6 +1,5 @@
 """Native release signing for the installed updater trial, in disposable CI accounts only."""
 from contextlib import contextmanager
-import base64
 import os
 from pathlib import Path
 import hashlib
@@ -16,31 +15,16 @@ WINDOWS = sys.platform == "win32"
 
 from sign_owner_update import sign
 from package_owner_updater import digest, package
+from verify_rust_notices import verify_documents
 
 
 def verify_delivered_notices(notices, profile, target):
-    packages = notices["packages"]
-    documents = notices["documents"]
-    names = {item["name"] for item in packages}
+    names = {name for name, version in verify_documents(notices)}
     if notices["target"] != target or not {"cc", "process-wrap", "sha2"}.issubset(names):
         raise RuntimeError("Delivered notices have the wrong target or dependency list")
     for name in ("ed25519-dalek", "rusqlite"):
         if (name in names) != (profile == "owner-transport-update"):
             raise RuntimeError("Delivered notices do not match the enrolled-profile dependencies")
-    if not all(item["documents"] for item in packages):
-        raise RuntimeError("Delivered package lacks its notice")
-    referenced = {doc["sha256"] for item in packages for doc in item["documents"]}
-    if referenced != documents.keys():
-        raise RuntimeError("Delivered package references differ from the embedded notice documents")
-    for expected, item in documents.items():
-        if item.keys() == {"text"}:
-            content = item["text"].encode("utf-8")
-        elif item.keys() == {"base64"}:
-            content = base64.b64decode(item["base64"], validate=True)
-        else:
-            raise RuntimeError("Unrecognized embedded notice format")
-        if not content or hashlib.sha256(content).hexdigest() != expected:
-            raise RuntimeError("Delivered notice bytes differ from their digest")
 
 
 def delivered_updater(image, destination, profile):
